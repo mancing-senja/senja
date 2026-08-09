@@ -56,6 +56,18 @@ export interface Prop {
   lore?: string;
 }
 
+/** A way into a building. The door tile sits in front of the wall so the
+ *  player can actually stand on it. */
+export interface Door {
+  id: string;
+  /** Tile you step on to go in. */
+  tx: number;
+  ty: number;
+  size: 'small' | 'medium' | 'large';
+  style: 'cozy' | 'medieval' | 'cyber' | 'fantasy';
+  label: string;
+}
+
 export interface Plot {
   i: number;
   tx: number;
@@ -68,6 +80,7 @@ export interface WorldMap {
   props: Prop[];
   plots: Plot[];
   spots: Spot[];
+  doors: Door[];
   /** Where a new player spawns: end of the pier, looking at the water. */
   spawnX: number;
   spawnY: number;
@@ -139,6 +152,7 @@ export function buildMap(): WorldMap {
   const shore = new Int16Array(MAP_W);
   const props: Prop[] = [];
   const plots: Plot[] = [];
+  const doors: Door[] = [];
 
   const set = (tx: number, ty: number, t: Tile) => {
     if (tx < 0 || ty < 0 || tx >= MAP_W || ty >= MAP_H) return;
@@ -250,6 +264,11 @@ export function buildMap(): WorldMap {
     for (let tx = CABIN_TX; tx < CABIN_TX + 4; tx++) set(tx, ty, Tile.Blocked);
   }
 
+  doors.push({
+    id: 'pondok', tx: CABIN_TX + 2, ty: CABIN_TY + 4,
+    size: 'medium', style: 'cozy', label: 'Pondok',
+  });
+
   // --- paths tying the landmarks together
   carvePath(set, get, CABIN_TX * TILE + 34, (CABIN_TY + 4) * TILE, PIER_TX * TILE + 20, (dockShore + 2) * TILE);
   carvePath(set, get, PIER_TX * TILE + 20, (dockShore + 3) * TILE, PLOT_TX * TILE, (PLOT_TY - 2) * TILE);
@@ -300,11 +319,11 @@ export function buildMap(): WorldMap {
 
   // --- genre districts, built before the generic scatter so their ground
   // is already claimed and ordinary trees do not wander into them.
-  buildKeep(set, get, props, rng, shore);
-  buildQuay(set, get, props, rng, shore);
+  buildKeep(set, get, props, doors, rng, shore);
+  buildQuay(set, get, props, doors, rng, shore);
   buildGrove(set, get, props, rng);
 
-  buildVillage(set, get, props, rng);
+  buildVillage(set, get, props, doors, rng);
   // Lanes out of the village are narrow — a two-tile track everywhere turns
   // the whole valley into one brown smear.
   carvePath(set, get, (VILLAGE_TX - 2) * TILE, (VILLAGE_TY + 11) * TILE, PLOT_TX * TILE + 40, (PLOT_TY - 3) * TILE, 1, 14);
@@ -501,6 +520,13 @@ export function buildMap(): WorldMap {
     });
   }
 
+  // Doors must be standable, whatever the building generator did to that
+  // tile. Otherwise the entrance is walled off by its own wall.
+  for (const dr of doors) {
+    if (isWater(get(dr.tx, dr.ty))) continue;
+    if (get(dr.tx, dr.ty) === Tile.Blocked) set(dr.tx, dr.ty, Tile.Dirt);
+  }
+
   props.sort((a, b) => a.y - b.y);
 
   const spots = buildSpots({
@@ -514,7 +540,7 @@ export function buildMap(): WorldMap {
   });
 
   return {
-    tiles, variant, props, plots, shore, spots,
+    tiles, variant, props, plots, shore, spots, doors,
     dockX: PIER_TX,
     spawnX: (PIER_TX + 1) * TILE + 8,
     spawnY: (dockTip + 1) * TILE,
@@ -539,6 +565,7 @@ function buildKeep(
   set: (tx: number, ty: number, t: Tile) => void,
   get: (tx: number, ty: number) => Tile,
   props: Prop[],
+  doors: Door[],
   rng: Rng,
   shore: Int16Array,
 ): void {
@@ -610,6 +637,10 @@ function buildKeep(
     kind: 'gatehouse', x: kx * TILE, y: (ky + 11) * TILE + 8,
     variant: 0, solidW: 0, solidH: 0, sways: false,
   });
+  doors.push({
+    id: 'aula-benteng', tx: kx + 2, ty: ky + 5,
+    size: 'large', style: 'medieval', label: 'Aula Benteng',
+  });
 
   // Banners on the standing stretches, torches along the yard.
   for (let i = 0; i < 6; i++) {
@@ -647,6 +678,7 @@ function buildQuay(
   set: (tx: number, ty: number, t: Tile) => void,
   get: (tx: number, ty: number) => Tile,
   props: Prop[],
+  doors: Door[],
   rng: Rng,
   shore: Int16Array,
 ): void {
@@ -697,6 +729,10 @@ function buildQuay(
     // Real gaps between blocks: alleys. A continuous run of towers reads as
     // one dark wall, and the alleys are where the neon wash gets to land on
     // ground you can actually see.
+    doors.push({
+      id: `blok-${bx}`, tx: bx + Math.floor(widthTiles / 2), ty: setback + 1,
+      size: 'medium', style: 'cyber', label: 'Toko Lantai Dasar',
+    });
     bx += widthTiles + rng.int(2, 4);
   }
 
@@ -819,6 +855,7 @@ function buildVillage(
   set: (tx: number, ty: number, t: Tile) => void,
   get: (tx: number, ty: number) => Tile,
   props: Prop[],
+  doors: Door[],
   rng: Rng,
 ): void {
   const vx = VILLAGE_TX;
@@ -859,6 +896,14 @@ function buildVillage(
     for (let ty = hty; ty < hty + 3; ty++) {
       for (let tx = htx - 1; tx < htx + 4; tx++) set(tx, ty, Tile.Blocked);
     }
+    doors.push({
+      id: `rumah-${htx}-${hty}`,
+      tx: htx + 1, ty: hty + 3,
+      size: style % 2 === 0 ? 'medium' : 'small',
+      style: 'cozy',
+      label: 'Rumah Warga',
+    });
+
     // A single-tile path from the door out to the street.
     const doorY = hty + 3;
     const dir = hty < vy + 5 ? 1 : -1;

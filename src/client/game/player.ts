@@ -8,6 +8,7 @@ import { C } from '../art/palette';
 import { Blend } from '../engine/batch';
 import type { Input } from '../engine/input';
 import { isWalkable, type WorldMap } from '../world/map';
+import { walkableI, type Interior } from '../world/interior';
 import type { Draw } from '../render/draw';
 import { textWidth } from '../art/font';
 import type { Lighting } from '../world/lighting';
@@ -76,6 +77,32 @@ export class LocalPlayer implements Actor {
     this.moveAxis(map, 0, a.y * step);
   }
 
+  /** Same controller, different collision source. Interiors are their own
+   *  small map, so they cannot share `canStand`. */
+  updateIndoors(dt: number, input: Input, it: Interior): void {
+    const a = input.axis();
+    if (a.x === 0 && a.y === 0) {
+      this.action = 'idle';
+      this.animT = 0;
+      return;
+    }
+    this.action = 'walk';
+    this.animT += dt;
+    if (Math.abs(a.x) > 0.01) this.facing = a.x > 0 ? 'right' : 'left';
+    else if (a.y !== 0) this.facing = a.y > 0 ? 'down' : 'up';
+
+    const step = PLAYER_SPEED * dt;
+    for (const [dx, dy] of [[a.x * step, 0], [0, a.y * step]] as const) {
+      if (dx === 0 && dy === 0) continue;
+      const nx = this.x + dx;
+      const ny = this.y + dy;
+      if (canStandIn(it, nx, ny)) {
+        this.x = nx;
+        this.y = ny;
+      }
+    }
+  }
+
   /** Axis-separated movement so sliding along a wall feels smooth rather
    *  than sticking at corners. */
   private moveAxis(map: WorldMap, dx: number, dy: number): void {
@@ -98,6 +125,19 @@ export class LocalPlayer implements Actor {
       }
     }
   }
+}
+
+export function canStandIn(it: Interior, x: number, y: number): boolean {
+  const l = Math.floor((x - FOOT_W / 2) / TILE);
+  const r = Math.floor((x + FOOT_W / 2 - 1) / TILE);
+  const t = Math.floor((y - FOOT_H) / TILE);
+  const b = Math.floor((y - 1) / TILE);
+  for (let ty = t; ty <= b; ty++) {
+    for (let tx = l; tx <= r; tx++) {
+      if (!walkableI(it, tx, ty)) return false;
+    }
+  }
+  return true;
 }
 
 export function canStand(map: WorldMap, x: number, y: number): boolean {

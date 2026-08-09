@@ -14,6 +14,11 @@ import { GLYPH_H, glyph } from './font';
 import { buildCharacterFrames, charKey } from './character';
 import { buildPortraits, portraitKey } from './portrait';
 import {
+  makeAnvil, makeBarrelIn, makeBed, makeChair, makeChest, makeFloorTile,
+  makeLampIn, makePainting, makePlantPot, makeRugTile, makeShelf, makeStove,
+  makeTable, makeTerminalDesk, makeWallTile, makeWindowIn,
+} from './furniture';
+import {
   makeBush, makeDeadTree, makeDirtTile, makeFlowerTuft, makeFringe, makeGrassTile,
   makeLilyPad, makePebbles, makePlotBed, makeReed, makeRock, makeSandTile,
   makeTallGrass, makeTree,
@@ -108,6 +113,9 @@ export const VARIANTS = {
   rune: 3,
   spirittree: 4,
   marker: 3,
+  floor: 3,
+  rug: 5,
+  furn: 3,
 };
 
 export function buildAtlas(): Atlas {
@@ -219,6 +227,33 @@ export function buildAtlas(): Atlas {
   for (let i = 0; i < VARIANTS.crystal; i++) add(`crystal${i}`, makeCrystal(i + 1));
   for (let i = 0; i < VARIANTS.rune; i++) add(`rune${i}`, makeRuneStone(i + 1));
   for (let i = 0; i < VARIANTS.spirittree; i++) add(`spirittree${i}`, makeSpiritTree(i + 1));
+
+  // --- interiors
+  for (const st of ['cozy', 'medieval', 'cyber', 'fantasy'] as const) {
+    for (let i = 0; i < VARIANTS.floor; i++) {
+      add(`floor_${st}${i}`, makeFloorTile(i + 1, st));
+      add(`iwall_${st}${i}`, makeWallTile(i + 1, st));
+    }
+  }
+  for (let i = 0; i < VARIANTS.rug; i++) add(`rug${i}`, makeRugTile(i + 1));
+  // Every interior sprite gets an `f_` prefix. Without it `bed0` would
+  // collide with the farm plot beds and silently replace them — the atlas
+  // is one flat namespace.
+  for (let i = 0; i < VARIANTS.furn; i++) {
+    add(`f_bed${i}`, makeBed(i + 1));
+    add(`f_table${i}`, makeTable(i + 1));
+    add(`f_shelf${i}`, makeShelf(i + 1));
+    add(`f_plant${i}`, makePlantPot(i + 1));
+    add(`f_painting${i}`, makePainting(i + 1));
+  }
+  add('f_chair', makeChair());
+  add('f_chest', makeChest());
+  add('f_stove', makeStove());
+  add('f_anvil', makeAnvil());
+  add('f_terminal', makeTerminalDesk());
+  add('f_barrel', makeBarrelIn());
+  add('f_lamp', makeLampIn());
+  add('f_window', makeWindowIn());
 
   add('cabin', makeCabin());
   for (let i = 0; i < HOUSE_SPECS.length; i++) add(`house${i}`, makeTownhouse(HOUSE_SPECS[i], i + 1));

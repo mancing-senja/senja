@@ -21,7 +21,11 @@ import { SkyWater } from './world/skywater';
 import { Post } from './world/post';
 import { lightingAt } from './world/lighting';
 import { buildMap, isWater, tileAt } from './world/map';
-import { spotAt } from './world/spots';
+import { buildInterior, type Interior } from './world/interior';
+import {
+  drawRoom, drawRoomLight, drawRoomVignette, furnitureRenderables, indoorAmbient,
+} from './render/indoors';
+import { DEFAULT_SPOT, spotAt } from './world/spots';
 import { districtAt } from './world/districts';
 import { LocalPlayer, drawActor, drawActorReflection, drawFishingLine } from './game/player';
 import { Fishing, phaseLabel, speciesById } from './game/fishing';
@@ -94,6 +98,20 @@ function boot(): void {
 
   /** Which pieces of the valley's history have been found. */
   const loreRead = loadRead();
+
+  /** The room the player is standing in, or null when outdoors. Interiors
+   *  are built on first entry and cached, so a house you have been in keeps
+   *  its layout for the session. */
+  let indoors: Interior | null = null;
+  const rooms = new Map<string, Interior>();
+  /** Set on any teleport. The camera eases everywhere else, but easing
+   *  across a doorway means several seconds of flying over the map with the
+   *  room's black surround filling the screen. */
+  let snapCamera = false;
+  /** Seconds before a doorway will take you again. Stepping out lands you
+   *  next to the door you came from, and without this the very next frame
+   *  would read that as walking in. */
+  let doorCooldown = 0;
 
   const ui = new Ui(input, (text) => {
     net.chat(text);
@@ -225,6 +243,7 @@ function boot(): void {
     npcs.map((n) => ({ name: n.name, action: n.action, x: Math.round(n.x), y: Math.round(n.y) }));
   (window as unknown as Record<string, unknown>).__dbg = () => ({
     fishing: fishing.state,
+    indoors: indoors ? { id: indoors.id, w: indoors.w, h: indoors.h } : null,
     reel: fishing.reel,
     coins: farm.coins,
     basket: farm.basketCount,
@@ -241,6 +260,7 @@ function boot(): void {
     player.y = ty * 16;
     camX = clamp(player.x - view.w / 2, 0, WORLD_W - view.w);
     camY = clamp(player.y - view.h * 0.66, -SKY_H, WORLD_H - view.h);
+    snapCamera = true;
   };
 
   function frame(now: number): void {
@@ -304,7 +324,8 @@ function boot(): void {
 
     const L = lightingAt(time, rain);
 
-    player.update(dt, input, map);
+    if (indoors) player.updateIndoors(dt, input, indoors);
+    else player.update(dt, input, map);
 
     fishing.update(
       dt, input, player, map, time, particles, audio,
@@ -333,12 +354,57 @@ function boot(): void {
     );
     player.bobber = fishing.bobber;
 
-    for (const n of npcs) n.update(dt, map);
+    if (!indoors) for (const n of npcs) n.update(dt, map);
 
     // --- interaction. A villager standing next to you takes priority over
     // whatever plot happens to be underfoot.
     // Standing at the community board opens it, which is how anyone finds
     // out it exists in the first place.
+    // --- doors. Handled before everything else: while indoors none of the
+    // outdoor interactions exist, and while outdoors a doorway under your
+    // feet is the most likely thing you meant to press E on.
+    doorCooldown = Math.max(0, doorCooldown - dt);
+
+    if (indoors) {
+      const onDoor = Math.floor(player.y / 16) >= indoors.h - 1;
+      if (onDoor && doorCooldown <= 0) {
+        // Step out one tile clear of the threshold, not onto it.
+        player.x = indoors.returnX;
+        player.y = indoors.returnY + 16 + 12;
+        player.facing = 'down';
+        doorCooldown = 0.6;
+        ui.showPlace('Keluar', '');
+        audio.blip(420, 0.09, 0.12);
+        indoors = null;
+        snapCamera = true;
+      }
+    } else {
+      const ptx = Math.floor(player.x / 16);
+      const pty = Math.floor(player.y / 16);
+      const door = doorCooldown > 0
+        ? undefined
+        : map.doors.find((dr) => dr.tx === ptx && dr.ty === pty);
+      if (door) {
+        let room = rooms.get(door.id);
+        if (!room) {
+          room = buildInterior(
+            door.id, door.style, doorSeed(door.id), door.size,
+            door.tx * 16 + 8, door.ty * 16, door.label,
+          );
+          rooms.set(door.id, room);
+        }
+        indoors = room;
+        player.x = room.spawnX;
+        player.y = room.spawnY;
+        player.facing = 'up';
+        fishing.cancel(player);
+        ui.showPlace(room.label, '');
+        audio.blip(520, 0.09, 0.12);
+        snapCamera = true;
+        doorCooldown = 0.6;
+      }
+    }
+
     // A readable marker beats everything else within reach: it is the
     // only interaction that is purely about the world rather than about
     // the loop.
@@ -413,7 +479,10 @@ function boot(): void {
     // Announce arriving at a named spot. Checked against the player rather
     // than the bobber so it fires while walking, not while fishing.
     // Crossing a district line is the bigger event, so it wins the banner.
-    const dz = districtAt(player.x, player.y);
+    // Indoors none of this applies — you are in a room, not a region.
+    const dz = indoors
+      ? { district: null, weight: 0 }
+      : districtAt(player.x, player.y);
     const dzId = dz.weight > 0.55 ? dz.district?.id ?? '' : '';
     if (dzId !== lastDistrict) {
       lastDistrict = dzId;
@@ -422,7 +491,7 @@ function boot(): void {
     // The band changes with the district, cross-fading over a few bars.
     audio.setMood(dz.weight > 0.5 && dz.district ? dz.district.genre : 'pastoral');
 
-    const here = spotAt(map.spots, player.x, player.y);
+    const here = indoors ? DEFAULT_SPOT : spotAt(map.spots, player.x, player.y);
     if (here.id !== lastSpot) {
       lastSpot = here.id;
       if (here.id !== 'kolam' && !dzId) ui.showPlace(here.label, here.blurb);
@@ -434,11 +503,25 @@ function boot(): void {
     audio.update(dt, L.night, rain);
 
     // --- camera: the player sits below centre so there is sky to look at
-    const targetX = clamp(player.x - view.w / 2, 0, WORLD_W - view.w);
-    const targetY = clamp(player.y - view.h * 0.66, -SKY_H, WORLD_H - view.h);
-    const k = 1 - Math.pow(0.0015, dt);
-    camX += (targetX - camX) * k;
-    camY += (targetY - camY) * k;
+    // Indoors the camera is bounded by the room, not the world — and a room
+    // smaller than the viewport is centred rather than clamped to a corner.
+    const bw = indoors ? indoors.w * 16 : WORLD_W;
+    const bh = indoors ? indoors.h * 16 : WORLD_H;
+    const targetX = bw <= view.w
+      ? (bw - view.w) / 2
+      : clamp(player.x - view.w / 2, 0, bw - view.w);
+    const targetY = bh <= view.h
+      ? (bh - view.h) / 2
+      : clamp(player.y - view.h * 0.66, indoors ? 0 : -SKY_H, bh - view.h);
+    if (snapCamera) {
+      camX = targetX;
+      camY = targetY;
+      snapCamera = false;
+    } else {
+      const k = 1 - Math.pow(0.0015, dt);
+      camX += (targetX - camX) * k;
+      camY += (targetY - camY) * k;
+    }
   }
 
   function applyPlotLocally(i: number, op: string, crop?: string): void {
@@ -542,72 +625,91 @@ function boot(): void {
     gl.clearColor(0, 0, 0, 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
 
-    skywater.draw(
-      view.w, view.h, cx, cy, clock, HORIZON_Y, L, rain,
-      // The lake takes the local fog colour, so the water off the neon quay
-      // is a different lake from the water off the keep.
-      L.haze[0] < 0.35
-        ? [L.haze[0] * 1.3 + 0.04, L.haze[1] * 1.2 + 0.10, L.haze[2] * 1.15 + 0.18]
-        : mixRGB(col01(C.Water), col01(C.WaterSh), 0.45),
-    );
+    if (indoors) {
+      // Indoors skips the sky, the weather and the whole outdoor scene.
+      // The room is lit by its own lamps, so the clock barely reaches it.
+      draw.ambient = indoorAmbient(L.night);
+      draw.begin(cx, cy);
+      drawRoom(draw, indoors, clock);
 
-    draw.ambient = L.ambient;
-    draw.begin(cx, cy);
-
-    drawGround(draw, map, cx, cy, clock, L);
-    drawReflections(draw, map, cx, cy, clock);
-
-    // Reflections of anyone standing out over the water, drawn before the
-    // characters so a reflection never covers the person casting it.
-    for (const rp of net.players.values()) {
-      if (overWater(rp.x, rp.y)) drawActorReflection(draw, rp, clock);
-    }
-    if (overWater(player.x, player.y)) drawActorReflection(draw, player, clock);
-
-    // --- everything that y-sorts against everything else
-    const items: Renderable[] = [];
-    for (const p of map.props) {
-      // Cheap cull: props are sorted by y, but the x test is what saves the
-      // draw calls on a wide map.
-      if (p.x < cx - 60 || p.x > cx + view.w + 60) continue;
-      if (p.y < cy - 80 || p.y > cy + view.h + 80) continue;
-      items.push(propRenderable(draw, p, clock, L));
-    }
-    for (const r of farm.renderables(draw, map, plots(), clock)) items.push(r);
-
-    for (const n of npcs) {
-      if (n.x < cx - 60 || n.x > cx + view.w + 60) continue;
-      if (n.y < cy - 80 || n.y > cy + view.h + 80) continue;
-      // Name tags only when you are close enough to talk to them. Ten
-      // permanent labels across a village is a debug view, not a game.
-      const near = Math.hypot(n.x - player.x, n.y - player.y) < 78;
-      items.push({ y: n.y, draw: () => drawActor(draw, n, L, clock, 1, near) });
-    }
-    for (const rp of net.players.values()) {
+      const items: Renderable[] = furnitureRenderables(draw, indoors);
       items.push({
-        y: rp.y,
+        y: player.y,
+        draw: () => drawActor(draw, player, L, clock, 1, false),
+      });
+      items.sort((a, b) => a.y - b.y);
+      for (const it of items) it.draw();
+
+      drawRoomLight(draw, indoors, clock);
+      drawRoomVignette(draw, indoors, cx, cy);
+      farm.drawPrompt(draw);
+    } else {
+      skywater.draw(
+        view.w, view.h, cx, cy, clock, HORIZON_Y, L, rain,
+        // The lake takes the local fog colour, so the water off the neon quay
+        // is a different lake from the water off the keep.
+        L.haze[0] < 0.35
+          ? [L.haze[0] * 1.3 + 0.04, L.haze[1] * 1.2 + 0.10, L.haze[2] * 1.15 + 0.18]
+          : mixRGB(col01(C.Water), col01(C.WaterSh), 0.45),
+      );
+
+      draw.ambient = L.ambient;
+      draw.begin(cx, cy);
+
+      drawGround(draw, map, cx, cy, clock, L);
+      drawReflections(draw, map, cx, cy, clock);
+
+      // Reflections of anyone standing out over the water, drawn before the
+      // characters so a reflection never covers the person casting it.
+      for (const rp of net.players.values()) {
+        if (overWater(rp.x, rp.y)) drawActorReflection(draw, rp, clock);
+      }
+      if (overWater(player.x, player.y)) drawActorReflection(draw, player, clock);
+
+      const items: Renderable[] = [];
+      for (const p of map.props) {
+        // Cheap cull: props are sorted by y, but the x test is what saves the
+        // draw calls on a wide map.
+        if (p.x < cx - 60 || p.x > cx + view.w + 60) continue;
+        if (p.y < cy - 80 || p.y > cy + view.h + 80) continue;
+        items.push(propRenderable(draw, p, clock, L));
+      }
+      for (const r of farm.renderables(draw, map, plots(), clock)) items.push(r);
+
+      for (const n of npcs) {
+        if (n.x < cx - 60 || n.x > cx + view.w + 60) continue;
+        if (n.y < cy - 80 || n.y > cy + view.h + 80) continue;
+        // Name tags only when you are close enough to talk to them. Ten
+        // permanent labels across a village is a debug view, not a game.
+        const near = Math.hypot(n.x - player.x, n.y - player.y) < 78;
+        items.push({ y: n.y, draw: () => drawActor(draw, n, L, clock, 1, near) });
+      }
+      for (const rp of net.players.values()) {
+        items.push({
+          y: rp.y,
+          draw: () => {
+            drawActor(draw, rp, L, clock, rp.fade);
+            drawFishingLine(draw, rp, clock);
+          },
+        });
+      }
+      items.push({
+        y: player.y,
         draw: () => {
-          drawActor(draw, rp, L, clock, rp.fade);
-          drawFishingLine(draw, rp, clock);
+          drawActor(draw, player, L, clock, 1, false);
+          drawFishingLine(draw, player, clock);
         },
       });
+
+      items.sort((a, b) => a.y - b.y);
+      for (const it of items) it.draw();
+
+      fishing.drawWorld(draw, clock);
+      drawLampLight(draw, map, clock, L);
+      drawNeonWash(draw, map, cx, cy, clock);
+      particles.draw(draw, L);
+      farm.drawPrompt(draw);
     }
-    items.push({
-      y: player.y,
-      draw: () => {
-        drawActor(draw, player, L, clock, 1, false);
-        drawFishingLine(draw, player, clock);
-      },
-    });
-
-    items.sort((a, b) => a.y - b.y);
-    for (const it of items) it.draw();
-
-    fishing.drawWorld(draw, clock);
-    drawLampLight(draw, map, clock, L);
-    drawNeonWash(draw, map, cx, cy, clock);
-    particles.draw(draw, L);
-    farm.drawPrompt(draw);
 
     // --- HUD, at full brightness and pinned to the screen
     draw.ambient = [1, 1, 1];
@@ -666,6 +768,16 @@ function boot(): void {
   }
 
   requestAnimationFrame(frame);
+}
+
+/** Stable seed per door, so a room keeps its layout across sessions. */
+function doorSeed(id: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < id.length; i++) {
+    h ^= id.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return Math.abs(h | 0);
 }
 
 function clamp(v: number, a: number, b: number): number {
