@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Senja — kolam sore</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --ink: #f3e9d2;
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        overflow: hidden;
+        background: #0d0f1a;
+        font-family: ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace;
+        color: var(--ink);
+      }
+      #app {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-items: center;
+      }
+      canvas#game {
+        display: block;
+        image-rendering: pixelated;
+        image-rendering: crisp-edges;
+        touch-action: none;
+        outline: none;
+      }
+      /* Boot / loading veil — fades once the first frame is drawn. */
+      #veil {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        background: #0d0f1a;
+        transition: opacity 600ms ease;
+        z-index: 20;
+      }
+      #veil.gone { opacity: 0; pointer-events: none; }
+      #veil .mark {
+        font-size: 13px;
+        letter-spacing: 0.42em;
+        text-transform: uppercase;
+        opacity: 0.65;
+        animation: breathe 2.8s ease-in-out infinite;
+      }
+      @keyframes breathe {
+        0%, 100% { opacity: 0.28; }
+        50% { opacity: 0.7; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"><canvas id="game" tabindex="0"></canvas></div>
+    <div id="veil"><div class="mark">senja</div></div>
+    <script type="module" src="/src/client/main.ts"></script>
+  </body>
+</html>

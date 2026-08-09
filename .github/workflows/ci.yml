@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel an in-flight run when the same PR gets a new push. Reviewers only
+# ever care about the latest commit.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Typecheck & build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      # The art is generated at boot, so a broken generator does not fail the
+      # build — it fails at runtime in front of a player. Boot the atlas in a
+      # headless browser so that class of bug gets caught here instead.
+      - name: Boot smoke test
+        run: |
+          npx playwright install --with-deps chromium
+          node scripts/smoke.mjs

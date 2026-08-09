@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.shots/
+*.local
+.DS_Store
+
+# Local dev-tool config: contains absolute paths for one machine.
+.claude/

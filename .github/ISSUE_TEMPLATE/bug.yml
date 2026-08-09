@@ -1,0 +1,34 @@
+name: Bug
+description: Ada yang rusak atau salah jalan
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: Apa yang terjadi
+      description: Ceritain apa yang lu lihat, bukan apa yang lu kira penyebabnya.
+    validations: { required: true }
+  - type: textarea
+    id: steps
+    attributes:
+      label: Cara ngulanginnya
+      placeholder: |
+        1. Jalan ke Dermaga Neon
+        2. Tekan spasi
+        3. ...
+    validations: { required: true }
+  - type: textarea
+    id: expected
+    attributes:
+      label: Harusnya gimana
+    validations: { required: true }
+  - type: textarea
+    id: shot
+    attributes:
+      label: Screenshot
+      description: Kalau ini soal tampilan, screenshot hampir selalu lebih jelas dari deskripsi.
+  - type: input
+    id: env
+    attributes:
+      label: Browser & OS
+      placeholder: Chrome 132, Windows 11

@@ -1,0 +1,24 @@
+name: Ide fitur
+description: Usul sesuatu yang baru
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: Idenya apa
+    validations: { required: true }
+  - type: textarea
+    id: why
+    attributes:
+      label: Kenapa ini bikin gamenya lebih enak
+      description: |
+        Game ini santai dan komunitas dulu. Fitur yang bikin buru-buru,
+        kompetitif keras, atau bikin orang wajib login tiap hari kemungkinan
+        besar ditolak — jelasin gimana ide lu ngejaga suasananya.
+    validations: { required: true }
+  - type: dropdown
+    id: area
+    attributes:
+      label: Bagian mana
+      options: [Mancing, Kebun, Dunia & distrik, NPC & dialog, Multiplayer, Tampilan, Audio, Lainnya]
+    validations: { required: true }

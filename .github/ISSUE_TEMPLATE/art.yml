@@ -1,0 +1,36 @@
+name: Arahan art
+description: Ada yang jelek — tunjukin di mana dan kenapa
+labels: [art-direction]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Lu **ga perlu bisa ngoding** buat ngisi ini. Nunjukin apa yang salah
+        itu bagian tersulitnya. Semua art di-generate lewat kode, jadi
+        laporan yang jelas langsung bisa diterjemahin jadi perubahan.
+  - type: textarea
+    id: what
+    attributes:
+      label: Yang mana yang jelek
+      placeholder: Contoh: pohon di hutan bagian utara, mahkotanya belang horizontal.
+    validations: { required: true }
+  - type: textarea
+    id: why
+    attributes:
+      label: Kenapa jelek
+      description: |
+        Sebisanya spesifik. "Ramp warnanya cuma 3 langkah jadi ngejenjang",
+        "bayangannya ga geser ke dingin", "warna jenuh dipakai di bidang besar".
+    validations: { required: true }
+  - type: textarea
+    id: ref
+    attributes:
+      label: Referensi
+      description: |
+        Screenshot atau link boleh. Kita ambil **tekniknya**, bukan niru karyanya —
+        jangan kirim aset yang minta disalin persis.
+  - type: textarea
+    id: shot
+    attributes:
+      label: Screenshot dari game
+    validations: { required: true }
