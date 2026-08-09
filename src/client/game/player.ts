@@ -169,8 +169,12 @@ function poseFor(a: Actor, clock: number): Pose {
       return 'hold';
     case 'reel':
       return 'pull';
-    case 'tend':
-      return 'hold';
+    case 'tend': {
+      // A slow two-beat swing, offset per character so a row of villagers
+      // working the plots does not move as one machine.
+      const beat = (clock * 1.6 + a.idleSeed) % 2;
+      return beat < 1.2 ? 'tend0' : 'tend1';
+    }
     case 'walk': {
       const f = Math.floor(a.animT * 8) % 4;
       return (['walk0', 'walk1', 'walk2', 'walk3'] as const)[f];

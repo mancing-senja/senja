@@ -221,6 +221,8 @@ function boot(): void {
   };
   (window as unknown as Record<string, unknown>).__plots = () => plots();
   (window as unknown as Record<string, unknown>).__map = () => map;
+  (window as unknown as Record<string, unknown>).__npcs = () =>
+    npcs.map((n) => ({ name: n.name, action: n.action, x: Math.round(n.x), y: Math.round(n.y) }));
   (window as unknown as Record<string, unknown>).__dbg = () => ({
     fishing: fishing.state,
     reel: fishing.reel,
@@ -605,12 +607,13 @@ function boot(): void {
     drawLampLight(draw, map, clock, L);
     drawNeonWash(draw, map, cx, cy, clock);
     particles.draw(draw, L);
-    for (const n of npcs) n.drawBubble(draw);
     farm.drawPrompt(draw);
 
     // --- HUD, at full brightness and pinned to the screen
     draw.ambient = [1, 1, 1];
     draw.camera(0, 0);
+    // Conversation panels sit above the HUD but below the modal panels.
+    for (const n of npcs) n.drawPanel(draw, player.x, player.y);
     fishing.drawHud(draw);
     ui.draw(draw, {
       coins: farm.coins,

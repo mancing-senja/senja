@@ -11,7 +11,7 @@
  *  same hair, same hat, same shirt. Adding a thirteenth character still
  *  costs one row of data. */
 
-import { PixelCanvas, Rng, TRANSPARENT, valueNoise } from './canvas';
+import { PixelCanvas, Rng, valueNoise } from './canvas';
 import { C } from './palette';
 import { LOOKS, LOOK_COUNT, type Look } from './character';
 
@@ -295,5 +295,3 @@ export function buildPortraits(): PortraitFrame[] {
 export function portraitKey(look: number, mood: Mood): string {
   return `pt_${look % LOOK_COUNT}_${mood}`;
 }
-
-void TRANSPARENT;

@@ -12,6 +12,7 @@ import {
 } from './genre';
 import { GLYPH_H, glyph } from './font';
 import { buildCharacterFrames, charKey } from './character';
+import { buildPortraits, portraitKey } from './portrait';
 import {
   makeBush, makeDeadTree, makeDirtTile, makeFlowerTuft, makeFringe, makeGrassTile,
   makeLilyPad, makePebbles, makePlotBed, makeReed, makeRock, makeSandTile,
@@ -127,6 +128,11 @@ export function buildAtlas(): Atlas {
   // --- characters
   for (const cf of buildCharacterFrames()) {
     add(charKey(cf.look, cf.dir, cf.pose), cf.canvas);
+  }
+  // Conversation portraits. Same Look record as the world sprite, so the
+  // face in the panel is always the person standing in front of you.
+  for (const pf of buildPortraits()) {
+    add(portraitKey(pf.look, pf.mood), pf.canvas);
   }
 
   // --- terrain

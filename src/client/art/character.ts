@@ -132,10 +132,12 @@ const LEGS_SIDE = [
 export type Pose =
   | 'idle' | 'idle2' | 'blink'
   | 'walk0' | 'walk1' | 'walk2' | 'walk3'
-  | 'hold' | 'pull';
+  | 'hold' | 'pull'
+  | 'tend0' | 'tend1';
 
 export const POSES: Pose[] = [
   'idle', 'idle2', 'blink', 'walk0', 'walk1', 'walk2', 'walk3', 'hold', 'pull',
+  'tend0', 'tend1',
 ];
 
 export type Dir = 'front' | 'back' | 'side';
@@ -373,6 +375,33 @@ function raiseArm(c: PixelCanvas, dir: Dir, pull: boolean, lk: Look): void {
   if (dir !== 'side') c.set(armX - 1, from - lift, lk.skinSh);
 }
 
+/** Both arms reach down and forward, and a tool shaft goes with them. The
+ *  down-stroke pushes the hands lower and tilts the shaft — that swing is
+ *  what turns "standing near a plot" into "working on it". */
+function workArms(c: PixelCanvas, dir: Dir, down: boolean, lk: Look): void {
+  const drop = down ? 3 : 1;
+  const arms = dir === 'side' ? [12] : [2, 13];
+
+  for (const armX of arms) {
+    // Clear the arm where it hangs in the base sprite.
+    for (let y = 15; y <= 17; y++) c.set(armX, y, TRANSPARENT);
+    c.set(armX, 15 + drop, lk.skin);
+    c.set(armX, 16 + drop, lk.skin);
+    c.set(armX, 17 + drop, lk.skinSh);
+  }
+
+  // The tool: a shaft from the hands down to the soil, angled further over
+  // on the down-stroke.
+  const handX = dir === 'side' ? 12 : 13;
+  const tilt = down ? 2 : 1;
+  for (let k = 0; k < 5; k++) {
+    c.set(handX + tilt + k, 17 + drop + k, C.WoodDk);
+  }
+  // Head of the tool.
+  c.set(handX + tilt + 5, 22 + drop, C.Slate);
+  c.set(handX + tilt + 4, 22 + drop, C.SlateLt);
+}
+
 /** Closes the eyes for one frame. Cheap, and the single most effective
  *  sign of life a standing character can give. */
 function closeEyes(c: PixelCanvas, dir: Dir, lk: Look): void {
@@ -397,6 +426,10 @@ function poseCanvas(dir: Dir, pose: Pose, lk: Look): PixelCanvas {
     case 'walk3': legFrame = 3; bob = -1; break;
     // The breath: the torso settles one pixel. Nothing else moves.
     case 'idle2': legFrame = 0; bob = 1; break;
+    // Working: the whole torso drops as they bend to the ground and comes
+    // back up. Two frames is enough — the arms do the rest.
+    case 'tend0': legFrame = 0; bob = 1; break;
+    case 'tend1': legFrame = 0; bob = 3; break;
     default: legFrame = 0; bob = 0;
   }
 
@@ -422,6 +455,7 @@ function poseCanvas(dir: Dir, pose: Pose, lk: Look): PixelCanvas {
   c.replace(M_SKIN_SH, lk.skinSh);
 
   if (pose === 'hold' || pose === 'pull') raiseArm(c, dir, pose === 'pull', lk);
+  if (pose === 'tend0' || pose === 'tend1') workArms(c, dir, pose === 'tend1', lk);
   if (pose === 'blink') closeEyes(c, dir, lk);
 
   c.outline(C.InkDeep, false);
