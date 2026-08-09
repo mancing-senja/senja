@@ -14,6 +14,7 @@ import type { Facing, PlayerAction } from '../../shared/protocol';
 import { C } from '../art/palette';
 import { LINE_H, wrapText } from '../art/font';
 import { isWalkable, type WorldMap } from '../world/map';
+import { walkableI, type Interior } from '../world/interior';
 import type { Draw } from '../render/draw';
 import type { Actor } from './player';
 import { Rng } from '../art/canvas';
@@ -85,6 +86,16 @@ export class Npc implements Actor {
   }
 
   update(dt: number, map: WorldMap): void {
+    this.step(dt, (tx, ty) => isWalkable(map, tx, ty));
+  }
+
+  /** Same routine on a room's tiles. Residents pace around a table using
+   *  the identical waypoint logic — only the collision source changes. */
+  updateIn(dt: number, it: Interior): void {
+    this.step(dt, (tx, ty) => walkableI(it, tx, ty));
+  }
+
+  private step(dt: number, walk: (tx: number, ty: number) => boolean): void {
     this.sayT = Math.max(0, this.sayT - dt);
 
     if (this.standing) {
@@ -123,7 +134,7 @@ export class Npc implements Actor {
 
     // Villagers respect the same collision the player does. If they are
     // wedged, skip to the next waypoint rather than vibrating against a wall.
-    if (isWalkable(map, Math.floor(nx / TILE), Math.floor(ny / TILE))) {
+    if (walk(Math.floor(nx / TILE), Math.floor(ny / TILE))) {
       this.x = nx;
       this.y = ny;
       this.action = 'walk';

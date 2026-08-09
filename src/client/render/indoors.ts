@@ -123,7 +123,7 @@ export function drawRoomLight(d: Draw, it: Interior, time: number): void {
     let tint: [number, number, number] = [1, 0.82, 0.5];
     let power = 0;
     switch (f.kind) {
-      case 'lamp': size = 64; power = 0.5; break;
+      case 'lamp': size = 64; power = 0.38; break;
       case 'stove': size = 64; tint = [1, 0.6, 0.3]; power = 0.42; break;
       case 'terminal': size = 32; tint = [0.5, 1, 0.85]; power = 0.34; break;
       case 'window': size = 32; tint = [0.8, 0.9, 1]; power = 0.22; break;
