@@ -15,6 +15,16 @@ import { chromium } from 'playwright';
 const PORT = 4173;
 const URL = `http://localhost:${PORT}/`;
 
+// The room server has to be up too. Without it the client falls back to
+// solo play, which is correct behaviour but means the smoke test would
+// never touch the proxy — and the proxy is exactly the piece that breaks
+// silently and only shows up when somebody tries to invite a friend.
+const room = spawn(
+  'npx',
+  ['tsx', 'src/server/index.ts'],
+  { stdio: 'inherit', shell: process.platform === 'win32' },
+);
+
 const preview = spawn(
   'npx',
   ['vite', 'preview', '--port', String(PORT), '--strictPort'],
@@ -62,17 +72,22 @@ try {
   const info = await page.evaluate(() => {
     const c = document.getElementById('game');
     const map = window.__map ? window.__map() : null;
+    const dbg = window.__dbg ? window.__dbg() : null;
     return {
       w: c?.width ?? 0,
       h: c?.height ?? 0,
       props: map ? map.props.length : 0,
       spots: map ? map.spots.length : 0,
+      net: dbg ? dbg.net : 'unknown',
     };
   });
 
   if (info.w < 64 || info.h < 64) problems.push(`canvas too small: ${info.w}x${info.h}`);
   if (info.props < 100) problems.push(`world looks empty: ${info.props} props`);
   if (info.spots < 1) problems.push('no fishing spots generated');
+  // Multiplayer reaches the room server through the /room proxy. If this
+  // regresses, solo play still works and nothing else in CI would notice.
+  if (info.net !== 'online') problems.push(`room socket not connected (net=${info.net})`);
 
   if (problems.length) {
     failed = true;
@@ -87,6 +102,7 @@ try {
 } finally {
   await browser?.close();
   preview.kill();
+  room.kill();
 }
 
 process.exit(failed ? 1 : 0);

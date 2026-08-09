@@ -39,6 +39,18 @@ function screenshotSink(): Plugin {
   };
 }
 
+/** Route the room socket through whichever origin is serving the game, so
+ *  one tunnel (or one reverse proxy rule) is enough for a friend to join. */
+function roomProxy() {
+  return {
+    '/room': {
+      target: `ws://localhost:${process.env.SENJA_PORT ?? 8787}`,
+      ws: true,
+      rewrite: (path: string) => path.replace(/^\/room/, ''),
+    },
+  };
+}
+
 export default defineConfig({
   plugins: [screenshotSink()],
   server: {
@@ -52,13 +64,12 @@ export default defineConfig({
     //
     // Proxying it here means one origin, one tunnel, and LAN play that works
     // without the client having to guess a port number.
-    proxy: {
-      '/room': {
-        target: `ws://localhost:${process.env.SENJA_PORT ?? 8787}`,
-        ws: true,
-        rewrite: (path) => path.replace(/^\/room/, ''),
-      },
-    },
+    proxy: roomProxy(),
+  },
+  // `vite preview` serves the built game, and CI boots it that way. Without
+  // the same proxy here the smoke test could never exercise multiplayer.
+  preview: {
+    proxy: roomProxy(),
   },
   build: {
     target: 'es2022',
