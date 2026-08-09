@@ -104,6 +104,28 @@ function boot(): void {
    *  its layout for the session. */
   let indoors: Interior | null = null;
   const rooms = new Map<string, Interior>();
+  /** Residents, built once per room and kept for the session. They have to
+   *  outlive the visit: an Npc carries its memory of you, and rebuilding one
+   *  on every entry would mean everybody indoors greets you as a stranger
+   *  forever. */
+  const roomPeople = new Map<string, Npc[]>();
+  const peopleIn = (it: Interior): Npc[] => {
+    let p = roomPeople.get(it.id);
+    if (!p) {
+      p = it.residents.map((def, i) => new Npc(def, doorSeed(it.id) + i * 31));
+      loadMinds(p.map((n) => n.mind));
+      roomPeople.set(it.id, p);
+    }
+    return p;
+  };
+  /** Everyone who currently exists, indoors and out. saveMinds replaces the
+   *  whole record, so handing it a subset would quietly wipe the memories of
+   *  everybody left out of the call. */
+  const allMinds = () => {
+    const m = npcs.map((n) => n.mind);
+    for (const p of roomPeople.values()) for (const n of p) m.push(n.mind);
+    return m;
+  };
   /** Set on any teleport. The camera eases everywhere else, but easing
    *  across a doorway means several seconds of flying over the map with the
    *  room's black surround filling the screen. */
@@ -243,7 +265,12 @@ function boot(): void {
     npcs.map((n) => ({ name: n.name, action: n.action, x: Math.round(n.x), y: Math.round(n.y) }));
   (window as unknown as Record<string, unknown>).__dbg = () => ({
     fishing: fishing.state,
-    indoors: indoors ? { id: indoors.id, w: indoors.w, h: indoors.h } : null,
+    indoors: indoors ? {
+      id: indoors.id, w: indoors.w, h: indoors.h,
+      people: peopleIn(indoors).map((n) => ({
+        name: n.name, action: n.action, x: Math.round(n.x), y: Math.round(n.y),
+      })),
+    } : null,
     reel: fishing.reel,
     coins: farm.coins,
     basket: farm.basketCount,
@@ -342,7 +369,7 @@ function boot(): void {
           if (Math.hypot(n.x - player.x, n.y - player.y) > 140) continue;
           witnessCatch(n.mind, dayCount, c.species.label, c.cm, isRecord, isRare);
         }
-        saveMinds(npcs.map((n) => n.mind));
+        saveMinds(allMinds());
         net.send({
           t: 'catch', species: c.species.label, size: c.cm,
           speciesCount: Object.keys(farm.log).length,
@@ -354,7 +381,8 @@ function boot(): void {
     );
     player.bobber = fishing.bobber;
 
-    if (!indoors) for (const n of npcs) n.update(dt, map);
+    if (indoors) for (const n of peopleIn(indoors)) n.updateIn(dt, indoors);
+    else for (const n of npcs) n.update(dt, map);
 
     // --- interaction. A villager standing next to you takes priority over
     // whatever plot happens to be underfoot.
@@ -438,7 +466,9 @@ function boot(): void {
     const atBoard = boardProp
       && Math.hypot(player.x - boardProp.x, player.y - boardProp.y) < 30;
 
-    const who = atBoard || marker ? null : nearestNpc(npcs, player.x, player.y, 26);
+    const who = indoors
+      ? nearestNpc(peopleIn(indoors), player.x, player.y, 26)
+      : atBoard || marker ? null : nearestNpc(npcs, player.x, player.y, 26);
     const action = who || atBoard || marker ? null : farm.findPrompt(player, map, plots());
 
     if (atBoard && !marker) {
@@ -453,7 +483,7 @@ function boot(): void {
       if (input.pressed('e')) {
         who.faceToward(player.x, player.y);
         who.talk(talkCtx());
-        saveMinds(npcs.map((n) => n.mind));
+        saveMinds(allMinds());
         audio.blip(700, 0.05, 0.1);
       }
     }
@@ -633,6 +663,10 @@ function boot(): void {
       drawRoom(draw, indoors, clock);
 
       const items: Renderable[] = furnitureRenderables(draw, indoors);
+      for (const n of peopleIn(indoors)) {
+        const near = Math.hypot(n.x - player.x, n.y - player.y) < 78;
+        items.push({ y: n.y, draw: () => drawActor(draw, n, L, clock, 1, near) });
+      }
       items.push({
         y: player.y,
         draw: () => drawActor(draw, player, L, clock, 1, false),
@@ -715,7 +749,9 @@ function boot(): void {
     draw.ambient = [1, 1, 1];
     draw.camera(0, 0);
     // Conversation panels sit above the HUD but below the modal panels.
-    for (const n of npcs) n.drawPanel(draw, player.x, player.y);
+    for (const n of indoors ? peopleIn(indoors) : npcs) {
+      n.drawPanel(draw, player.x, player.y);
+    }
     fishing.drawHud(draw);
     ui.draw(draw, {
       coins: farm.coins,
