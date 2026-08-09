@@ -208,7 +208,7 @@ export class Npc implements Actor {
     // puts the panel across the mouth, which is the one part of a portrait
     // nobody can afford to lose.
     const px = x + w - PORTRAIT_W - 4;
-    const py = y - 40;
+    const py = y - 28;
     d.sprite(portraitKey(this.hue, this.portraitMood), px + 1, py + 2, {
       tint: [0, 0, 0], flat: true, alpha: a * 0.35,
     });
