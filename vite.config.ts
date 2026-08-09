@@ -44,6 +44,21 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
+    // The room server listens on its own port, but the game must reach it
+    // from the same origin as the page. Otherwise anyone tunnelling the game
+    // to a friend (ngrok, Cloudflare, Tailscale) would have to expose and
+    // forward two ports, and the second one is a WebSocket — which most
+    // quick-tunnel tools will not do for you.
+    //
+    // Proxying it here means one origin, one tunnel, and LAN play that works
+    // without the client having to guess a port number.
+    proxy: {
+      '/room': {
+        target: `ws://localhost:${process.env.SENJA_PORT ?? 8787}`,
+        ws: true,
+        rewrite: (path) => path.replace(/^\/room/, ''),
+      },
+    },
   },
   build: {
     target: 'es2022',

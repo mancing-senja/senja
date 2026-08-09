@@ -40,12 +40,12 @@ export class Net {
   }
 
   get url(): string {
+    // Always same-origin, on a path the dev server (and any production
+    // reverse proxy) forwards to the room server. Guessing a second port
+    // used to work on localhost and broke the moment anyone shared a
+    // tunnelled link with a friend.
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    // In dev the game is on :5173 and the room server on :8787. When the
-    // whole thing is served from one origin (a tunnel, a deploy) the port
-    // is whatever the page is on.
-    const port = location.port === '5173' ? '8787' : location.port;
-    return `${proto}//${location.hostname}${port ? `:${port}` : ''}`;
+    return `${proto}//${location.host}/room`;
   }
 
   connect(): void {

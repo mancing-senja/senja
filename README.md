@@ -28,19 +28,48 @@ cuma sendirian.
 
 ## Mabar
 
-Kode room-nya ada di URL, di belakang `#`. Kirim link yang lagi kebuka ke
-temen, mereka masuk ke room yang sama. Satu room maksimal 8 orang.
+Kode room ada di URL, di belakang `#`. Kirim link yang lagi kebuka ke temen,
+mereka masuk ke room yang sama. Satu room maksimal 8 orang.
 
-Buat main bareng temen satu wifi:
+### Satu wifi
 
 ```bash
 npm run lan
 ```
 
-Vite bakal nampilin alamat Network (misalnya `http://192.168.1.5:5173`).
-Kasih alamat itu ke temen — client-nya otomatis nyari server room di IP yang
-sama. Kalau temennya beda jaringan, perlu tunnel (ngrok, Cloudflare Tunnel,
-Tailscale) yang nge-expose port 5173 dan 8787.
+Vite nampilin alamat Network (misal `http://192.168.1.5:5173`). Kasih itu ke
+temen — udah, gitu doang.
+
+### Beda jaringan
+
+Butuh tunnel. Yang paling gampang, ga perlu daftar akun:
+
+```bash
+npx cloudflared tunnel --url http://localhost:5173
+```
+
+Dia bakal ngasih URL `https://xxx.trycloudflare.com`. Kirim ke temen, lengkap
+sama `#kode-room`-nya.
+
+**Cukup satu tunnel ke port 5173 doang.** Socket room-nya di-proxy lewat
+`/room` di origin yang sama, jadi ga usah nge-expose port 8787 terpisah —
+dan itu penting, karena kebanyakan tunnel instan ga mau nerusin WebSocket
+kalau portnya beda.
+
+> Tunnel ini bikin game lu **bisa diakses siapa pun yang punya linknya**
+> selama tunnelnya nyala. Matiin (Ctrl+C) kalau udah selesai.
+
+### Deploy beneran
+
+Kalau mau nyalain terus, server room-nya butuh reverse proxy yang nerusin
+`/room` ke port 8787 dengan upgrade WebSocket. Contoh Caddy:
+
+```
+senja.example.com {
+    reverse_proxy /room* localhost:8787
+    reverse_proxy localhost:5173
+}
+```
 
 ## Kontrol
 
