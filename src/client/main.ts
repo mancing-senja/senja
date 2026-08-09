@@ -10,7 +10,9 @@ import { RenderTarget, createContext } from './engine/gl';
 import { Input } from './engine/input';
 import { DEFAULT_ZOOM_INDEX, ZOOM_STEPS, applyView, fitView, view } from './engine/view';
 import { buildAtlas } from './art/atlas';
-import { LOOK_COUNT } from './art/character';
+import { loadHandDrawn } from './art/handdrawn';
+import type { PixelCanvas } from './art/canvas';
+import { LOOKS, LOOK_COUNT } from './art/character';
 import { col01, C } from './art/palette';
 import { Draw } from './render/draw';
 import {
@@ -57,11 +59,11 @@ function playerLook(): number {
   return h;
 }
 
-function boot(): void {
+function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
   const canvas = document.getElementById('game') as HTMLCanvasElement;
   const gl = createContext(canvas);
 
-  const atlas = buildAtlas();
+  const atlas = buildAtlas(handDrawn);
   const draw = new Draw(gl, atlas);
   const rt = new RenderTarget(gl, view.w, view.h);
   const skywater = new SkyWater(gl);
@@ -837,13 +839,32 @@ function mixRGB(a: [number, number, number], b: [number, number, number], t: num
   return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
 }
 
-try {
-  boot();
-} catch (err) {
+/** Hand-drawn portraits load before the atlas is baked, because the atlas
+ *  is a single texture built once. Nothing is fetched unless the manifest
+ *  exists, so a project with no drawings in it pays nothing for this. */
+async function start(): Promise<void> {
+  let handDrawn: ReadonlyMap<string, PixelCanvas> = new Map();
+  try {
+    const res = await loadHandDrawn(
+      (id) => LOOKS.findIndex((l) => l.id === id),
+    );
+    handDrawn = res.frames;
+    for (const p of res.problems) console.warn(`[senja] gambar: ${p}`);
+    if (res.frames.size > 0) {
+      console.info(`[senja] pakai ${res.frames.size} potret gambar tangan`);
+    }
+  } catch (err) {
+    // Art is an enhancement. Failing to load it must never stop the game.
+    console.warn('[senja] gagal muat gambar tangan:', err);
+  }
+  boot(handDrawn);
+}
+
+start().catch((err) => {
   const veil = document.getElementById('veil');
   if (veil) {
     veil.innerHTML = `<div style="max-width:min(90vw,560px);font-size:13px;line-height:1.6;opacity:.85">
       <b>gagal jalan</b><br>${String((err as Error)?.message ?? err)}</div>`;
   }
   throw err;
-}
+});

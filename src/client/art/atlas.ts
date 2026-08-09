@@ -118,7 +118,11 @@ export const VARIANTS = {
   furn: 3,
 };
 
-export function buildAtlas(): Atlas {
+/** Sprites drawn by a person, keyed by atlas name. Anything present here
+ *  wins over the generated version — see art/handdrawn.ts. */
+export type Overrides = ReadonlyMap<string, PixelCanvas>;
+
+export function buildAtlas(overrides: Overrides = new Map()): Atlas {
   const packer = new ShelfPacker(ATLAS_W, ATLAS_H);
   const frames = new Map<string, Frame>();
   const canvas = document.createElement('canvas');
@@ -128,8 +132,9 @@ export function buildAtlas(): Atlas {
   ctx.clearRect(0, 0, ATLAS_W, ATLAS_H);
 
   const add = (name: string, pc: PixelCanvas): void => {
-    const f = packer.place(pc.w, pc.h);
-    ctx.putImageData(pc.toImageData(), f.x, f.y);
+    const art = overrides.get(name) ?? pc;
+    const f = packer.place(art.w, art.h);
+    ctx.putImageData(art.toImageData(), f.x, f.y);
     frames.set(name, f);
   };
 
