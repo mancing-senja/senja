@@ -469,6 +469,11 @@ function boot(): void {
     const who = indoors
       ? nearestNpc(peopleIn(indoors), player.x, player.y, 26)
       : atBoard || marker ? null : nearestNpc(npcs, player.x, player.y, 26);
+    // findPrompt is what normally clears the prompt each frame, and it only
+    // runs when nothing else has claimed the E key. Standing next to
+    // somebody mid-conversation claims it without setting anything, so the
+    // prompt has to be cleared here or last frame's caption stays up.
+    farm.prompt = null;
     const action = who || atBoard || marker ? null : farm.findPrompt(player, map, plots());
 
     if (atBoard && !marker) {
@@ -478,7 +483,10 @@ function boot(): void {
         audio.blip(620, 0.06, 0.12);
       }
     }
-    if (who) {
+    // A conversation is running if anybody nearby still has a line up.
+    ui.talking = (indoors ? peopleIn(indoors) : npcs).some((n) => n.sayT > 0);
+
+    if (who && who.sayT <= 0) {
       farm.prompt = { text: `[E] ngobrol sama ${who.name}`, x: who.x, y: who.y - 30 };
       if (input.pressed('e')) {
         who.faceToward(player.x, player.y);

@@ -12,7 +12,7 @@
 import { TILE } from '../../shared/constants';
 import type { Facing, PlayerAction } from '../../shared/protocol';
 import { C } from '../art/palette';
-import { LINE_H, wrapText } from '../art/font';
+import { LINE_H, textWidth, wrapText } from '../art/font';
 import { isWalkable, type WorldMap } from '../world/map';
 import { walkableI, type Interior } from '../world/interior';
 import type { Draw } from '../render/draw';
@@ -23,7 +23,7 @@ import {
   type Mind, type Personality, type TalkCtx,
 } from './dialogue';
 import type { Register } from './registers';
-import { PORTRAIT_H, PORTRAIT_W, portraitKey, type Mood as PortraitMood } from '../art/portrait';
+import { PORTRAIT_W, portraitKey, type Mood as PortraitMood } from '../art/portrait';
 import { view } from '../engine/view';
 
 export interface NpcDef {
@@ -189,27 +189,41 @@ export class Npc implements Actor {
     const a = Math.min(1, Math.min(this.sayT * 3, (PANEL_HOLD - this.sayT) * 5));
     if (a <= 0) return;
 
-    const w = Math.min(view.w - 16, 300);
+    // The portrait is taller than the box and stands *behind* it, rather
+    // than being inset in a frame inside it. A framed bust in a slot reads
+    // as an avatar chip on a form; a figure leaning over the text box reads
+    // as somebody talking to you. Same drawing, completely different
+    // impression, and the only difference is what overlaps what.
+    const w = Math.min(view.w - 20, 340);
     const x = Math.round((view.w - w) / 2);
-    const textX = x + PORTRAIT_W + 14;
-    const lines = wrapText(this.line, w - PORTRAIT_W - 22);
-    const h = Math.max(PORTRAIT_H + 12, lines.length * LINE_H + 24);
-    const y = view.h - h - 8;
+    const textW = w - PORTRAIT_W - 26;
+    const lines = wrapText(this.line, textW);
+    const h = Math.max(46, lines.length * LINE_H + 20);
+    const y = view.h - h - 6;
+
+    // Portrait first, so the box's own edge cuts across the bust and the
+    // head clears the top of it.
+    // High enough that the whole face clears the box — the jaw tucks just
+    // behind the top edge and the bust goes under it. Sitting any lower
+    // puts the panel across the mouth, which is the one part of a portrait
+    // nobody can afford to lose.
+    const px = x + w - PORTRAIT_W - 4;
+    const py = y - 40;
+    d.sprite(portraitKey(this.hue, this.portraitMood), px + 1, py + 2, {
+      tint: [0, 0, 0], flat: true, alpha: a * 0.35,
+    });
+    d.sprite(portraitKey(this.hue, this.portraitMood), px, py, { alpha: a });
 
     d.panel(x, y, w, h, a, C.Amber);
 
-    // Portrait, inset with its own frame so it reads as a picture rather
-    // than as part of the background.
-    const px = x + 6;
-    const py = y + Math.round((h - PORTRAIT_H) / 2);
-    d.rect(px - 1, py - 1, PORTRAIT_W + 2, PORTRAIT_H + 2, C.InkDeep, a);
-    d.sprite(portraitKey(this.hue, this.portraitMood), px, py, { alpha: a });
-    d.frameRect(px - 1, py - 1, PORTRAIT_W + 2, PORTRAIT_H + 2, C.Slate, a * 0.7);
+    // Name on a tab above the box, which is where a name plate goes and
+    // also keeps it off the first line of dialogue.
+    const nw = textWidth(this.name) + 12;
+    d.panel(x + 4, y - 12, nw, 13, a, C.Amber);
+    d.text(this.name, x + 10, y - 8, C.Lantern, a);
 
-    d.text(this.name, textX, y + 6, C.Lantern, a);
-    d.rect(textX, y + 15, w - PORTRAIT_W - 22, 1, C.Slate, a * 0.5);
     for (let i = 0; i < lines.length; i++) {
-      d.text(lines[i], textX, y + 20 + i * LINE_H, C.White, a * 0.97);
+      d.text(lines[i], x + 10, y + 8 + i * LINE_H, C.White, a * 0.97);
     }
   }
 

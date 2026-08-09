@@ -48,6 +48,9 @@ export class Ui {
   chatOpen = false;
   chatText = '';
   private helpT = 14;
+  /** True while a conversation panel is on screen. The controls hint lives
+   *  in the same strip of screen, and two panels stacked there is unreadable. */
+  talking = false;
   private toast = '';
   private toastT = 0;
   showHelp = false;
@@ -148,7 +151,7 @@ export class Ui {
       const a = Math.min(1, this.toastT * 2);
       d.textCentered(this.toast, view.w / 2, view.h - 46, C.Lantern, C.InkDeep, a);
     }
-    if (this.helpT > 0 && !this.chatOpen) this.drawHelpHint(d);
+    if (this.helpT > 0 && !this.chatOpen && !this.talking) this.drawHelpHint(d);
     if (this.showHelp) this.drawHelpPanel(d);
     if (this.showLog) this.drawLogPanel(d, ctx);
     if (this.showBoard) this.drawBoardPanel(d, ctx);
