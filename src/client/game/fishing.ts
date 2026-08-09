@@ -313,6 +313,17 @@ export class Fishing {
     return this.state !== 'idle';
   }
 
+  /** Abandons whatever is in progress. Used when the player walks through a
+   *  door — a rod still cast into a lake you are no longer standing beside
+   *  would leave a bobber floating in another map. */
+  cancel(p: LocalPlayer): void {
+    this.state = 'idle';
+    this.t = 0;
+    this.pending = null;
+    p.locked = false;
+    p.action = 'idle';
+  }
+
   /** Exposed for the dev harness, which drives the reel to verify the
    *  whole catch flow without a human on the keyboard. */
   get reel(): { tension: number; target: number; progress: number } {

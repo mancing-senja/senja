@@ -12,7 +12,7 @@
 import { TILE } from '../../shared/constants';
 import type { Facing, PlayerAction } from '../../shared/protocol';
 import { C } from '../art/palette';
-import { LINE_H, textWidth, wrapText } from '../art/font';
+import { LINE_H, wrapText } from '../art/font';
 import { isWalkable, type WorldMap } from '../world/map';
 import type { Draw } from '../render/draw';
 import type { Actor } from './player';
@@ -22,6 +22,8 @@ import {
   type Mind, type Personality, type TalkCtx,
 } from './dialogue';
 import type { Register } from './registers';
+import { PORTRAIT_H, PORTRAIT_W, portraitKey, type Mood as PortraitMood } from '../art/portrait';
+import { view } from '../engine/view';
 
 export interface NpcDef {
   id: string;
@@ -39,6 +41,9 @@ export interface NpcDef {
 }
 
 const SPEED = 20;
+
+/** How long a line stays up. Long enough to read twice without hurrying. */
+const PANEL_HOLD = 6.5;
 
 export class Npc implements Actor {
   x: number;
@@ -90,7 +95,11 @@ export class Npc implements Actor {
 
     if (this.waitT > 0) {
       this.waitT -= dt;
-      this.action = 'idle';
+      // Pausing means doing whatever this person does when they stop, not
+      // standing to attention. Hardcoding 'idle' here quietly threw away the
+      // `idle` field on every villager with a route — which is why the
+      // farmers never actually farmed.
+      this.action = this.def.idle;
       this.animT = 0;
       return;
     }
@@ -135,7 +144,7 @@ export class Npc implements Actor {
     this.line = speak(this.mind, ctx);
     this.mind.met++;
     this.mind.lastDay = ctx.day;
-    this.sayT = 5.5;
+    this.sayT = PANEL_HOLD;
   }
 
   /** Faces whoever is talking to them, so a conversation looks like one. */
@@ -147,24 +156,57 @@ export class Npc implements Actor {
     else this.facing = dy > 0 ? 'down' : 'up';
   }
 
-  drawBubble(d: Draw): void {
+  /** The conversation panel.
+   *
+   *  This used to be a small bubble over the villager's head, which meant a
+   *  conversation looked like a label rather than like talking to somebody.
+   *  Now it is a panel pinned to the bottom of the screen with the person's
+   *  face in it — and the face changes with their mood, so you can see they
+   *  are having a bad day before you finish reading the sentence.
+   *
+   *  Drawn in screen space, so it is called after the camera is parked at
+   *  the origin rather than from the world pass. */
+  drawPanel(d: Draw, playerX: number, playerY: number): void {
     if (this.sayT <= 0) return;
-    const a = Math.min(1, Math.min(this.sayT * 2, (4.5 - this.sayT) * 4));
-    const lines = wrapText(this.line, 120);
-    let w = 0;
-    for (const l of lines) w = Math.max(w, textWidth(l));
-    const bw = w + 10;
-    const bh = lines.length * LINE_H + 7;
-    const bx = Math.round(this.x - bw / 2);
-    const by = Math.round(this.y - 34 - bh);
-
-    d.panel(bx, by, bw, bh, a, C.Amber);
-    // Little tail pointing at the speaker.
-    d.rect(this.x - 2, by + bh, 4, 2, C.Ink, 0.92 * a);
-    d.rect(this.x - 1, by + bh + 2, 2, 2, C.Ink, 0.92 * a);
-    for (let i = 0; i < lines.length; i++) {
-      d.text(lines[i], bx + 5, by + 4 + i * LINE_H, C.White, a);
+    // Walking away ends the conversation. Without this the panel of someone
+    // you left behind stays on screen while you stand somewhere else
+    // entirely, which reads as a bug even though the timer is honest.
+    if (Math.hypot(this.x - playerX, this.y - playerY) > 90) {
+      this.sayT = 0;
+      return;
     }
+    const a = Math.min(1, Math.min(this.sayT * 3, (PANEL_HOLD - this.sayT) * 5));
+    if (a <= 0) return;
+
+    const w = Math.min(view.w - 16, 300);
+    const x = Math.round((view.w - w) / 2);
+    const textX = x + PORTRAIT_W + 14;
+    const lines = wrapText(this.line, w - PORTRAIT_W - 22);
+    const h = Math.max(PORTRAIT_H + 12, lines.length * LINE_H + 24);
+    const y = view.h - h - 8;
+
+    d.panel(x, y, w, h, a, C.Amber);
+
+    // Portrait, inset with its own frame so it reads as a picture rather
+    // than as part of the background.
+    const px = x + 6;
+    const py = y + Math.round((h - PORTRAIT_H) / 2);
+    d.rect(px - 1, py - 1, PORTRAIT_W + 2, PORTRAIT_H + 2, C.InkDeep, a);
+    d.sprite(portraitKey(this.hue, this.portraitMood), px, py, { alpha: a });
+    d.frameRect(px - 1, py - 1, PORTRAIT_W + 2, PORTRAIT_H + 2, C.Slate, a * 0.7);
+
+    d.text(this.name, textX, y + 6, C.Lantern, a);
+    d.rect(textX, y + 15, w - PORTRAIT_W - 22, 1, C.Slate, a * 0.5);
+    for (let i = 0; i < lines.length; i++) {
+      d.text(lines[i], textX, y + 20 + i * LINE_H, C.White, a * 0.97);
+    }
+  }
+
+  /** Which of the three portrait expressions fits their mood right now. */
+  private get portraitMood(): PortraitMood {
+    if (this.mind.mood > 0.3) return 'warm';
+    if (this.mind.mood < -0.3) return 'cold';
+    return 'neutral';
   }
 }
 
