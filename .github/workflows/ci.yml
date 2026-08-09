@@ -38,3 +38,7 @@ jobs:
         run: |
           npx playwright install --with-deps chromium
           node scripts/smoke.mjs
+        env:
+          # Playwright is a devDependency (CI only). The browser binary is
+          # downloaded above; npm ci installs the driver package.
+          CI: true
