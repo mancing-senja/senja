@@ -23,7 +23,9 @@ import {
   type Mind, type Personality, type TalkCtx,
 } from './dialogue';
 import type { Register } from './registers';
-import { PORTRAIT_W, portraitKey, type Mood as PortraitMood } from '../art/portrait';
+import {
+  PORTRAIT_H, PORTRAIT_W, portraitKey, type Mood as PortraitMood,
+} from '../art/portrait';
 import { view } from '../engine/view';
 
 export interface NpcDef {
@@ -189,30 +191,22 @@ export class Npc implements Actor {
     const a = Math.min(1, Math.min(this.sayT * 3, (PANEL_HOLD - this.sayT) * 5));
     if (a <= 0) return;
 
-    // The portrait is taller than the box and stands *behind* it, rather
-    // than being inset in a frame inside it. A framed bust in a slot reads
-    // as an avatar chip on a form; a figure leaning over the text box reads
-    // as somebody talking to you. Same drawing, completely different
-    // impression, and the only difference is what overlaps what.
+    // The portrait stands in *front* of the box, not behind it.
+    //
+    // Drawn behind, the box cut the figure off at the collarbone and ate
+    // the shoulders — most of a portrait that took a lot of work to draw
+    // was simply not on screen. In front, the whole bust reads, and the
+    // box passing behind it is what sells the figure as standing there
+    // rather than as a picture pasted into a slot.
+    //
+    // This only works because the text is wrapped to stop short of the
+    // portrait's column; nothing the box draws ever ends up underneath it.
     const w = Math.min(view.w - 20, 340);
     const x = Math.round((view.w - w) / 2);
     const textW = w - PORTRAIT_W - 26;
     const lines = wrapText(this.line, textW);
     const h = Math.max(46, lines.length * LINE_H + 20);
     const y = view.h - h - 6;
-
-    // Portrait first, so the box's own edge cuts across the bust and the
-    // head clears the top of it.
-    // High enough that the whole face clears the box — the jaw tucks just
-    // behind the top edge and the bust goes under it. Sitting any lower
-    // puts the panel across the mouth, which is the one part of a portrait
-    // nobody can afford to lose.
-    const px = x + w - PORTRAIT_W - 4;
-    const py = y - 28;
-    d.sprite(portraitKey(this.hue, this.portraitMood), px + 1, py + 2, {
-      tint: [0, 0, 0], flat: true, alpha: a * 0.35,
-    });
-    d.sprite(portraitKey(this.hue, this.portraitMood), px, py, { alpha: a });
 
     d.panel(x, y, w, h, a, C.Amber);
 
@@ -225,6 +219,16 @@ export class Npc implements Actor {
     for (let i = 0; i < lines.length; i++) {
       d.text(lines[i], x + 10, y + 8 + i * LINE_H, C.White, a * 0.97);
     }
+
+    // Portrait last. Its feet sit near the bottom of the screen so the
+    // figure stands on the frame rather than floating over the middle of
+    // the box.
+    const px = x + w - PORTRAIT_W - 4;
+    const py = view.h - PORTRAIT_H - 2;
+    d.sprite(portraitKey(this.hue, this.portraitMood), px + 1, py + 2, {
+      tint: [0, 0, 0], flat: true, alpha: a * 0.35,
+    });
+    d.sprite(portraitKey(this.hue, this.portraitMood), px, py, { alpha: a });
   }
 
   /** Which of the three portrait expressions fits their mood right now. */
