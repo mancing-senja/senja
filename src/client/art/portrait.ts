@@ -4,46 +4,40 @@
  *  and a suggestion, which is fine for someone walking across a field and
  *  useless for someone talking to you. So conversation gets a portrait.
  *
- *  This used to be a 40x44 head-and-shoulders drawn straight on, and it
- *  read like a passport photo: perfectly symmetrical, two values of skin,
- *  hair as a solid cap. Three things fix that, and all three are here.
+ *  **Features are authored, not computed.** Three earlier versions drew the
+ *  eyes, nose and mouth from arithmetic — offsets, curves, ellipse normals —
+ *  and every one of them came out subtly wrong in a way that is obvious on
+ *  a face and nowhere else. A mouth one pixel too wide is a sneer. An iris
+ *  half a pixel off centre is a squint. Faces have no tolerance, and code
+ *  that positions features by formula has nothing but tolerance.
  *
- *  **The head is turned.** Bilateral symmetry is the single loudest tell
- *  that a face was drawn by arithmetic. The skull is off-centre, the far
- *  eye is narrower and sits closer to the silhouette, and the nose breaks
- *  the centre line.
+ *  So the face is a stamp: a 23x17 grid of marker characters, drawn by hand,
+ *  identical for every character. This is exactly what `character.ts`
+ *  already does for the world sprite, and it is why the world sprites look
+ *  right while the generated portraits did not.
  *
- *  **Skin has four values, not two.** A lit plane on the brow and the far
- *  cheek, the base, a terminator down the near side, and a deep tone under
- *  the jaw and along the neck. A face is a sphere with a box hanging off
- *  it, and it only reads that way if the values say so.
- *
- *  **Hair has a sheen.** One broken band of a lighter tone across the
- *  crown, following the curve of the skull, is most of what separates hair
- *  from a helmet.
+ *  What stays procedural is what arithmetic is actually good at: the skull
+ *  silhouette (from an authored profile table), the shading ramp, hair, and
+ *  clothing. Per-character variety comes from swapping colours and from a
+ *  few pixels of skull width — never from moving the features around, which
+ *  is what made twelve villagers look like twelve different mistakes.
  *
  *  Built from the same `Look` record as the world sprite, so a villager's
- *  portrait always matches the figure standing in front of you — same skin,
- *  same hair, same hat, same shirt. Adding a thirteenth character still
- *  costs one row of data. */
+ *  portrait always matches the figure standing in front of you. */
 
-import { PixelCanvas, Rng, valueNoise } from './canvas';
+import { PixelCanvas, Rng, TRANSPARENT } from './canvas';
 import { C, RGB_PALETTE } from './palette';
 import { LOOKS, LOOK_COUNT, type Look } from './character';
 
-export const PORTRAIT_W = 56;
-export const PORTRAIT_H = 72;
+export const PORTRAIT_W = 48;
+export const PORTRAIT_H = 64;
 
 /** Expressions. Only three, but that is enough to make a conversation feel
  *  like it has a temperature. */
 export type Mood = 'neutral' | 'warm' | 'cold';
 
-/** The palette's ramps, dark to light.
- *
- *  Shading wants "one step lighter than whatever this character's hair is",
- *  and the alternative to knowing the ramps is six more colour fields on
- *  every Look. A colour that is not in any ramp simply does not move, which
- *  is the right failure: no shading beats wrong shading. */
+// --- palette plumbing -------------------------------------------------
+
 const RAMPS: readonly (readonly C[])[] = [
   [C.InkDeep, C.Ink, C.Slate, C.SlateLt, C.Mist, C.Pale, C.White],
   [C.WoodDp, C.WoodDk, C.Wood, C.SkinSh, C.Skin, C.SunGlow],
@@ -55,22 +49,6 @@ const RAMPS: readonly (readonly C[])[] = [
   [C.Arcane, C.ArcaneLt],
 ];
 
-function luma(col: number): number {
-  const p = RGB_PALETTE[col];
-  return p.r * 0.299 + p.g * 0.587 + p.b * 0.114;
-}
-
-/** The darker of a Look's two hair tones.
- *
- *  `hairSh` is not reliably the darker one — black hair is stored as
- *  [InkDeep, Ink], where the "shade" is the lighter of the pair. Brows and
- *  lashes drawn from `hairSh` therefore came out pink on the red-haired
- *  characters, which is a memorable way to learn that a field name is not
- *  a guarantee. */
-function darkHair(lk: Look): number {
-  return luma(lk.hair) <= luma(lk.hairSh) ? lk.hair : lk.hairSh;
-}
-
 function shift(col: number, n: number): number {
   for (const ramp of RAMPS) {
     const i = ramp.indexOf(col);
@@ -80,48 +58,184 @@ function shift(col: number, n: number): number {
   return col;
 }
 
-// --- geometry. Named, because "why is this 27" is a question that comes up
-// every single time this file is opened.
+function luma(col: number): number {
+  const p = RGB_PALETTE[col];
+  return p.r * 0.299 + p.g * 0.587 + p.b * 0.114;
+}
 
-/** Skull centre. Right of the canvas midline: the head is turned toward the
- *  text, so more of the back of it is on the near side. */
-const SX = 30;
-const HEAD_TOP = 10;
-const CHIN = 46;
-/** Face features sit left of the skull centre — that offset *is* the turn. */
-const FX = SX - 3;
-const EYE_Y = 30;
-const NECK_TOP = CHIN - 2;
-const SHOULDER_Y = 54;
-
-/** Per-character proportions.
+/** The darker of a Look's two hair tones.
  *
- *  With one skull and one face layout, twelve portraits came out as one
- *  person in twelve wigs — every villager had the same jaw, the same eye
- *  spacing, the same distance from nose to mouth. Faces differ far more in
- *  proportion than in colour, so each Look rolls its own, once, from its
- *  seed. The numbers are small on purpose: two pixels of jaw width is
- *  plainly a different person, six is a caricature. */
+ *  `hairSh` is not reliably the darker one — black hair is stored as
+ *  [InkDeep, Ink], where the "shade" is the lighter of the pair. Brows and
+ *  lashes drawn from `hairSh` came out pink on the red-haired characters,
+ *  which is a memorable way to learn that a field name is not a guarantee. */
+function darkHair(lk: Look): number {
+  return luma(lk.hair) <= luma(lk.hairSh) ? lk.hair : lk.hairSh;
+}
+
+// --- layout -----------------------------------------------------------
+
+const SX = 24;
+const HEAD_TOP = 5;
+/** Half-width of the head, row by row from HEAD_TOP. Authored: a circular
+ *  cranium, a straight run through the temples, then eight rows of jaw
+ *  taper to a rounded chin. Computing this from a curve is what produced a
+ *  slab with a square jaw. */
+const PROFILE = [
+  // A round head. Nearly as wide as it is tall.
+  //
+  // The version before this tapered continuously from the cheekbone down
+  // to a two-pixel chin, and the result did not read as a person — a face
+  // that narrows the whole way is a wedge, and a wedge is a mask. Look at
+  // any of the references: the width holds near its maximum for most of
+  // the head, the cheek stays full, and the jaw only turns in over the
+  // last few rows, to a chin that is *blunt*.
+  //
+  // Full cheeks are what make a face read as healthy and human. A pointed
+  // one reads as a doll however good the eyes on it are.
+  5, 8, 10, 11, 12, 12,
+  // Cheeks. Thirteen rows at full width — this long run is the whole fix.
+  13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13,
+  // Jaw: in fast, and stopping blunt rather than at a point.
+  12, 12, 11, 10, 8, 6,
+];
+const CHIN = HEAD_TOP + PROFILE.length - 1;
+const NECK_TOP = CHIN + 1;
+/** The round head is six rows shorter than the pointed one it replaced, so
+ *  the shoulders come up to meet it. Left where it was, the neck ran a
+ *  dozen rows and read as a post with a head balanced on top. */
+const SHOULDER_Y = 37;
+
+/** Where the authored face stamp lands. 27 columns, x11 to x37.
+ *
+ *  Shifted two pixels off the skull's centre. That offset *is* the
+ *  three-quarter turn: every reference sheet has the head angled rather
+ *  than square to the viewer, and a face dead-centre on its skull is the
+ *  most immediate tell that a portrait was assembled rather than drawn. */
+const TURN = 2;
+const FACE_X = SX - 13 - TURN;
+const FACE_Y = 15;
+/** Top row of the eyes — the heavy upper lid, not the aperture. Sits just
+ *  below the head's vertical middle, which is where anime puts them. */
+const EYE_Y = 17;
+
+/** The face.
+ *
+ *  '.' leaves the skin underneath alone. Every other character is a marker
+ *  swapped for one of this character's colours at stamp time.
+ *
+ *    a lit skin   b skin   c shaded skin   d deep skin
+ *    h lash and brow        i eye white    j eye corner
+ *    k iris       l pupil   m lip
+ *
+ *  Read it as a picture. The eyes are five wide with a three-row aperture,
+ *  the irises sit one pixel inboard so both eyes look at the reader, and
+ *  the nose is a two-row bridge shadow with a lit tip — never an outline,
+ *  which at this size is a beak. */
+const FACE: readonly string[] = [
+  //  0    5    10   15   20   25
+  //  |    |    |    |    |    |
+  // Rows 15-16 are left empty: the brows are stamped separately per mood,
+  // and a brow drawn here as well would survive under the mood's blanks and
+  // flatten every expression back to neutral.
+  '...........................', // 15  brow
+  '...........................', // 16  brow
+  // Two solid rows of upper lid. The references all have this — a heavy
+  // lid over a big iris is what makes an anime eye look lidded and alive
+  // rather than like a bead glued to a face.
+  //
+  // The far eye is six wide against the near eye's eight. That difference
+  // is the three-quarter turn as far as the face is concerned: drawing
+  // both eyes the same size on a turned head is what makes a portrait
+  // read as facing two directions at once.
+  '...hhhhhhhh.......hhhhhh...', // 17
+  '...hhhhhhhh.......hhhhhh...', // 18
+  '...jikkkkij.......jikkkj...', // 19  catchlight, then iris
+  '...jkkllkkj.......jkllkj...', // 20  pupil
+  '...jjKKKKjj.......jKKKKj...', // 21  iris floor, lit
+  '....jjjjjj.........jjjj....', // 22  lower lid
+  '...........................', // 23
+  // Blush sits low and outboard on a full cheek — the references put it
+  // out near the jaw, not up against the eye.
+  '....ppp..............ppp...', // 24
+  '....ppp......d.......ppp...', // 25  and the nose: one pixel
+  '...........................', // 26
+  '...........................', // 27  mouth is stamped per mood
+  '...........................', // 28
+  '...........................', // 29
+];
+
+/** Mood is three rows of brow and three of mouth. Nothing else moves —
+ *  changing the eyes as well made the same person read as two people. */
+const BROWS: Record<Mood, readonly string[]> = {
+  neutral: [
+    '...hhhhhhhh.......hhhhhh...',
+    '...........................',
+  ],
+  // Inner ends up: sympathy, interest, pleasure. The inner half rides the
+  // upper row, the outer half the lower one.
+  warm: [
+    '.......hhhh.......hhhh.....',
+    '...hhhh................hh..',
+  ],
+  // Inner ends down: impatience, suspicion.
+  cold: [
+    '...hhhh................hh..',
+    '.......hhhh.......hhhh.....',
+  ],
+};
+
+/** A mouth at this size is one dark row and one lit row. The first version
+ *  used a near-black five-wide bar with a bright band under it, and every
+ *  villager looked like they were screaming. */
+/** Two pixels, sometimes three. Every reference has a mouth this small —
+ *  at this scale anything wider stops being a mouth and becomes an
+ *  expression you did not ask for. */
+const MOUTHS: Record<Mood, readonly string[]> = {
+  neutral: [
+    '...........................',
+    '.............mm............',
+    '...........................',
+  ],
+  warm: [
+    '............m..m...........',
+    '.............mm............',
+    '............aaaa...........',
+  ],
+  cold: [
+    '...........................',
+    '............mmmm...........',
+    '...........c....c..........',
+  ],
+};
+
+/** Eye colour is its own thing.
+ *
+ *  Deriving the iris from the hair gave the red-haired villagers red eyes,
+ *  which is the sort of detail that stops reading as a person. */
+const EYE_COLOURS: readonly C[] = [C.WoodDk, C.WaterSh, C.Forest, C.Wood, C.Slate];
+
+/** Per-character proportions. Deliberately tiny: the head gets wider or
+ *  narrower and the jaw longer or shorter, and that is all. Moving the
+ *  features is what broke the earlier versions. */
 interface Geom {
-  /** Multiplier on skull half-width. */
   wide: number;
-  /** Rows added to the jaw. */
   longJaw: number;
-  /** Pixels added to the gap between the eyes. */
-  eyeGap: number;
-  /** Rows the mouth sits below its default. */
-  mouthDrop: number;
-  browThick: number;
 }
 
 function geomFor(rng: Rng): Geom {
-  return {
-    wide: rng.range(0.92, 1.08),
-    longJaw: rng.int(-2, 2),
-    eyeGap: rng.int(-1, 1),
-    mouthDrop: rng.int(-1, 1),
-    browThick: rng.chance(0.35) ? 1 : 2,
-  };
+  return { wide: rng.range(0.94, 1.06), longJaw: rng.int(0, 2) };
+}
+
+function halfAt(row: number, g: Geom): number {
+  const i = row - HEAD_TOP;
+  if (i < 0) return 0;
+  // The jaw stretch inserts rows just above the chin rather than scaling
+  // the whole head, so a long face stays a face.
+  const jawStart = PROFILE.length - 8;
+  const j = i < jawStart ? i : Math.max(jawStart, i - g.longJaw);
+  if (j >= PROFILE.length) return 0;
+  return PROFILE[j] * g.wide;
 }
 
 export function makePortrait(lk: Look, mood: Mood, seed: number): PixelCanvas {
@@ -129,385 +243,498 @@ export function makePortrait(lk: Look, mood: Mood, seed: number): PixelCanvas {
   const c = new PixelCanvas(PORTRAIT_W, PORTRAIT_H);
   const g = geomFor(rng);
 
-  const skinHi = shift(lk.skin, 1);
-  const skinDp = shift(lk.skinSh, -1);
+  const eye = EYE_COLOURS[rng.int(0, EYE_COLOURS.length - 1)];
 
-  drawBust(c, lk);
-  drawNeck(c, lk, g, skinDp);
-  drawHead(c, lk, g, skinHi, skinDp);
-  drawFace(c, lk, g, mood, skinHi, skinDp, rng);
+  drawBust(c, lk, g);
+  drawNeck(c, lk, g);
+  drawHead(c, lk, g);
+  stampFace(c, lk, mood, g, eye);
   drawHair(c, lk, g, rng);
   drawHeadwear(c, lk, g);
 
-  // Freckles or stubble, so two people wearing the same look still differ.
-  if (rng.chance(0.45)) {
-    for (let i = 0; i < rng.int(4, 10); i++) {
-      const fx = FX + rng.int(-9, 10);
-      const fy = EYE_Y + rng.int(4, 9);
-      if (c.get(fx, fy) === lk.skin) c.set(fx, fy, lk.skinSh);
-    }
-  }
-
-  c.outline(C.InkDeep, false);
+  despeckle(c);
+  outlineSoft(c);
   return c;
 }
 
-/** Half-width of the skull at a given row. An egg: circular across the
- *  cranium, tapering through the cheekbone to the jaw. */
-function skullHalf(y: number, g: Geom): number {
-  const chin = CHIN + g.longJaw;
-  const t = (y - HEAD_TOP) / (chin - HEAD_TOP);
-  if (t < 0.4) {
-    // Top of the cranium, as a circle so the crown is round rather than
-    // chopped flat.
-    const u = (0.4 - t) / 0.46;
-    return 15 * g.wide * Math.sqrt(Math.max(0, 1 - u * u));
+/** Isolated pixels, removed.
+ *
+ *  A single pixel that shares no colour with any neighbour is noise, and
+ *  noise at this size reads as damage — the strand and sheen passes leave a
+ *  scatter of them across the hair. Pixel art wants clusters: if a lone
+ *  pixel's neighbours agree with each other, it joins them. */
+function despeckle(c: PixelCanvas): void {
+  const src = c.px.slice();
+  const at = (x: number, y: number): number =>
+    x < 0 || y < 0 || x >= c.w || y >= c.h ? TRANSPARENT : src[y * c.w + x];
+  for (let y = 0; y < c.h; y++) {
+    for (let x = 0; x < c.w; x++) {
+      const v = at(x, y);
+      if (v === TRANSPARENT) continue;
+      const n = [at(x, y - 1), at(x - 1, y), at(x + 1, y), at(x, y + 1)];
+      if (n.some((k) => k === v)) continue;
+      // Nothing agrees with it. Take the majority of the neighbours, and
+      // only when there actually is one.
+      for (const k of n) {
+        if (k === TRANSPARENT) continue;
+        if (n.filter((m) => m === k).length >= 3) {
+          c.set(x, y, k);
+          break;
+        }
+      }
+    }
   }
-  return (15 - Math.pow(Math.min(1, (t - 0.4) / 0.6), 1.8) * 8) * g.wide;
 }
 
-function drawHead(
-  c: PixelCanvas, lk: Look, g: Geom, skinHi: number, skinDp: number,
-): void {
-  const chin = CHIN + g.longJaw;
+/** Selective outlining.
+ *
+ *  A pure black ring around everything is the loudest amateur tell in pixel
+ *  art: it flattens the silhouette and it makes skin, cloth and hair all
+ *  read as the same material. An outline is a shadow, so it takes its
+ *  colour from what it borders — a dark warm brown against skin, a dark
+ *  version of the shirt against cloth — and it lightens where the key light
+ *  hits, along the top and the left. */
+function outlineSoft(c: PixelCanvas): void {
+  const src = c.px.slice();
+  const at = (x: number, y: number): number =>
+    x < 0 || y < 0 || x >= c.w || y >= c.h ? TRANSPARENT : src[y * c.w + x];
+  for (let y = 0; y < c.h; y++) {
+    for (let x = 0; x < c.w; x++) {
+      if (at(x, y) !== TRANSPARENT) continue;
+      const below = at(x, y + 1);
+      const right = at(x + 1, y);
+      const above = at(x, y - 1);
+      const left = at(x - 1, y);
+      const fill = [above, left, right, below].find((v) => v !== TRANSPARENT);
+      if (fill === undefined) continue;
+      // This outline pixel sits on the lit side when the shape it borders
+      // is below it or to its right.
+      const lit = below !== TRANSPARENT || right !== TRANSPARENT;
+      c.set(x, y, shift(fill, lit ? -2 : -3));
+    }
+  }
+}
+
+/** Four skin values. Two cannot describe a sphere. */
+function skinRamp(lk: Look): [number, number, number, number] {
+  return [shift(lk.skinSh, -1), lk.skinSh, lk.skin, shift(lk.skin, 1)];
+}
+
+function chinRow(g: Geom): number {
+  return CHIN + g.longJaw;
+}
+
+function drawHead(c: PixelCanvas, lk: Look, g: Geom): void {
+  const [deep, sh, base, hi] = skinRamp(lk);
+  const chin = chinRow(g);
+
   for (let y = HEAD_TOP; y <= chin; y++) {
-    const half = skullHalf(y, g);
-    // The near side of a turned head shows more skull than the far side.
-    const l = Math.round(half * 0.92);
-    const r = Math.round(half * 1.06);
-    for (let x = SX - l; x <= SX + r; x++) {
-      const nx = (x - SX) / half;
-      // Key light upper-left. Four values: lit plane, base, terminator,
-      // and the core shadow riding the near edge.
-      let col = lk.skin;
-      if (nx > 0.72) col = skinDp;
-      else if (nx > 0.3) col = lk.skinSh;
-      else if (nx < -0.3 && y < EYE_Y + 2) col = skinHi;
-      c.set(x, y, col);
+    const half = halfAt(y, g);
+    if (half < 0.5) continue;
+    const l = Math.round(SX - half);
+    const r = Math.round(SX + half);
+    // Cel shading. Anime does not run a gradient across a cheek: it uses
+    // flat colour and one hard-edged shadow *shape*, and reading that
+    // shape as a shape is the entire effect. Soft form shading — even
+    // correct form shading — reads as a different genre.
+    //
+    // The boundary is a straight vertical line at a fixed x, not a
+    // fraction of the row's half-width. Following the silhouette would be
+    // pillow shading, and it would also make the shadow a constant-width
+    // band, which is banding. Because the head narrows toward the chin, a
+    // fixed line tapers the shadow by itself.
+    for (let x = l; x <= r; x++) {
+      c.set(x, y, x > SX + 5 ? sh : base);
     }
   }
 
-  // Under the cheekbone, angled down and in toward the chin. This is the
-  // plane change that stops a face reading as a balloon.
-  for (let k = 0; k < 7; k++) {
-    const y = EYE_Y + 6 + k;
-    const half = skullHalf(y, g);
-    for (let x = Math.round(SX + half * 0.1); x <= Math.round(SX + half); x++) {
-      if (c.get(x, y) === lk.skin) c.set(x, y, lk.skinSh);
+  // The fringe's shadow across the forehead. In anime this is the largest
+  // and most recognisable shadow on a face — it is what seats hair *on* a
+  // head rather than beside it. Hard edge, no falloff.
+  for (let y = HEAD_TOP; y < EYE_Y - 1; y++) {
+    const half = halfAt(y, g);
+    for (let x = Math.round(SX - half); x <= Math.round(SX + half); x++) {
+      if (c.get(x, y) === TRANSPARENT) continue;
+      c.set(x, y, x > SX + 5 ? deep : sh);
     }
   }
-  // Chin: a lit ball with the jaw's shadow under it.
-  c.hline(FX - 2, chin - 4, 5, shift(lk.skin, 1));
-  for (let x = SX - 6; x <= SX + 6; x++) {
-    if (c.get(x, chin) !== 0) c.set(x, chin, skinDp);
-    if (c.get(x, chin - 1) === lk.skin) c.set(x, chin - 1, lk.skinSh);
+
+  // Under the chin, and the jaw's own shadow. Two rows, hard edged.
+  for (let y = chin - 1; y <= chin; y++) {
+    const half = halfAt(y, g);
+    for (let x = Math.round(SX - half); x <= Math.round(SX + half); x++) {
+      if (c.get(x, y) === TRANSPARENT) continue;
+      c.set(x, y, deep);
+    }
   }
 
-  // Near ear, tucked against the silhouette. The far one is hidden by the
-  // turn, and drawing it anyway is what makes symmetric portraits look
-  // like they are facing two directions at once.
-  const earX = SX + Math.round(skullHalf(EYE_Y, g)) - 1;
-  for (let y = EYE_Y; y <= EYE_Y + 6; y++) {
-    c.set(earX, y, y === EYE_Y || y === EYE_Y + 6 ? lk.skinSh : lk.skin);
-    c.set(earX + 1, y, skinDp);
+  // One placed highlight on the lit cheek. Anime puts a single small
+  // light shape on a face, never a band down the edge.
+  for (let k = 0; k < 3; k++) {
+    for (let x = SX - 10 + k; x <= SX - 6 + k; x++) {
+      if (c.get(x, EYE_Y + 5 + k) === base) c.set(x, EYE_Y + 5 + k, hi);
+    }
   }
-  c.set(earX, EYE_Y + 3, lk.skinSh);
+
+  // One ear, on the far side of the turn — the near one is hidden by the
+  // angle of the head. Drawing both is what makes a turned portrait look
+  // like it is facing two directions at once.
+  const ex = Math.round(SX + halfAt(EYE_Y + 2, g));
+  for (let y = EYE_Y + 1; y <= EYE_Y + 5; y++) {
+    c.set(ex, y, sh);
+    c.set(ex + 1, y, deep);
+  }
 }
 
-function drawNeck(c: PixelCanvas, lk: Look, g: Geom, skinDp: number): void {
-  // Narrower than the jaw, and never brighter than the face. A neck drawn
-  // at jaw width in the face's own value reads as a tree trunk.
-  const half = Math.round(4 * g.wide);
-  // The jaw casts a shadow straight down the neck, so the neck is never
-  // the same value as the face. Getting this wrong makes a head look
-  // pasted onto a body — but running the deep tone the whole way down gave
-  // everybody a heavy dark jaw that read as a beard.
-  for (let y = NECK_TOP + g.longJaw; y <= SHOULDER_Y + 2; y++) {
-    const cast = y < NECK_TOP + g.longJaw + 3;
-    for (let x = FX - half; x <= FX + half; x++) {
-      const nx = (x - FX) / half;
-      c.set(x, y, cast || nx > 0.4 ? skinDp : nx < -0.5 ? lk.skinSh : shift(lk.skinSh, 0));
+function stampFace(
+  c: PixelCanvas, lk: Look, mood: Mood, g: Geom, eye: number,
+): void {
+  const [deep, sh, base, hi] = skinRamp(lk);
+  const dark = darkHair(lk);
+  // Lashes are hair seen against skin — always the darkest note on a face,
+  // never the hair's own colour.
+  const lash = luma(dark) > 90 ? shift(dark, -2) : dark;
+
+  const colFor = (ch: string): number => {
+    switch (ch) {
+      case 'a': return hi;
+      case 'b': return base;
+      case 'c': return sh;
+      case 'd': return deep;
+      case 'h': return lash;
+      case 'i': return C.White;
+      // Sclera. Drawn in Pale it read as grey and the eye looked dirty;
+      // white sclera against a big saturated iris is the anime contrast.
+      case 'j': return C.White;
+      // The iris runs dark under the lid and light along its floor. That
+      // vertical gradient inside a big iris is the second anime tell after
+      // the size of the eye itself.
+      case 'k': return eye;
+      case 'K': return shift(eye, 2);
+      case 'l': return C.InkDeep;
+      // Blush. Anime wears it high on the cheekbone and openly — it is a
+      // feature, not the faint flush a realistic portrait would use.
+      case 'p': return C.Rose;
+      // The lip line needs to survive being drawn on shaded skin. At one
+      // step under the shade it matched the shadow it sat in and the mouth
+      // vanished; at two it is a line rather than the near-black bar the
+      // first version used, which read as a scream.
+      case 'm': return shift(lk.skinSh, -2);
+      default: return -1;
+    }
+  };
+
+  const stamp = (rows: readonly string[], y0: number): void => {
+    for (let r = 0; r < rows.length; r++) {
+      const row = rows[r];
+      for (let i = 0; i < row.length; i++) {
+        const col = colFor(row[i]);
+        if (col < 0) continue;
+        const x = FACE_X + i;
+        const y = y0 + r;
+        // Never paint outside the head: a wide mouth on a narrow face would
+        // otherwise hang off the jaw.
+        if (Math.abs(x - SX) > halfAt(y, g)) continue;
+        c.set(x, y, col);
+      }
+    }
+  };
+
+  stamp(FACE, FACE_Y);
+  // One row higher than the face stamp, so there are two clear rows of
+  // forehead between the brow and the lash.
+  stamp(BROWS[mood], FACE_Y - 1);
+  // The mouth drops with a long jaw so it stays low on the face rather
+  // than riding up into the middle of it.
+  stamp(MOUTHS[mood], FACE_Y + 11 + g.longJaw);
+
+  // A warm mood gets a second row of blush, so the same face reads as
+  // pleased rather than merely present.
+  if (mood !== 'warm') return;
+  for (const side of [-1, 1] as const) {
+    for (let dx = 0; dx < 5; dx += 2) {
+      const x = SX + side * 4 + (side < 0 ? -dx : dx);
+      const v = c.get(x, FACE_Y + 12);
+      if (v !== base && v !== hi && v !== sh) continue;
+      c.set(x, FACE_Y + 12, C.Rose);
     }
   }
-  // Where the neck meets the collar it drops away again.
-  for (let x = FX - half; x <= FX + half; x++) c.set(x, SHOULDER_Y + 2, skinDp);
+  void deep;
 }
 
-function drawBust(c: PixelCanvas, lk: Look): void {
+function drawNeck(c: PixelCanvas, lk: Look, g: Geom): void {
+  const [deep, sh, base] = skinRamp(lk);
+  const top = NECK_TOP + g.longJaw;
+  for (let y = top; y <= SHOULDER_Y + 1; y++) {
+    // A trapezoid, not a post: the neck widens into the shoulders.
+    const half = Math.round((4 + (y - top) * 0.4) * g.wide);
+    for (let x = SX - half; x <= SX + half; x++) {
+      // The jaw's shadow lands on the top row and nowhere else. The skin
+      // ramp steps hard, so anything more than that turns the neck into a
+      // dark column — which on the muted outfits read as a collar, or a
+      // beard, on every character at once.
+      const fall = y - top;
+      c.set(x, y, fall === 0 ? deep : x > SX + half - 2 ? sh : base);
+    }
+  }
+}
+
+function drawBust(c: PixelCanvas, lk: Look, g: Geom): void {
   const dim = lk.shirtDim;
+  const lit = shift(lk.shirt, 1);
   for (let y = SHOULDER_Y; y < PORTRAIT_H; y++) {
     const t = (y - SHOULDER_Y) / (PORTRAIT_H - SHOULDER_Y);
-    // Shoulders slope out fast then square off, which is what makes a bust
-    // read as a body rather than as a triangle.
-    const half = Math.round(11 + Math.pow(t, 0.55) * 17);
-    for (let x = SX - half - 2; x <= SX + half; x++) {
+    const half = Math.round((10 + Math.pow(t, 0.5) * 14) * g.wide);
+    for (let x = SX - half; x <= SX + half; x++) {
       const nx = (x - SX) / half;
-      c.set(x, y, nx < -0.5 ? shift(lk.shirt, 1) : nx > 0.45 ? dim : lk.shirt);
+      // The boundary leans, following the slope of the shoulder. A vertical
+      // seam down the middle of a chest is banding: the eye reads it as a
+      // stripe painted on the shirt rather than as the body turning away.
+      c.set(x, y, nx < -0.5 + t * 0.2 ? lit : nx > 0.5 - t * 0.25 ? dim : lk.shirt);
     }
   }
-  // Fold shadows. Two is enough; cloth reads by having any at all.
-  for (let y = SHOULDER_Y + 4; y < PORTRAIT_H; y++) {
-    const s = Math.round(Math.sin((y - SHOULDER_Y) * 0.4) * 2);
-    c.set(SX - 16 + s, y, dim);
-    c.set(SX + 15 - s, y, dim);
+  for (let y = SHOULDER_Y + 3; y < PORTRAIT_H; y++) {
+    const s = Math.round(Math.sin((y - SHOULDER_Y) * 0.35) * 2);
+    c.set(SX - 13 + s, y, dim);
+    c.set(SX + 12 - s, y, dim);
+  }
+  // The head casts onto the chest. Without it the bust reads as a backdrop
+  // the head happens to be standing in front of.
+  for (let y = SHOULDER_Y; y < SHOULDER_Y + 4; y++) {
+    const w = 8 - (y - SHOULDER_Y);
+    for (let x = SX - w; x <= SX + w; x++) c.set(x, y, shift(dim, -1));
   }
 
-  const cy = SHOULDER_Y + 1;
+  const cy = SHOULDER_Y + 2;
   switch (lk.outfit) {
     case 'jacket':
-      // Lapels: two diagonals from the collarbone out to the shoulders.
-      for (let i = 0; i < 9; i++) {
-        c.set(FX - 4 - i, cy + i, lk.shirtDim);
-        c.set(FX - 3 - i, cy + i, lk.trim);
-        c.set(FX + 4 + i, cy + i, lk.shirtDim);
-        c.set(FX + 3 + i, cy + i, lk.trim);
+      for (let i = 0; i < 8; i++) {
+        c.set(SX - 4 - i, cy + i, dim);
+        c.set(SX - 3 - i, cy + i, lk.trim);
+        c.set(SX + 4 + i, cy + i, dim);
+        c.set(SX + 3 + i, cy + i, lk.trim);
       }
       break;
     case 'hoodie':
-      // The hood bunched behind the neck.
       for (let y = 0; y < 4; y++) {
-        for (let x = FX - 14 + y; x <= FX + 14 - y; x++) {
-          c.set(x, cy - 1 + y, y < 2 ? lk.shirtDim : shift(lk.shirtDim, -1));
+        for (let x = SX - 12 + y; x <= SX + 12 - y; x++) {
+          c.set(x, cy - 2 + y, y < 2 ? dim : shift(dim, -1));
         }
       }
-      for (let x = FX - 8; x <= FX + 8; x++) c.set(x, cy + 3, lk.shirtDim);
       break;
     case 'tunic':
-      for (let x = FX - 7; x <= FX + 7; x++) {
+      for (let x = SX - 6; x <= SX + 6; x++) {
         c.set(x, cy + 2, lk.trim);
-        c.set(x, cy + 3, lk.shirtDim);
+        c.set(x, cy + 3, dim);
       }
-      c.rect(FX - 1, cy + 4, 2, 2, C.Gold);
+      c.rect(SX - 1, cy + 4, 2, 2, C.Gold);
       break;
     default:
-      for (let x = FX - 7; x <= FX + 7; x++) c.set(x, cy + 2, lk.trim);
       for (let i = 0; i < 5; i++) {
-        c.set(FX - 2 - i, cy + 3 + i, lk.trim);
-        c.set(FX + 2 + i, cy + 3 + i, lk.trim);
+        c.set(SX - 3 - i, cy + 2 + i, lk.trim);
+        c.set(SX + 3 + i, cy + 2 + i, lk.trim);
       }
       break;
   }
 }
 
-function drawFace(
-  c: PixelCanvas, lk: Look, g: Geom, mood: Mood,
-  skinHi: number, skinDp: number, rng: Rng,
-): void {
-  // Far eye is narrower and closer to the silhouette; near eye is wider.
-  // That difference is the entire turn as far as the face is concerned.
-  const farX = FX - 8 - g.eyeGap;
-  const nearX = FX + 5 + g.eyeGap;
-  // Lashes and brows follow the hair but never take its colour outright —
-  // they are hair seen against skin, always the darkest note on the face.
-  const dark = darkHair(lk);
-  const lash = luma(dark) > 90 ? shift(dark, -2) : dark;
-  const iris = shift(lash, 2);
+/** Where the hairline falls at a column: lower over the middle of the brow,
+ *  lifting at the temples. */
+/** The bottom row of the fringe, one entry per column from x-12 to x+12.
+ *
+ *  Four wedges, each rising to a point. This is the single most important
+ *  piece of data in the file after the face: a fringe drawn as a smooth
+ *  curve is a helmet, and no amount of strand texture on top will rescue
+ *  it. The points reach row 19, which is the lash line, so a few pixels of
+ *  hair fall in front of the eyes — which is where anime puts them. */
+const BANG_HEM: readonly number[] = [
+  // The tips stop at row 15, two clear rows above the lid at 17. Letting
+  // them touch merged the fringe and the lash into one dark mass across
+  // the face — worst on the dark-haired characters, where the whole band
+  // read as a bar rather than as hair above eyes.
+  10, 12, 14, 15, 13,
+  10, 12, 14, 15, 13,
+  10, 12, 14, 15, 14,
+  10, 12, 14, 15, 13,
+  10, 12, 14, 15, 13, 11, 9,
+];
 
-  // Three rows, not four. At four the whites take over the face and every
-  // villager reads as permanently startled.
-  const eye = (ex: number, w: number): void => {
-    c.rect(ex, EYE_Y, w, 3, C.Pale);
-    c.rect(ex + 1, EYE_Y, w - 2, 3, C.White);
-    // Iris, cropped by the upper lid the way a real one always is.
-    const ix = ex + (w >= 5 ? 2 : 1);
-    c.rect(ix, EYE_Y, 2, 3, iris);
-    c.rect(ix, EYE_Y, 2, 1, lash);
-    c.set(ix, EYE_Y + 1, C.InkDeep);
-    c.set(ix + 1, EYE_Y + 1, C.InkDeep);
-    // One specular pixel, upper left, matching the key light.
-    c.set(ix, EYE_Y + 1, C.White);
-    // Lash line, heavier at the outer corner, and a crease above it.
-    for (let i = 0; i < w; i++) c.set(ex + i, EYE_Y - 1, lash);
-    c.set(ex - 1, EYE_Y, lash);
-    c.set(ex + w, EYE_Y, lash);
-    for (let i = 1; i < w - 1; i++) c.set(ex + i, EYE_Y - 3, lk.skinSh);
-    // Lower lid, one value down from the skin so the eye sits in a socket.
-    for (let i = 0; i < w; i++) c.set(ex + i, EYE_Y + 3, lk.skinSh);
-  };
-  eye(farX + 1, 4);
-  eye(nearX, 5);
+/** The outer silhouette of the hair mass, half-width per row from
+ *  `HEAD_TOP - 4`.
+ *
+ *  Authored, like the fringe, and for the same reason. Deriving it from the
+ *  skull plus a constant padding gives hair the exact shape of the head,
+ *  which is a swimming cap. Real hair sits high off the crown, flares wider
+ *  than the skull at the temples, and pushes out into tufts — and that
+ *  outline is most of what identifies a character at a glance.
+ *
+ *  Rows above HEAD_TOP are the hair's own dome. Without them the cap
+ *  clamped to the skull's top half-width for every row above it and came
+ *  out as a flat-topped block: a box sitting on the head. */
+const HAIR_SPAN: readonly number[] = [
+  // The hair's own crown, above the skull. These are the widths a circle
+  // of radius 17 actually has, because a dome that widens too slowly at
+  // the top comes out flat, and a flat-topped mass reads as a helmet
+  // however good the fringe under it is.
+  6, 8, 10, 11,
+  12, 13, 14, 14, 15, 15,
+  // Temples. Hair is three or four pixels wider than the head here — in
+  // every reference the hair mass is plainly bigger than the skull, and
+  // that gap is what makes it read as hair rather than as paint on a head.
+  16, 16, 16, 17, 17, 17,
+  // Falling past the eyes.
+  16, 16, 15, 14,
+];
 
-  // Brows. These carry the expression more than the eyes do: raised inner
-  // ends read as warmth, lowered inner ends as impatience.
-  const brow = (ex: number, w: number, inner: 'l' | 'r'): void => {
-    for (let i = 0; i < w; i++) {
-      const t = i / (w - 1);
-      const towardInner = inner === 'l' ? 1 - t : t;
-      const lift = mood === 'warm'
-        ? Math.round(towardInner * -1.6)
-        : mood === 'cold'
-          ? Math.round(towardInner * 1.6)
-          : 0;
-      // The arch: brows are not straight lines.
-      const arch = Math.round(Math.sin(t * Math.PI) * -1);
-      const y = EYE_Y - 6 + lift + arch;
-      for (let k = 0; k < g.browThick; k++) c.set(ex + i, y + k, lash);
-    }
-  };
-  brow(farX - 1, 6, 'r');
-  brow(nearX, 7, 'l');
+function hairSpanAt(y: number, g: Geom): number {
+  const i = y - (HEAD_TOP - 4);
+  if (i < 0) return 0;
+  if (i >= HAIR_SPAN.length) return HAIR_SPAN[HAIR_SPAN.length - 1] * g.wide;
+  return HAIR_SPAN[i] * g.wide;
+}
 
-  // Nose. Drawn as a shadow on the near side plus a lit tip — an outlined
-  // nose at this size looks like a beak.
-  const noseY = EYE_Y + 7;
-  for (let k = 0; k < 3; k++) c.set(FX + 2, noseY + k, lk.skinSh);
-  c.set(FX + 2, noseY + 3, skinDp);
-  c.set(FX + 1, noseY + 3, lk.skinSh);
-  c.set(FX, noseY + 3, skinHi);
-  c.set(FX - 1, noseY + 3, lk.skinSh);
-
-  // Mouth. Upper lip is always in shadow, lower lip always catches light.
-  //
-  // A straight line with a shadow under it reads as a frown at this size,
-  // which had every villager in the game looking miserable regardless of
-  // their actual mood. Neutral now curves very slightly up and carries no
-  // shadow; only the expressive moods get one.
-  const mouthY = EYE_Y + 13 + g.mouthDrop + Math.round(g.longJaw * 0.5);
-  const lip = C.WoodDk;
-  if (mood === 'warm') {
-    for (let i = -3; i <= 3; i++) {
-      const dip = Math.abs(i) >= 2 ? -1 : 0;
-      c.set(FX + i, mouthY + dip, lip);
-    }
-    c.hline(FX - 2, mouthY + 1, 5, shift(lk.skin, 1));
-    // Smile creases, pulling the cheeks up.
-    c.set(FX - 5, mouthY - 2, lk.skinSh);
-    c.set(FX + 5, mouthY - 2, lk.skinSh);
-    c.hline(FX - 2, mouthY + 2, 4, lk.skinSh);
-  } else if (mood === 'cold') {
-    for (let i = -3; i <= 3; i++) c.set(FX + i, mouthY + (Math.abs(i) >= 2 ? 1 : 0), lip);
-    c.set(FX - 4, mouthY + 1, skinDp);
-    c.set(FX + 4, mouthY + 1, skinDp);
-    c.hline(FX - 1, mouthY + 2, 3, lk.skinSh);
-  } else {
-    for (let i = -2; i <= 2; i++) c.set(FX + i, mouthY + (Math.abs(i) === 2 ? -1 : 0), lip);
-    c.hline(FX - 1, mouthY + 1, 3, shift(lk.skin, 1));
-  }
-
-  // Blush, dithered so it stays soft. Warm moods get more of it.
-  const blush = mood === 'warm' ? 0.75 : 0.4;
-  for (let y = EYE_Y + 6; y <= EYE_Y + 8; y++) {
-    for (let x = FX - 10; x <= FX + 10; x++) {
-      if (Math.abs(x - FX) < 5) continue;
-      if (c.get(x, y) !== lk.skin) continue;
-      if (valueNoise(x * 1.7, y * 1.7, 11) < blush) c.set(x, y, lk.skinSh);
-    }
-  }
-  void rng;
+function hemAt(x: number): number {
+  const i = x - (SX - 13);
+  if (i < 0 || i >= BANG_HEM.length) return HEAD_TOP + 6;
+  return BANG_HEM[i];
 }
 
 function drawHair(c: PixelCanvas, lk: Look, g: Geom, rng: Rng): void {
-  const hi = shift(lk.hair, 1);
+  const dark = darkHair(lk);
+  // Take the highlight off the *lighter* of the pair. Black hair is stored
+  // [InkDeep, Ink], so `shift(lk.hair, 1)` landed on Ink — exactly the tone
+  // the cap is already drawn in. Every highlight strand disappeared and
+  // every dark strand became a bar, which is why the black-haired villager
+  // had scratch marks on her crown.
+  const light = dark === lk.hair ? lk.hairSh : lk.hair;
+  const hi = shift(light, 1);
   const covered = lk.head === 'hat' || lk.head === 'hood';
+  const [, sh] = skinRamp(lk);
 
   if (lk.head !== 'hood') {
-    // The cap of hair sits proud of the skull — hair has thickness, and
-    // laying it flat on the skull line is what makes it read as paint.
-    for (let y = HEAD_TOP - 4; y <= EYE_Y - 6; y++) {
-      const half = skullHalf(Math.max(HEAD_TOP, y), g) + (y < HEAD_TOP + 6 ? 2.2 : 1.4);
-      for (let x = Math.round(SX - half * 0.95); x <= Math.round(SX + half * 1.08); x++) {
-        // Hairline: dips lower over the middle of the brow and lifts at the
-        // temples, which is where a real one goes.
-        const nx = (x - SX) / half;
-        const dip = Math.cos(nx * 1.5) * 4 + valueNoise(x * 0.8, 3, 41) * 2;
-        if (y > EYE_Y - 14 + dip) continue;
-        c.set(x, y, nx < -0.25 ? lk.hair : lk.hairSh);
-      }
-    }
-
-    // The sheen: one broken band following the curve of the skull. This is
-    // the single detail that separates hair from a helmet.
-    const bandY = HEAD_TOP + 3;
-    for (let x = SX - 13; x <= SX + 10; x++) {
-      const nx = (x - SX) / 13;
-      const y = bandY + Math.round(nx * nx * 5);
-      if (valueNoise(x * 1.3, 7, 53) < 0.32) continue;
-      if (c.get(x, y) !== lk.hair && c.get(x, y) !== lk.hairSh) continue;
-      c.set(x, y, hi);
-      if (valueNoise(x * 1.1, 19, 53) > 0.6) c.set(x, y + 1, hi);
-    }
-
-    // Bangs: clumps of different length hanging over the forehead, each
-    // with a lit left edge. Even lengths look like a wig.
+    // Anime hair is not a cap with texture drawn on it — it is a set of
+    // clumps, each a wedge with a point at the bottom. Random strands over
+    // a flat cap is what the last three versions did, and it reads as
+    // corduroy no matter how the strands are jittered, because the
+    // silhouette underneath never changes.
     //
-    // How much forehead they cover is the difference between twelve
-    // characters and one character in twelve wigs, so it is set per style
-    // and the clumps are swept to one side rather than hung straight down.
-    const fringe = lk.hairStyle === 'crop' ? 0
-      : lk.hairStyle === 'short' ? 2
-        : lk.hairStyle === 'tied' ? 3 : 4;
-    let bx = SX - 15;
-    while (bx < SX + 13 && fringe > 0) {
-      const wclump = rng.int(2, 4);
-      // Sweep: clumps get longer across the brow in one direction, so the
-      // fringe has a parting instead of a flat hem.
-      const sweep = ((bx - (SX - 15)) / 28) * fringe;
-      // Capped two rows above the brow. Bangs that reach the lashes read as
-      // eyeshadow, which is very obvious on the pink-haired villagers.
-      const drop = Math.min(fringe + 1, rng.int(0, fringe) + sweep);
-      const nx = (bx - SX) / 15;
-      const base = EYE_Y - 15 + Math.cos(nx * 1.5) * 4;
-      for (let x = bx; x < bx + wclump; x++) {
-        for (let y = HEAD_TOP - 2; y <= base + drop; y++) {
-          if (Math.abs(x - SX) > skullHalf(Math.max(HEAD_TOP, y), g) + 2) continue;
-          c.set(x, y, x === bx ? lk.hair : lk.hairSh);
-        }
+    // So the fringe hem is authored, one entry per column, as four wedges.
+    // The hem is the shape; everything else is colour on top of it.
+    for (let y = HEAD_TOP - 4; y <= FACE_Y + 6; y++) {
+      const half = hairSpanAt(y, g);
+      for (let x = Math.round(SX - half); x <= Math.round(SX + half); x++) {
+        if (y > hemAt(x)) continue;
+        c.set(x, y, light);
       }
-      bx += wclump + rng.int(0, 1);
     }
+
+    // A tuft pass lived here and had to go: symmetrical wedges pushing out
+    // at the temples read as cat ears, not as hair. The flare is in
+    // HAIR_SPAN instead, where it is part of the silhouette rather than
+    // stuck onto it.
+
+    // Clump edges. Every wedge gets a dark line down its leading side,
+    // which is what separates one clump from the next — without it the
+    // authored hem just makes a single scalloped block.
+    for (let k = 0; k < BANG_HEM.length; k++) {
+      const x = SX - 13 + k;
+      const hemHere = BANG_HEM[k];
+      const hemPrev = BANG_HEM[Math.max(0, k - 1)];
+      // A column that hangs lower than the one before it starts a clump.
+      if (hemHere <= hemPrev) continue;
+      for (let y = HEAD_TOP + 2; y <= hemHere; y++) {
+        if (c.get(x, y) === light) c.set(x, y, dark);
+      }
+    }
+
+    // The tip of each wedge, darkened, so the point reads as a point.
+    for (let k = 1; k < BANG_HEM.length - 1; k++) {
+      const x = SX - 13 + k;
+      if (BANG_HEM[k] <= BANG_HEM[k - 1] || BANG_HEM[k] < BANG_HEM[k + 1]) continue;
+      c.set(x, BANG_HEM[k], dark);
+      c.set(x, BANG_HEM[k] - 1, lk.hairSh === light ? lk.hair : lk.hairSh);
+    }
+
+    // One bold sheen band, two rows thick, following the curve of the
+    // skull. Anime hair has exactly one of these and it is unmissable —
+    // a scatter of light pixels is texture, not shine.
+    // Only when the highlight actually reads. On the near-black hair the
+    // brightest tone available is one dim step up, and a band of it came
+    // out as blue dashes scattered over the crown — texture noise rather
+    // than shine. Better no highlight than a broken one.
+    if (luma(hi) - luma(light) > 14) {
+      const shineY = HEAD_TOP + 4;
+      for (let x = SX - 10; x <= SX + 9; x++) {
+        const nx = (x - SX) / 10;
+        const y = shineY + Math.round(nx * nx * 3);
+        if (c.get(x, y) !== light && c.get(x, y) !== dark) continue;
+        c.set(x, y, hi);
+        if (Math.abs(nx) < 0.7) c.set(x, y + 1, hi);
+      }
+    }
+
+    // The shadow the fringe throws on the forehead. This is what seats
+    // hair *on* a head instead of beside it.
+    for (let k = 0; k < BANG_HEM.length; k++) {
+      const x = SX - 13 + k;
+      const y = BANG_HEM[k] + 1;
+      if (Math.abs(x - SX) > halfAt(y, g)) continue;
+      if (c.get(x, y) !== TRANSPARENT) c.set(x, y, sh);
+    }
+    void rng;
   }
 
   if (covered) return;
 
   switch (lk.hairStyle) {
     case 'bob':
-      // Chin-length, curling in. The near side hangs further forward
-      // because the head is turned.
-      for (let y = EYE_Y - 12; y <= CHIN + 2; y++) {
-        const t = (y - (EYE_Y - 12)) / (CHIN + 2 - (EYE_Y - 12));
-        const out = 15 + Math.sin(t * 2.2) * 2 - t * t * 3;
-        for (let k = 0; k < 4; k++) {
-          c.set(Math.round(SX - out + k), y, k === 0 ? lk.hair : lk.hairSh);
-          c.set(Math.round(SX + out - k + 1), y, k === 0 ? lk.hairSh : shift(lk.hairSh, -1));
+      // Chin length, curling in under the jaw.
+      for (let y = FACE_Y - 4; y <= chinRow(g) - 1; y++) {
+        const t = (y - (FACE_Y - 4)) / (chinRow(g) - 1 - (FACE_Y - 4));
+        const out = 11.5 + Math.sin(t * 2.4) * 2 - t * t * 4;
+        for (let k = 0; k < 3; k++) {
+          c.set(Math.round(SX - out + k), y, k === 0 ? dark : lk.hair);
+          c.set(Math.round(SX + out - k), y, k === 0 ? dark : lk.hairSh);
         }
       }
       break;
     case 'tied': {
-      // A tail falling behind the near shoulder, plus the tie.
-      for (let y = EYE_Y - 8; y <= PORTRAIT_H - 2; y++) {
-        const sway = Math.sin((y - EYE_Y) * 0.16) * 3;
-        const x0 = Math.round(SX + 13 + sway);
-        for (let k = 0; k < 5; k++) {
-          c.set(x0 + k, y, k === 0 ? lk.hair : k < 3 ? lk.hairSh : shift(lk.hairSh, -1));
+      for (let y = FACE_Y - 2; y <= PORTRAIT_H - 2; y++) {
+        const sway = Math.sin((y - FACE_Y) * 0.15) * 3;
+        const x0 = Math.round(SX + 10 + sway);
+        for (let k = 0; k < 4; k++) {
+          c.set(x0 + k, y, k === 0 ? dark : k < 2 ? lk.hair : lk.hairSh);
         }
       }
-      // Only over hair. Painted as a plain rect it landed on the cheek of
-      // anyone with a narrow skull and read as a wound.
-      for (let y = EYE_Y - 10; y < EYE_Y - 6; y++) {
-        for (let x = SX + 11; x < SX + 16; x++) {
-          if (c.get(x, y) !== lk.hair && c.get(x, y) !== lk.hairSh) continue;
-          c.set(x, y, y === EYE_Y - 10 ? C.Rose : C.Red);
+      // The tie, painted only over hair. As a plain rect it landed on the
+      // cheek of anyone with a narrow skull and read as a wound.
+      for (let y = FACE_Y - 3; y < FACE_Y + 1; y++) {
+        for (let x = SX + 8; x < SX + 13; x++) {
+          const v = c.get(x, y);
+          if (v !== lk.hair && v !== lk.hairSh && v !== dark && v !== hi) continue;
+          c.set(x, y, y === FACE_Y - 3 ? C.Rose : C.Red);
         }
       }
-      // A few loose strands at the temple, so the tie does not look shaved.
-      for (let y = EYE_Y - 6; y <= EYE_Y + 2; y++) c.set(SX - 15, y, lk.hair);
+      for (let y = FACE_Y - 2; y <= FACE_Y + 4; y++) c.set(SX - 11, y, lk.hair);
       break;
     }
     case 'crop':
-      for (let y = EYE_Y - 12; y <= EYE_Y - 2; y++) {
-        const half = skullHalf(y, g);
-        c.set(Math.round(SX - half - 1), y, lk.hair);
-        c.set(Math.round(SX + half + 1), y, lk.hairSh);
+      for (let y = FACE_Y - 4; y <= FACE_Y + 5; y++) {
+        for (const side of [-1, 1] as const) {
+          const x = Math.round(SX + side * (halfAt(y, g) + 1));
+          c.set(x, y, side < 0 ? lk.hair : lk.hairSh);
+        }
       }
       break;
     default:
-      // Long, past the shoulders, wider at the bottom.
-      for (let y = EYE_Y - 12; y <= PORTRAIT_H - 1; y++) {
-        const t = Math.max(0, (y - (EYE_Y - 12)) / 40);
-        const out = 15 + t * 6;
-        for (let k = 0; k < 4 + Math.round(t * 3); k++) {
-          c.set(Math.round(SX - out + k), y, k === 0 ? lk.hair : lk.hairSh);
-          c.set(Math.round(SX + out - k + 1), y, k < 2 ? lk.hairSh : shift(lk.hairSh, -1));
+      // Long, past the shoulders and widening as it falls.
+      for (let y = FACE_Y - 4; y <= PORTRAIT_H - 1; y++) {
+        const t = Math.max(0, (y - (FACE_Y - 4)) / 40);
+        const out = 11.5 + t * 6;
+        const thick = 3 + Math.round(t * 3);
+        for (let k = 0; k < thick; k++) {
+          c.set(Math.round(SX - out + k), y, k === 0 ? dark : k < 2 ? lk.hair : lk.hairSh);
+          c.set(Math.round(SX + out - k), y, k === 0 ? dark : lk.hairSh);
         }
       }
       break;
@@ -516,139 +743,116 @@ function drawHair(c: PixelCanvas, lk: Look, g: Geom, rng: Rng): void {
 
 function drawHeadwear(c: PixelCanvas, lk: Look, g: Geom): void {
   if (lk.head === 'bare') return;
+  const [, sh, base] = skinRamp(lk);
 
   if (lk.head === 'hat') {
-    // Straw hat. The crown has to *overlap* the skull — a crown that stops
-    // above the head leaves the brim reading as a stick balanced on top,
-    // which is exactly how the first version of this looked.
-    const brimY = HEAD_TOP + 3;
-    for (let y = HEAD_TOP - 8; y <= brimY; y++) {
-      const t = (y - (HEAD_TOP - 8)) / (brimY - (HEAD_TOP - 8));
-      // Domed: narrow at the top, flaring where it meets the brim.
-      const half = Math.round((8 + Math.pow(t, 0.7) * 7) * g.wide);
+    // The crown has to *overlap* the skull. A crown that stops above the
+    // head leaves the brim reading as a stick balanced on top.
+    const brimY = HEAD_TOP + 2;
+    for (let y = HEAD_TOP - 7; y <= brimY; y++) {
+      const t = (y - (HEAD_TOP - 7)) / (brimY - (HEAD_TOP - 7));
+      const half = Math.round((6 + Math.pow(t, 0.7) * 6) * g.wide);
       for (let x = SX - half; x <= SX + half; x++) {
         c.set(x, y, (x - SX) / half < -0.25 ? lk.headCol : lk.headSh);
       }
     }
-    // Brim, seen slightly from below: its far edge rides higher than its
-    // near edge, and it dips at the sides.
-    for (let x = SX - 24; x <= SX + 24; x++) {
-      const nx = (x - SX) / 24;
-      const y = brimY + Math.round(nx * nx * 3) - (nx < -0.5 ? 1 : 0);
+    // Brim, seen slightly from below, so it dips at the sides.
+    for (let x = SX - 18; x <= SX + 18; x++) {
+      const nx = (x - SX) / 18;
+      const y = brimY + Math.round(nx * nx * 3);
       c.set(x, y, lk.headCol);
       c.set(x, y + 1, lk.headSh);
-      c.set(x, y + 2, lk.headSh);
-      c.set(x, y + 3, shift(lk.headSh, -1));
+      c.set(x, y + 2, shift(lk.headSh, -1));
     }
-    // Band, and the brim's shadow across the brow.
-    for (let x = SX - 13; x <= SX + 13; x++) c.set(x, brimY - 1, C.WoodDp);
-    for (let x = SX - 18; x <= SX + 18; x++) {
-      for (let y = brimY + 4; y <= EYE_Y - 5; y++) {
+    for (let x = SX - 10; x <= SX + 10; x++) c.set(x, brimY - 1, C.WoodDp);
+    // The brim's shadow. Darken by one ramp step, whatever is under it —
+    // swapping hair for `hairSh` turned the entire fringe black on the
+    // characters whose "shade" tone is the darker of their pair.
+    for (let x = SX - 12; x <= SX + 12; x++) {
+      for (let y = brimY + 3; y <= FACE_Y; y++) {
         const v = c.get(x, y);
-        if (v === lk.skin) c.set(x, y, lk.skinSh);
-        else if (v === lk.hair) c.set(x, y, lk.hairSh);
-        else if (v === shift(lk.hair, 1)) c.set(x, y, lk.hair);
+        if (v === TRANSPARENT) continue;
+        c.set(x, y, v === base ? sh : shift(v, -1));
       }
     }
     return;
   }
 
   if (lk.head === 'cap') {
-    const peakY = HEAD_TOP + 6;
+    const peakY = HEAD_TOP + 4;
     for (let y = HEAD_TOP - 5; y <= peakY; y++) {
       const t = (y - (HEAD_TOP - 5)) / (peakY - (HEAD_TOP - 5));
-      const half = Math.round((9 + Math.pow(t, 0.6) * 6) * g.wide);
+      const half = Math.round((7 + Math.pow(t, 0.6) * 5) * g.wide);
       for (let x = SX - half; x <= SX + half; x++) {
         c.set(x, y, (x - SX) / half < -0.3 ? lk.headCol : lk.headSh);
       }
     }
-    // Seam over the crown, and a button at the top.
     for (let y = HEAD_TOP - 5; y <= peakY - 2; y++) c.set(SX - 2, y, shift(lk.headSh, -1));
-    c.set(SX - 2, HEAD_TOP - 6, lk.headSh);
-    // Peak, thrown forward and to the far side.
-    for (let x = SX - 21; x <= SX + 7; x++) {
-      const nx = (x - SX) / 21;
+    for (let x = SX - 15; x <= SX + 5; x++) {
+      const nx = (x - SX) / 15;
       const y = peakY + 1 + Math.round(nx * nx * 2);
       c.set(x, y, lk.headSh);
       c.set(x, y + 1, C.InkDeep);
     }
-    for (let x = SX - 17; x <= SX + 5; x++) {
-      for (let y = peakY + 3; y <= peakY + 5; y++) {
-        if (c.get(x, y) === lk.skin) c.set(x, y, lk.skinSh);
+    for (let x = SX - 12; x <= SX + 4; x++) {
+      for (let y = peakY + 3; y <= peakY + 4; y++) {
+        if (c.get(x, y) === base) c.set(x, y, sh);
       }
     }
     return;
   }
 
-  // Hood.
-  //
-  // The first version was a trapezoid with a rectangular hole punched in
-  // it, which read as a cardboard mask. A hood is cloth draped over a
-  // sphere: the opening is an oval, the cloth stands away from the head
-  // rather than hugging it, and there is a thick rolled lip around the
-  // face that catches the light.
-  const faceCY = EYE_Y + 2;
-  const openRX = 14;
-  const openRY = 18;
+  // Hood: cloth draped over a sphere. An oval opening with a rolled lip,
+  // not a trapezoid with a rectangular hole — that read as a cardboard mask.
+  // Centred on the head, not on the face stamp. The round head is shorter
+  // and wider than the pointed one, and the opening has to follow it or
+  // the hood crops the chin off.
+  const faceCY = Math.round((HEAD_TOP + CHIN) / 2) + 1;
   const inOpening = (x: number, y: number, grow = 0): boolean => {
-    const ox = (x - FX) / (openRX + grow);
-    const oy = (y - faceCY) / (openRY + grow);
+    const ox = (x - SX) / (14 + grow);
+    const oy = (y - faceCY) / (15 + grow);
     return ox * ox + oy * oy < 1;
   };
 
-  for (let y = HEAD_TOP - 9; y <= SHOULDER_Y + 6; y++) {
-    const t = (y - (HEAD_TOP - 9)) / (SHOULDER_Y + 6 - (HEAD_TOP - 9));
-    // Round over the crown, then widening down onto the shoulders.
-    const crown = t < 0.3 ? 20 * Math.sqrt(Math.max(0, 1 - Math.pow((0.3 - t) / 0.34, 2))) : 20;
-    const half = Math.round((crown + Math.max(0, t - 0.3) * 16) * g.wide);
+  for (let y = HEAD_TOP - 8; y <= SHOULDER_Y + 5; y++) {
+    const t = (y - (HEAD_TOP - 8)) / (SHOULDER_Y + 5 - (HEAD_TOP - 8));
+    const crown = t < 0.3
+      ? 16 * Math.sqrt(Math.max(0, 1 - Math.pow((0.3 - t) / 0.34, 2)))
+      : 16;
+    const half = Math.round((crown + Math.max(0, t - 0.3) * 13) * g.wide);
     for (let x = SX - half; x <= SX + half; x++) {
-      if (inOpening(x, y) && y < CHIN + 2) continue;
+      if (inOpening(x, y) && y < chinRow(g) + 2) continue;
       const nx = (x - SX) / Math.max(1, half);
       c.set(x, y, nx < -0.3 ? lk.headCol : nx > 0.5 ? shift(lk.headSh, -1) : lk.headSh);
     }
   }
-
-  // The rolled lip around the opening: two rings, the outer one lit.
-  for (let y = HEAD_TOP - 9; y <= CHIN + 2; y++) {
-    for (let x = SX - 24; x <= SX + 24; x++) {
-      if (inOpening(x, y)) continue;
-      if (!inOpening(x, y, 2)) continue;
-      c.set(x, y, x < FX ? shift(lk.headCol, 1) : lk.headCol);
+  for (let y = HEAD_TOP - 8; y <= chinRow(g) + 2; y++) {
+    for (let x = SX - 18; x <= SX + 18; x++) {
+      if (inOpening(x, y) || !inOpening(x, y, 2)) continue;
+      c.set(x, y, x < SX ? shift(lk.headCol, 1) : lk.headCol);
     }
   }
-
-  // Folds falling from the crown, so the cloth has a direction.
   for (let k = -2; k <= 2; k++) {
-    const fx = SX + k * 7 - 2;
-    for (let y = HEAD_TOP - 8; y <= SHOULDER_Y + 6; y++) {
+    const fx = SX + k * 6;
+    for (let y = HEAD_TOP - 7; y <= SHOULDER_Y + 5; y++) {
       if (inOpening(fx, y, 3)) continue;
       const v = c.get(fx, y);
       if (v === lk.headSh || v === lk.headCol) c.set(fx, y, shift(lk.headSh, -1));
     }
   }
-
-  // A little hair at the hairline, inside the opening. Without it the face
-  // floats in the cowl like a mask on a stick.
-  for (let x = SX - 12; x <= SX + 12; x++) {
-    const nx = (x - SX) / 12;
-    const hemBase = EYE_Y - 13 + Math.cos(nx * 1.5) * 3;
-    for (let y = EYE_Y - 18; y <= hemBase; y++) {
-      if (!inOpening(x, y)) continue;
-      if (c.get(x, y) === 0) continue;
-      c.set(x, y, nx < -0.2 ? lk.hair : lk.hairSh);
+  // Hair at the hairline inside the opening, then one value of shade over
+  // the brow. Crushing this to black turned the face into a cut-out
+  // floating in a hole.
+  for (let x = SX - 10; x <= SX + 10; x++) {
+    const bottom = Math.round(hemAt(x));
+    for (let y = HEAD_TOP - 6; y <= bottom; y++) {
+      if (!inOpening(x, y) || c.get(x, y) === TRANSPARENT) continue;
+      c.set(x, y, (x - SX) / 10 < -0.2 ? lk.hair : lk.hairSh);
     }
   }
-
-  // The dark inside a hood. Everything above the brow loses a value — but
-  // only one. Crushing it to black turned the face into a cut-out floating
-  // in a hole.
-  for (let x = SX - 16; x <= SX + 16; x++) {
-    for (let y = HEAD_TOP; y <= EYE_Y - 6; y++) {
-      const v = c.get(x, y);
-      if (v === lk.skin) c.set(x, y, lk.skinSh);
-      else if (v === shift(lk.skin, 1)) c.set(x, y, lk.skin);
-      else if (v === lk.hair) c.set(x, y, lk.hairSh);
-      else if (v === lk.hairSh) c.set(x, y, shift(lk.hairSh, -1));
+  for (let x = SX - 12; x <= SX + 12; x++) {
+    for (let y = HEAD_TOP; y <= FACE_Y + 1; y++) {
+      if (c.get(x, y) === base) c.set(x, y, sh);
     }
   }
 }
