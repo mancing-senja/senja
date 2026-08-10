@@ -82,30 +82,36 @@ const HEAD_TOP = 5;
  *  taper to a rounded chin. Computing this from a curve is what produced a
  *  slab with a square jaw. */
 const PROFILE = [
-  // Anime proportions: a big round cranium and a long taper to a small
-  // pointed chin. The cranium is wider than a realistic head and the jaw
-  // is narrower, and that ratio is doing most of the stylistic work —
-  // before any of the features are drawn.
+  // A round head. Nearly as wide as it is tall.
   //
-  // The step pattern matters as much as the shape. A circle of radius 12
-  // steps 2,2,1,1,0,1 across its top; any other pattern reads as a dent.
-  5, 7, 9, 10, 11, 11,
-  // Temples, straight through the eye line.
-  12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12,
-  // Cheek, then jaw. The taper starts slow and finishes fast, which is
-  // what makes the chin read as pointed rather than merely small.
-  11, 11, 10, 10, 9, 9, 8, 7, 6, 5, 4, 4, 3, 2,
+  // The version before this tapered continuously from the cheekbone down
+  // to a two-pixel chin, and the result did not read as a person — a face
+  // that narrows the whole way is a wedge, and a wedge is a mask. Look at
+  // any of the references: the width holds near its maximum for most of
+  // the head, the cheek stays full, and the jaw only turns in over the
+  // last few rows, to a chin that is *blunt*.
+  //
+  // Full cheeks are what make a face read as healthy and human. A pointed
+  // one reads as a doll however good the eyes on it are.
+  5, 8, 10, 11, 12, 12,
+  // Cheeks. Thirteen rows at full width — this long run is the whole fix.
+  13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13,
+  // Jaw: in fast, and stopping blunt rather than at a point.
+  12, 12, 11, 10, 8, 6,
 ];
 const CHIN = HEAD_TOP + PROFILE.length - 1;
 const NECK_TOP = CHIN + 1;
-const SHOULDER_Y = 40;
+/** The round head is six rows shorter than the pointed one it replaced, so
+ *  the shoulders come up to meet it. Left where it was, the neck ran a
+ *  dozen rows and read as a post with a head balanced on top. */
+const SHOULDER_Y = 37;
 
-/** Where the authored face stamp lands. 25 columns, x12 to x36. */
-const FACE_X = SX - 12;
-const FACE_Y = 16;
-/** Top row of the eyes. Sits just below the head's vertical middle, which
- *  is where anime puts them and roughly a third lower than a real face. */
-const EYE_Y = 19;
+/** Where the authored face stamp lands. 27 columns, x11 to x37. */
+const FACE_X = SX - 13;
+const FACE_Y = 15;
+/** Top row of the eyes — the heavy upper lid, not the aperture. Sits just
+ *  below the head's vertical middle, which is where anime puts them. */
+const EYE_Y = 17;
 
 /** The face.
  *
@@ -121,74 +127,74 @@ const EYE_Y = 19;
  *  the nose is a two-row bridge shadow with a lit tip — never an outline,
  *  which at this size is a beak. */
 const FACE: readonly string[] = [
-  //  0    5    10   15   20
-  //  |    |    |    |    |
-  // Rows 16-17 are left empty: the brows are stamped separately per mood,
+  //  0    5    10   15   20   25
+  //  |    |    |    |    |    |
+  // Rows 15-16 are left empty: the brows are stamped separately per mood,
   // and a brow drawn here as well would survive under the mood's blanks and
   // flatten every expression back to neutral.
-  '.........................', // 16  brow
-  '.........................', // 17  brow
-  // Row 18 used to carry an upper-lid shadow. Stacked under two rows of
-  // brow and above the lash line it made four dark rows in a row, and the
-  // whole band read as a pair of sunglasses. The brow needs clear skin
-  // under it or it stops being a brow.
-  '.........................', // 18
-  '..hhhhhhh.......hhhhhhh..', // 19  lash: thick, and only along the top
-  '..jkkkkkj.......jkkkkkj..', // 20  iris, whites at the corners
-  '..jikllkj.......jikllkj..', // 21  catchlight, then pupil
-  '..jkkllkj.......jkkllkj..', // 22  pupil
-  '..jjKKKjj.......jjKKKjj..', // 23  iris floor, lit
-  '...jjjjj.........jjjjj...', // 24  lower lid
-  '..ccccccc.......ccccccc..', // 25  socket shadow
-  // Blush, dithered. Drawn solid it was a bar of paint across the face.
-  '..p.p.p...........p.p.p..', // 26
-  '...ppp.............ppp...', // 27
-  '............dd...........', // 28  nose: two pixels of shadow, no more
-  '.........................', // 29
-  '.........................', // 30  mouth is stamped per mood
-  '.........................', // 31
-  '.........................', // 32
-  '.........................', // 33
+  '...........................', // 15  brow
+  '...........................', // 16  brow
+  // Two solid rows of upper lid. The references all have this — a heavy
+  // lid over a big iris is what makes an anime eye look lidded and alive
+  // rather than like a bead glued to a face.
+  '..hhhhhhhh.......hhhhhhhh..', // 17
+  '..hhhhhhhh.......hhhhhhhh..', // 18
+  '..jikkkkij.......jikkkkij..', // 19  catchlight, then iris
+  '..jkkllkkj.......jkkllkkj..', // 20  pupil
+  '..jjKKKKjj.......jjKKKKjj..', // 21  iris floor, lit
+  '...jjjjjj.........jjjjjj...', // 22  lower lid
+  '...........................', // 23
+  // Blush sits low and outboard on a full cheek — the references put it
+  // out near the jaw, not up against the eye.
+  '...ppp...............ppp...', // 24
+  '...ppp.......d.......ppp...', // 25  and the nose: one pixel
+  '...........................', // 26
+  '...........................', // 27  mouth is stamped per mood
+  '...........................', // 28
+  '...........................', // 29
 ];
 
 /** Mood is three rows of brow and three of mouth. Nothing else moves —
  *  changing the eyes as well made the same person read as two people. */
 const BROWS: Record<Mood, readonly string[]> = {
   neutral: [
-    '..hhhhhhh.......hhhhhhh..',
-    '.........................',
+    '..hhhhhhhh.......hhhhhhhh..',
+    '...........................',
   ],
   // Inner ends up: sympathy, interest, pleasure. The inner half rides the
   // upper row, the outer half the lower one.
   warm: [
-    '.....hhhh.......hhhh.....',
-    '..hhh...............hhh..',
+    '......hhhh.......hhhh......',
+    '..hhhh...............hhhh..',
   ],
   // Inner ends down: impatience, suspicion.
   cold: [
-    '..hhh...............hhh..',
-    '.....hhhh.......hhhh.....',
+    '..hhhh...............hhhh..',
+    '......hhhh.......hhhh......',
   ],
 };
 
 /** A mouth at this size is one dark row and one lit row. The first version
  *  used a near-black five-wide bar with a bright band under it, and every
  *  villager looked like they were screaming. */
+/** Two pixels, sometimes three. Every reference has a mouth this small —
+ *  at this scale anything wider stops being a mouth and becomes an
+ *  expression you did not ask for. */
 const MOUTHS: Record<Mood, readonly string[]> = {
   neutral: [
-    '.........................',
-    '...........mmm...........',
-    '............a............',
+    '...........................',
+    '.............mm............',
+    '...........................',
   ],
   warm: [
-    '..........m...m..........',
-    '...........mmm...........',
-    '..........aaaaa..........',
+    '............m..m...........',
+    '.............mm............',
+    '............aaaa...........',
   ],
   cold: [
-    '.........................',
-    '..........mmmmm..........',
-    '.........c.....c.........',
+    '...........................',
+    '............mmmm...........',
+    '...........c....c..........',
   ],
 };
 
@@ -430,7 +436,7 @@ function stampFace(
   stamp(BROWS[mood], FACE_Y - 1);
   // The mouth drops with a long jaw so it stays low on the face rather
   // than riding up into the middle of it.
-  stamp(MOUTHS[mood], FACE_Y + 14 + g.longJaw);
+  stamp(MOUTHS[mood], FACE_Y + 11 + g.longJaw);
 
   // A warm mood gets a second row of blush, so the same face reads as
   // pleased rather than merely present.
@@ -532,10 +538,15 @@ function drawBust(c: PixelCanvas, lk: Look, g: Geom): void {
  *  it. The points reach row 19, which is the lash line, so a few pixels of
  *  hair fall in front of the eyes — which is where anime puts them. */
 const BANG_HEM: readonly number[] = [
-  13, 15, 17, 18, 16, 14,
-  13, 15, 17, 18, 16, 14,
-  13, 15, 17, 18, 17, 14,
-  13, 15, 17, 18, 16, 14, 13,
+  // The tips stop at row 15, two clear rows above the lid at 17. Letting
+  // them touch merged the fringe and the lash into one dark mass across
+  // the face — worst on the dark-haired characters, where the whole band
+  // read as a bar rather than as hair above eyes.
+  10, 12, 14, 15, 13,
+  10, 12, 14, 15, 13,
+  10, 12, 14, 15, 14,
+  10, 12, 14, 15, 13,
+  10, 12, 14, 15, 13, 11, 9,
 ];
 
 /** The outer silhouette of the hair mass, half-width per row from
@@ -552,15 +563,17 @@ const BANG_HEM: readonly number[] = [
  *  out as a flat-topped block: a box sitting on the head. */
 const HAIR_SPAN: readonly number[] = [
   // The hair's own crown, above the skull. These are the widths a circle
-  // of radius 15 actually has — 5,7,9,10,11,12 — because a dome that
-  // widens too slowly at the top comes out flat, and a flat-topped mass
-  // reads as a helmet however good the fringe under it is.
-  5, 7, 9, 10,
-  11, 12, 13, 13, 14, 14,
-  // Temples, with the flare that puts hair wider than the skull.
-  14, 15, 15, 16, 16, 15,
+  // of radius 17 actually has, because a dome that widens too slowly at
+  // the top comes out flat, and a flat-topped mass reads as a helmet
+  // however good the fringe under it is.
+  6, 8, 10, 11,
+  12, 13, 14, 14, 15, 15,
+  // Temples. Hair is three or four pixels wider than the head here — in
+  // every reference the hair mass is plainly bigger than the skull, and
+  // that gap is what makes it read as hair rather than as paint on a head.
+  16, 16, 16, 17, 17, 17,
   // Falling past the eyes.
-  15, 14, 14, 13,
+  16, 16, 15, 14,
 ];
 
 function hairSpanAt(y: number, g: Geom): number {
@@ -571,7 +584,7 @@ function hairSpanAt(y: number, g: Geom): number {
 }
 
 function hemAt(x: number): number {
-  const i = x - (SX - 12);
+  const i = x - (SX - 13);
   if (i < 0 || i >= BANG_HEM.length) return HEAD_TOP + 6;
   return BANG_HEM[i];
 }
@@ -614,7 +627,7 @@ function drawHair(c: PixelCanvas, lk: Look, g: Geom, rng: Rng): void {
     // which is what separates one clump from the next — without it the
     // authored hem just makes a single scalloped block.
     for (let k = 0; k < BANG_HEM.length; k++) {
-      const x = SX - 12 + k;
+      const x = SX - 13 + k;
       const hemHere = BANG_HEM[k];
       const hemPrev = BANG_HEM[Math.max(0, k - 1)];
       // A column that hangs lower than the one before it starts a clump.
@@ -626,7 +639,7 @@ function drawHair(c: PixelCanvas, lk: Look, g: Geom, rng: Rng): void {
 
     // The tip of each wedge, darkened, so the point reads as a point.
     for (let k = 1; k < BANG_HEM.length - 1; k++) {
-      const x = SX - 12 + k;
+      const x = SX - 13 + k;
       if (BANG_HEM[k] <= BANG_HEM[k - 1] || BANG_HEM[k] < BANG_HEM[k + 1]) continue;
       c.set(x, BANG_HEM[k], dark);
       c.set(x, BANG_HEM[k] - 1, lk.hairSh === light ? lk.hair : lk.hairSh);
@@ -653,7 +666,7 @@ function drawHair(c: PixelCanvas, lk: Look, g: Geom, rng: Rng): void {
     // The shadow the fringe throws on the forehead. This is what seats
     // hair *on* a head instead of beside it.
     for (let k = 0; k < BANG_HEM.length; k++) {
-      const x = SX - 12 + k;
+      const x = SX - 13 + k;
       const y = BANG_HEM[k] + 1;
       if (Math.abs(x - SX) > halfAt(y, g)) continue;
       if (c.get(x, y) !== TRANSPARENT) c.set(x, y, sh);
@@ -781,10 +794,13 @@ function drawHeadwear(c: PixelCanvas, lk: Look, g: Geom): void {
 
   // Hood: cloth draped over a sphere. An oval opening with a rolled lip,
   // not a trapezoid with a rectangular hole — that read as a cardboard mask.
-  const faceCY = FACE_Y + 8;
+  // Centred on the head, not on the face stamp. The round head is shorter
+  // and wider than the pointed one, and the opening has to follow it or
+  // the hood crops the chin off.
+  const faceCY = Math.round((HEAD_TOP + CHIN) / 2) + 1;
   const inOpening = (x: number, y: number, grow = 0): boolean => {
-    const ox = (x - SX) / (12 + grow);
-    const oy = (y - faceCY) / (16 + grow);
+    const ox = (x - SX) / (14 + grow);
+    const oy = (y - faceCY) / (15 + grow);
     return ox * ox + oy * oy < 1;
   };
 
