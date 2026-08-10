@@ -180,29 +180,45 @@ const HAIRS: Array<[number, number]> = [
   [C.Red, C.Rose],
 ];
 
-/** Twelve looks, deliberately spread across skin, hair, headwear and
- *  outfit so that two villagers on screen never read as recolours of each
- *  other. Index doubles as the network "hue", so remote players show up
- *  wearing the right thing. */
+/** Twelve looks, in modern casual clothes.
+ *
+ *  The cast used to be dressed for a costume drama — saturated red shirts,
+ *  banner-blue tabards, neon cyan. Against the reference sheets that is the
+ *  loudest thing wrong with it: those characters wear hoodies, sweaters,
+ *  jackets, skirts and trainers, in tones a step or two off grey. Nobody
+ *  who just got home from work is wearing a primary colour.
+ *
+ *  So: muted, low-saturation, and hoodie-forward. The saturated end of the
+ *  palette is still there — it is just reserved for one accent per person
+ *  rather than for whole garments.
+ *
+ *  Still deliberately spread across skin, hair, headwear and outfit so two
+ *  villagers on screen never read as recolours of each other. Index doubles
+ *  as the network "hue", so remote players show up wearing the right thing. */
 export const LOOKS: Look[] = [
-  look('petani', 0, 0, 'short', 'hat', C.Amber, C.Wood, 'shirt', C.Red, C.Rose),
-  look('nelayan', 1, 2, 'crop', 'cap', C.WaterSh, C.WaterDp, 'jacket', C.Grass, C.GrassDk),
-  look('pedagang', 0, 3, 'tied', 'bare', 0, 0, 'tunic', C.Amber, C.Wood),
-  look('pemuda', 2, 1, 'short', 'hood', C.Slate, C.Ink, 'hoodie', C.WaterBr, C.WaterSh),
-  look('gadis', 0, 4, 'bob', 'bare', 0, 0, 'shirt', C.Purple, C.Dusk),
-  look('tetua', 1, 3, 'crop', 'hat', C.Wood, C.WoodDk, 'tunic', C.Pale, C.Mist),
-  look('kurir', 2, 1, 'crop', 'cap', C.Banner, C.Dusk, 'jacket', C.Orange, C.Wood),
-  look('penjaga', 0, 3, 'short', 'cap', C.Stone, C.StoneDk, 'jacket', C.BannerBlue, C.WaterDp),
-  look('peramu', 1, 0, 'bob', 'hood', C.Forest, C.ForestDp, 'hoodie', C.GrassDk, C.Forest),
-  look('anak', 0, 2, 'short', 'bare', 0, 0, 'shirt', C.SunGlow, C.Amber),
-  look('perantau', 2, 4, 'tied', 'hat', C.WoodDk, C.WoodDp, 'jacket', C.Rose, C.Purple),
-  look('teknisi', 1, 1, 'crop', 'cap', C.CyberSteel, C.CyberSlate, 'hoodie', C.NeonCyan, C.CyberSteel),
+  // Black hoodie, khaki cargos, white trainers.
+  look('petani', 0, 0, 'short', 'cap', C.WoodDk, C.WoodDp, 'hoodie', C.Ink, C.InkDeep, C.Wood, C.Pale),
+  look('nelayan', 1, 2, 'crop', 'cap', C.Slate, C.InkDeep, 'jacket', C.Forest, C.ForestDp, C.Ink, C.Pale),
+  // Cream sweater over a dark skirt.
+  look('pedagang', 0, 3, 'tied', 'bare', 0, 0, 'hoodie', C.SunGlow, C.Amber, C.Slate, C.InkDeep),
+  look('pemuda', 2, 1, 'short', 'hood', C.Slate, C.Ink, 'hoodie', C.SlateLt, C.Slate, C.InkDeep, C.Ink),
+  // Purple hoodie, cream skirt.
+  look('gadis', 0, 4, 'bob', 'bare', 0, 0, 'hoodie', C.Purple, C.Dusk, C.SunGlow, C.Pale),
+  look('tetua', 1, 3, 'crop', 'bare', 0, 0, 'jacket', C.Mist, C.Slate, C.WoodDk, C.WoodDp),
+  look('kurir', 2, 1, 'crop', 'cap', C.WoodDk, C.WoodDp, 'jacket', C.Wood, C.WoodDk, C.Ink, C.Pale),
+  look('penjaga', 0, 3, 'short', 'cap', C.Slate, C.Ink, 'jacket', C.WaterDp, C.Ink, C.Slate, C.InkDeep),
+  // Green jacket over a pale hoodie.
+  look('peramu', 1, 0, 'bob', 'hood', C.Forest, C.ForestDp, 'hoodie', C.GrassDk, C.Forest, C.Ink, C.Pale),
+  look('anak', 0, 2, 'short', 'bare', 0, 0, 'hoodie', C.Pale, C.Mist, C.WaterDp, C.Pale),
+  look('perantau', 2, 4, 'tied', 'hat', C.WoodDk, C.WoodDp, 'jacket', C.Dusk, C.InkDeep, C.WoodDk, C.WoodDp),
+  look('teknisi', 1, 1, 'crop', 'cap', C.CyberSlate, C.CyberVoid, 'hoodie', C.CyberSteel, C.CyberSlate, C.InkDeep, C.Slate),
 ];
 
 function look(
   id: string, skinI: number, hairI: number, hairStyle: HairStyle,
   head: HeadGear, headCol: number, headSh: number,
   outfit: Outfit, shirt: number, shirtDim: number,
+  pants: number, boot: number,
 ): Look {
   const [skin, skinSh] = SKINS[skinI];
   const [hair, hairSh] = HAIRS[hairI];
@@ -210,8 +226,7 @@ function look(
     id, skin, skinSh, hair, hairSh, hairStyle, head, headCol, headSh,
     outfit, shirt, shirtDim,
     trim: C.White,
-    pants: outfit === 'tunic' ? C.WoodDk : C.Slate,
-    boot: C.WoodDp,
+    pants, boot,
   };
 }
 

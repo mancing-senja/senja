@@ -106,8 +106,14 @@ const NECK_TOP = CHIN + 1;
  *  dozen rows and read as a post with a head balanced on top. */
 const SHOULDER_Y = 37;
 
-/** Where the authored face stamp lands. 27 columns, x11 to x37. */
-const FACE_X = SX - 13;
+/** Where the authored face stamp lands. 27 columns, x11 to x37.
+ *
+ *  Shifted two pixels off the skull's centre. That offset *is* the
+ *  three-quarter turn: every reference sheet has the head angled rather
+ *  than square to the viewer, and a face dead-centre on its skull is the
+ *  most immediate tell that a portrait was assembled rather than drawn. */
+const TURN = 2;
+const FACE_X = SX - 13 - TURN;
 const FACE_Y = 15;
 /** Top row of the eyes — the heavy upper lid, not the aperture. Sits just
  *  below the head's vertical middle, which is where anime puts them. */
@@ -137,17 +143,22 @@ const FACE: readonly string[] = [
   // Two solid rows of upper lid. The references all have this — a heavy
   // lid over a big iris is what makes an anime eye look lidded and alive
   // rather than like a bead glued to a face.
-  '..hhhhhhhh.......hhhhhhhh..', // 17
-  '..hhhhhhhh.......hhhhhhhh..', // 18
-  '..jikkkkij.......jikkkkij..', // 19  catchlight, then iris
-  '..jkkllkkj.......jkkllkkj..', // 20  pupil
-  '..jjKKKKjj.......jjKKKKjj..', // 21  iris floor, lit
-  '...jjjjjj.........jjjjjj...', // 22  lower lid
+  //
+  // The far eye is six wide against the near eye's eight. That difference
+  // is the three-quarter turn as far as the face is concerned: drawing
+  // both eyes the same size on a turned head is what makes a portrait
+  // read as facing two directions at once.
+  '...hhhhhhhh.......hhhhhh...', // 17
+  '...hhhhhhhh.......hhhhhh...', // 18
+  '...jikkkkij.......jikkkj...', // 19  catchlight, then iris
+  '...jkkllkkj.......jkllkj...', // 20  pupil
+  '...jjKKKKjj.......jKKKKj...', // 21  iris floor, lit
+  '....jjjjjj.........jjjj....', // 22  lower lid
   '...........................', // 23
   // Blush sits low and outboard on a full cheek — the references put it
   // out near the jaw, not up against the eye.
-  '...ppp...............ppp...', // 24
-  '...ppp.......d.......ppp...', // 25  and the nose: one pixel
+  '....ppp..............ppp...', // 24
+  '....ppp......d.......ppp...', // 25  and the nose: one pixel
   '...........................', // 26
   '...........................', // 27  mouth is stamped per mood
   '...........................', // 28
@@ -158,19 +169,19 @@ const FACE: readonly string[] = [
  *  changing the eyes as well made the same person read as two people. */
 const BROWS: Record<Mood, readonly string[]> = {
   neutral: [
-    '..hhhhhhhh.......hhhhhhhh..',
+    '...hhhhhhhh.......hhhhhh...',
     '...........................',
   ],
   // Inner ends up: sympathy, interest, pleasure. The inner half rides the
   // upper row, the outer half the lower one.
   warm: [
-    '......hhhh.......hhhh......',
-    '..hhhh...............hhhh..',
+    '.......hhhh.......hhhh.....',
+    '...hhhh................hh..',
   ],
   // Inner ends down: impatience, suspicion.
   cold: [
-    '..hhhh...............hhhh..',
-    '......hhhh.......hhhh......',
+    '...hhhh................hh..',
+    '.......hhhh.......hhhh.....',
   ],
 };
 
@@ -365,14 +376,13 @@ function drawHead(c: PixelCanvas, lk: Look, g: Geom): void {
     }
   }
 
-  // Ears, at eye height, small. An ear that reads clearly at this size is
-  // an ear that is too big — and anime usually hides them under hair.
-  for (const side of [-1, 1] as const) {
-    const ex = Math.round(SX + side * halfAt(EYE_Y + 2, g));
-    for (let y = EYE_Y + 1; y <= EYE_Y + 5; y++) {
-      c.set(ex, y, side < 0 ? base : sh);
-      c.set(ex + side, y, side < 0 ? sh : deep);
-    }
+  // One ear, on the far side of the turn — the near one is hidden by the
+  // angle of the head. Drawing both is what makes a turned portrait look
+  // like it is facing two directions at once.
+  const ex = Math.round(SX + halfAt(EYE_Y + 2, g));
+  for (let y = EYE_Y + 1; y <= EYE_Y + 5; y++) {
+    c.set(ex, y, sh);
+    c.set(ex + 1, y, deep);
   }
 }
 
@@ -453,18 +463,18 @@ function stampFace(
 }
 
 function drawNeck(c: PixelCanvas, lk: Look, g: Geom): void {
-  const [deep, sh] = skinRamp(lk);
+  const [deep, sh, base] = skinRamp(lk);
   const top = NECK_TOP + g.longJaw;
   for (let y = top; y <= SHOULDER_Y + 1; y++) {
     // A trapezoid, not a post: the neck widens into the shoulders.
     const half = Math.round((4 + (y - top) * 0.4) * g.wide);
     for (let x = SX - half; x <= SX + half; x++) {
-      // The jaw throws a shadow across the top of the neck that fades as it
-      // falls. That shadow is what glues the head to the body — but the
-      // skin ramp steps hard, so holding the deep tone down the whole neck
-      // turned it into a dark brown post that read as a beard.
+      // The jaw's shadow lands on the top row and nowhere else. The skin
+      // ramp steps hard, so anything more than that turns the neck into a
+      // dark column — which on the muted outfits read as a collar, or a
+      // beard, on every character at once.
       const fall = y - top;
-      c.set(x, y, fall < 2 ? deep : x > SX + half - 2 ? deep : sh);
+      c.set(x, y, fall === 0 ? deep : x > SX + half - 2 ? sh : base);
     }
   }
 }
