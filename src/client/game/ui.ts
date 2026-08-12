@@ -23,6 +23,14 @@ interface FeedLine {
   age: number;
 }
 
+/** Trims a label to fit a column, with an ellipsis when it does not. */
+function clipTo(text: string, px: number): string {
+  if (textWidth(text) <= px) return text;
+  let out = text;
+  while (out.length > 1 && textWidth(out + '.') > px) out = out.slice(0, -1);
+  return out + '.';
+}
+
 const FEED_HOLD = 11;
 const FEED_FADE = 1.6;
 
@@ -159,6 +167,8 @@ export class Ui {
   }
 
   showLog = false;
+  /** Which page of the catch journal is open. */
+  logPage = 0;
   showBoard = false;
 
   /** The fragment currently being read, if any. */
@@ -236,36 +246,50 @@ export class Ui {
   /** The catch log: every species, greyed out until you have landed one.
    *  Rows are laid out in two columns so the whole roster fits one screen. */
   private drawLogPanel(d: Draw, ctx: HudCtx): void {
-    const w = 250;
+    // Paged, because the roster is eighty-six species and a single sheet
+    // needed four hundred and seventy pixels of a hundred-and-fifty-pixel
+    // panel. Three columns of eleven fits the box exactly; anything that
+    // does not fit gets a page rather than being drawn off the bottom edge
+    // where nobody can see it.
+    const w = 306;
     const h = 156;
     const x = Math.round(view.w / 2 - w / 2);
     const y = Math.round(view.h / 2 - h / 2);
+    const COLS = 3;
+    const ROWS = 11;
+    const perPage = COLS * ROWS;
+    const pages = Math.max(1, Math.ceil(SPECIES.length / perPage));
+    const page = ((this.logPage % pages) + pages) % pages;
+
     d.panel(x, y, w, h, 1, C.Amber);
     d.text('CATATAN TANGKAPAN', x + 8, y + 6, C.Lantern);
 
     const known = Object.keys(ctx.farm.log).length;
-    const total = SPECIES.length;
-    const label = `${known}/${total}`;
+    const label = `${known}/${SPECIES.length}`;
     d.text(label, x + w - textWidth(label) - 8, y + 6, C.Pale, 0.85);
 
-    const perCol = Math.ceil(SPECIES.length / 2);
-    for (let i = 0; i < SPECIES.length; i++) {
+    const from = page * perPage;
+    const to = Math.min(SPECIES.length, from + perPage);
+    for (let i = from; i < to; i++) {
       const s = SPECIES[i];
-      const col = Math.floor(i / perCol);
-      const row = i % perCol;
-      const cx = x + 8 + col * 120;
-      const cy = y + 18 + row * 11;
+      const k = i - from;
+      const cx = x + 8 + Math.floor(k / ROWS) * 98;
+      const cy = y + 18 + (k % ROWS) * 11;
       const e = ctx.farm.log[s.id];
       if (e) {
         d.sprite(`fish_${s.id}`, cx, cy - 2, { scale: 1, alpha: 1, dw: 14, dh: 8 });
-        d.text(s.label, cx + 17, cy, C.White, 0.95);
-        d.text(`${e.best}`, cx + 104 - textWidth(`${e.best}`), cy, C.Amber, 0.9);
+        // Names are longer than they were and the columns are narrower;
+        // clipping beats overlapping the next column.
+        d.text(clipTo(s.label, 58), cx + 17, cy, C.White, 0.95);
+        d.text(`${e.best}`, cx + 90 - textWidth(`${e.best}`), cy, C.Amber, 0.9);
       } else {
         d.rect(cx + 2, cy + 1, 10, 5, C.Slate, 0.5);
         d.text('- - -', cx + 17, cy, C.Slate, 0.8);
       }
     }
-    d.textCentered('j tutup', view.w / 2, y + h - 10, C.Mist, C.InkDeep, 0.7);
+
+    const nav = pages > 1 ? `< ${page + 1}/${pages} >   a d ganti   j tutup` : 'j tutup';
+    d.textCentered(nav, view.w / 2, y + h - 10, C.Mist, C.InkDeep, 0.7);
   }
 
   private drawClock(d: Draw, ctx: HudCtx): void {

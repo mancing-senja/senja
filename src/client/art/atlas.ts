@@ -51,7 +51,15 @@ export interface Atlas {
 }
 
 const ATLAS_W = 1024;
-const ATLAS_H = 1024;
+/** Taller, not wider.
+ *
+ *  The 1024-square sheet was already about 95% full before the roster grew
+ *  to eighty-six species; three sprites each tipped it over and the packer
+ *  threw. Growing the height doubles the space for eight megabytes of
+ *  texture instead of the sixteen a 2048 square would cost, and the packer
+ *  fills in shelves top to bottom so the extra room is exactly where it
+ *  gets used. Both dimensions stay powers of two. */
+const ATLAS_H = 2048;
 const PAD = 1;
 
 class ShelfPacker {
@@ -282,6 +290,9 @@ export function buildAtlas(overrides: Overrides = new Map()): Atlas {
   for (const [name, look] of Object.entries(FISH_LOOKS)) {
     add(`fish_${name}`, makeFish(look, fishSeed++, 22, 12));
     add(`fishbig_${name}`, makeFish(look, fishSeed++, 40, 22));
+    // The rare cut. Only the big size — the small sprite is a feed icon and
+    // filaments are illegible at 22 pixels.
+    add(`fishrare_${name}`, makeFish(look, fishSeed - 1, 40, 22, true));
   }
   for (const [name, look] of Object.entries(CROP_LOOKS)) {
     for (let s = 0; s <= 4; s++) add(`crop_${name}_${s}`, makeCrop(look, s));

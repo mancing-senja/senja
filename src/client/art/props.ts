@@ -366,9 +366,10 @@ export interface FishArt {
   fin: number;
   /** Body proportions, so species are told apart by silhouette and not
    *  only by colour: 'round' bream, 'long' eels, 'flat' rays, 'normal'. */
-  shape?: 'normal' | 'long' | 'round' | 'flat' | 'spiny';
+  shape?: 'normal' | 'long' | 'round' | 'flat' | 'spiny'
+    | 'ribbon' | 'fan' | 'bulb' | 'arrow';
   /** Extra markings. */
-  marks?: 'none' | 'stripes' | 'spots' | 'band';
+  marks?: 'none' | 'stripes' | 'spots' | 'band' | 'mesh' | 'ocelli' | 'blotch';
 }
 
 export const FISH_LOOKS: Record<string, FishArt> = {
@@ -396,6 +397,66 @@ export const FISH_LOOKS: Record<string, FishArt> = {
   oldboot: { body: C.WoodDk, belly: C.Wood, fin: C.WoodDp, shape: 'flat' },
   kaleng: { body: C.SlateLt, belly: C.Mist, fin: C.Slate, shape: 'flat' },
 
+  gurame: { body: C.SlateLt, belly: C.Pale, fin: C.Slate, shape: 'round', marks: 'mesh' },
+  nilem: { body: C.Mist, belly: C.White, fin: C.SlateLt, marks: 'mesh' },
+  bader: { body: C.Pale, belly: C.White, fin: C.Mist, shape: 'flat', marks: 'stripes' },
+  lukas: { body: C.GrassDk, belly: C.GrassLt, fin: C.Forest, marks: 'blotch' },
+  keting: { body: C.WoodDk, belly: C.Wood, fin: C.WoodDp, shape: 'spiny' },
+  baung: { body: C.Wood, belly: C.SkinSh, fin: C.WoodDp, shape: 'long', marks: 'blotch' },
+  tambakan: { body: C.Rose, belly: C.Pale, fin: C.Purple, shape: 'round', marks: 'band' },
+  sepatsiam: { body: C.Mist, belly: C.White, fin: C.SlateLt, shape: 'flat', marks: 'stripes' },
+  lais: { body: C.Pale, belly: C.White, fin: C.Mist, shape: 'ribbon' },
+  toman: { body: C.ForestDp, belly: C.Orange, fin: C.Forest, shape: 'long', marks: 'blotch' },
+  kelabau: { body: C.SkinSh, belly: C.Skin, fin: C.Wood, shape: 'round', marks: 'mesh' },
+  betutu: { body: C.WoodDp, belly: C.WoodDk, fin: C.Ink, shape: 'bulb', marks: 'blotch' },
+  sili: { body: C.Forest, belly: C.GrassDk, fin: C.ForestDp, shape: 'ribbon', marks: 'ocelli' },
+  tengadak: { body: C.Pale, belly: C.White, fin: C.Red, shape: 'round' },
+  genggehek: { body: C.Foam, belly: C.White, fin: C.WaterBr, shape: 'arrow', marks: 'stripes' },
+  waderpari: { body: C.GrassLt, belly: C.White, fin: C.GrassDk, marks: 'stripes' },
+  paray: { body: C.Foam, belly: C.White, fin: C.WaterSh, shape: 'arrow' },
+  beunteur: { body: C.Amber, belly: C.SunGlow, fin: C.Wood, marks: 'spots' },
+  hampalaraja: { body: C.SunGlow, belly: C.White, fin: C.Red, shape: 'arrow', marks: 'stripes' },
+  jambal: { body: C.Mist, belly: C.Pale, fin: C.Slate, shape: 'long' },
+
+  lelebulan: { body: C.Slate, belly: C.SlateLt, fin: C.Ink, shape: 'long', marks: 'spots' },
+  udanggalah: { body: C.Orange, belly: C.SunGlow, fin: C.Red, shape: 'arrow', marks: 'stripes' },
+  sidatmuda: { body: C.ForestDp, belly: C.GrassDk, fin: C.Ink, shape: 'ribbon' },
+  ikankaca: { body: C.Pale, belly: C.White, fin: C.Foam, shape: 'flat', marks: 'mesh' },
+  betikapi: { body: C.Red, belly: C.Orange, fin: C.Lantern, shape: 'fan', marks: 'ocelli' },
+  kepitingrawa: { body: C.Red, belly: C.Rose, fin: C.WoodDp, shape: 'bulb', marks: 'spots' },
+  gabusraja: { body: C.Ink, belly: C.Forest, fin: C.GrassDk, shape: 'long', marks: 'blotch' },
+
+  ikanperisai: { body: C.Stone, belly: C.StoneLt, fin: C.StoneShadow, shape: 'flat', marks: 'mesh' },
+  lelemenara: { body: C.StoneDk, belly: C.Stone, fin: C.StoneShadow, shape: 'long', marks: 'blotch' },
+  ikanlonceng: { body: C.Gold, belly: C.StonePale, fin: C.StoneDk, shape: 'bulb' },
+  koipusaka: { body: C.Banner, belly: C.StonePale, fin: C.Gold, shape: 'round', marks: 'spots' },
+  ikankunci: { body: C.StoneLt, belly: C.StonePale, fin: C.Gold, shape: 'arrow', marks: 'band' },
+  guramibatu: { body: C.StoneDk, belly: C.Stone, fin: C.StoneShadow, shape: 'round', marks: 'mesh' },
+  belutparit: { body: C.StoneShadow, belly: C.StoneDk, fin: C.BannerBlue, shape: 'ribbon', marks: 'ocelli' },
+
+  ikansolder: { body: C.CyberSteel, belly: C.StonePale, fin: C.Orange, marks: 'blotch' },
+  sirippanel: { body: C.CyberSlate, belly: C.CyberSteel, fin: C.NeonCyan, shape: 'flat', marks: 'mesh' },
+  ikankabel: { body: C.CyberVoid, belly: C.CyberSlate, fin: C.NeonMint, shape: 'ribbon', marks: 'stripes' },
+  parineon: { body: C.CyberSlate, belly: C.NeonCyan, fin: C.NeonMagenta, shape: 'flat', marks: 'ocelli' },
+  ikanglitch: { body: C.NeonMagenta, belly: C.NeonMint, fin: C.NeonCyan, shape: 'arrow', marks: 'blotch' },
+  bawalkrom: { body: C.StonePale, belly: C.White, fin: C.CyberSteel, shape: 'round' },
+  lelevoltase: { body: C.CyberVoid, belly: C.CyberSteel, fin: C.NeonCyan, shape: 'long', marks: 'spots' },
+  ikanpendingin: { body: C.WaterBr, belly: C.Foam, fin: C.CyberSteel, shape: 'bulb', marks: 'mesh' },
+
+  ikanlentera: { body: C.Arcane, belly: C.ArcaneLt, fin: C.SunGlow, shape: 'bulb', marks: 'ocelli' },
+  sisikkabut: { body: C.ArcaneLt, belly: C.White, fin: C.Mist, marks: 'mesh' },
+  ikanakar: { body: C.Forest, belly: C.GrassDk, fin: C.WoodDk, shape: 'fan', marks: 'blotch' },
+  ikandoa: { body: C.White, belly: C.SunGlow, fin: C.ArcaneLt, shape: 'fan' },
+  naganilamuda: { body: C.Arcane, belly: C.NeonMint, fin: C.ArcaneLt, shape: 'long', marks: 'band' },
+  ikanpurnama: { body: C.SunGlow, belly: C.White, fin: C.ArcaneLt, shape: 'round', marks: 'ocelli' },
+  ikanbisik: { body: C.Mist, belly: C.White, fin: C.ArcaneLt, shape: 'arrow' },
+  sidatcahaya: { body: C.NeonMint, belly: C.White, fin: C.Arcane, shape: 'ribbon', marks: 'stripes' },
+
+  jaringsobek: { body: C.Mist, belly: C.Pale, fin: C.Slate, shape: 'flat', marks: 'mesh' },
+  botolkaca: { body: C.Foam, belly: C.White, fin: C.WaterSh, shape: 'bulb' },
+  rantaikarat: { body: C.WoodDk, belly: C.Wood, fin: C.WoodDp, shape: 'ribbon', marks: 'mesh' },
+  papandermaga: { body: C.Wood, belly: C.WoodDk, fin: C.WoodDp, shape: 'flat', marks: 'stripes' },
+
   // --- Benteng Lama. Stone colours and heraldic accents; these live in the
   // cold water of the moat and under the walls.
   lelemail: { body: C.Stone, belly: C.StoneLt, fin: C.StoneDk, shape: 'long', marks: 'stripes' },
@@ -414,22 +475,49 @@ export const FISH_LOOKS: Record<string, FishArt> = {
 };
 
 /** A fish, drawn to size. Used for the catch card and the shop list. */
-export function makeFish(look: FishArt, seed: number, w = 22, h = 12): PixelCanvas {
+/** One extra sprite per species, for the top three grades.
+ *
+ *  Tint alone cannot carry "this is the rarest thing in the lake" — a
+ *  recoloured minnow is still a minnow. The exalted cut lengthens the
+ *  fins, trails filaments off the tail and runs a rim light along the
+ *  back, so an Epik reads as a different animal at a glance and not as the
+ *  same animal wearing a colour. Two sprites per species is the cheapest
+ *  place to buy that: the remaining three grades are handled with tint and
+ *  additive glow at draw time, which costs nothing at all. */
+export function makeFish(
+  look: FishArt, seed: number, w = 22, h = 12, exalted = false,
+): PixelCanvas {
   const rng = new Rng(seed * 6151 + 37);
   const c = new PixelCanvas(w, h);
   const cy = h / 2;
   const noseX = 1;
   const shape = look.shape ?? 'normal';
-  const tailX = Math.round(w * (shape === 'long' ? 0.80 : shape === 'round' ? 0.64 : 0.70));
-  const girth = shape === 'round' ? 0.50 : shape === 'long' ? 0.24 : shape === 'flat' ? 0.46 : 0.40;
+  const tailX = Math.round(w * (
+    shape === 'ribbon' ? 0.88 : shape === 'long' ? 0.80
+      : shape === 'round' || shape === 'bulb' ? 0.64
+        : shape === 'arrow' ? 0.76 : 0.70));
+  const girth =
+    shape === 'round' ? 0.50
+      : shape === 'bulb' ? 0.52
+        : shape === 'fan' ? 0.34
+          : shape === 'ribbon' ? 0.14
+            : shape === 'long' ? 0.24
+              : shape === 'flat' ? 0.46
+                : shape === 'arrow' ? 0.30 : 0.40;
 
   // --- body: a tapered spindle, not an ellipse. The taper toward the nose
   // and the wrist in front of the tail are what make it read as a fish.
   for (let x = noseX; x < tailX; x++) {
     const t = (x - noseX) / (tailX - noseX);
-    const fat = shape === 'long'
-      ? Math.sin(Math.pow(t, 0.5) * Math.PI) * 0.7 + 0.3
-      : Math.sin(Math.pow(t, 0.75) * Math.PI);
+    const fat =
+      shape === 'long' || shape === 'ribbon'
+        ? Math.sin(Math.pow(t, 0.5) * Math.PI) * 0.7 + 0.3
+        // A bulb is widest right behind the head and falls away fast; an
+        // arrow is the reverse. Those two profiles alone read as different
+        // animals before any colour is applied.
+        : shape === 'bulb' ? Math.sin(Math.pow(t, 1.6) * Math.PI)
+          : shape === 'arrow' ? Math.sin(Math.pow(t, 0.42) * Math.PI)
+            : Math.sin(Math.pow(t, 0.75) * Math.PI);
     const half = Math.max(0.6, fat * h * girth * (1 - t * 0.25));
     for (let y = Math.round(cy - half); y <= Math.round(cy + half); y++) {
       c.set(x, y, look.body);
@@ -465,6 +553,44 @@ export function makeFish(look: FishArt, seed: number, w = 22, h = 12): PixelCanv
     for (let x = bx; x < bx + 3; x++) {
       for (let y = 0; y < h; y++) if (c.get(x, y) === look.body) c.set(x, y, look.fin);
     }
+  } else if (look.marks === 'mesh') {
+    // A net of scales. Every other pixel on a diagonal lattice, which at
+    // this size reads as texture rather than as a pattern you can count.
+    for (let x = Math.round(w * 0.16); x < tailX; x++) {
+      for (let y = 0; y < h; y++) {
+        if (c.get(x, y) !== look.body) continue;
+        if ((x + y) % 3 === 0) c.set(x, y, look.fin);
+      }
+    }
+  } else if (look.marks === 'ocelli') {
+    // Two or three eye spots along the flank: a dark centre inside a lit
+    // ring. The ring is what stops them reading as dirt.
+    for (let i = 0; i < 3; i++) {
+      const sx = Math.round(w * (0.34 + i * 0.14));
+      const sy = Math.round(cy - h * 0.06);
+      if (c.get(sx, sy) === TRANSPARENT) continue;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (c.get(sx + dx, sy + dy) === TRANSPARENT) continue;
+          c.set(sx + dx, sy + dy, look.belly);
+        }
+      }
+      c.set(sx, sy, C.InkDeep);
+    }
+  } else if (look.marks === 'blotch') {
+    // Irregular patches. Camouflage, and the only marking that is allowed
+    // to break the body's silhouette lines.
+    for (let i = 0; i < 4; i++) {
+      const bx = Math.round(rng.range(w * 0.18, tailX - 2));
+      const by = Math.round(rng.range(cy - h * 0.3, cy + h * 0.2));
+      const bw = rng.int(2, 4);
+      const bh = rng.int(1, 3);
+      for (let y = by; y < by + bh; y++) {
+        for (let x = bx; x < bx + bw; x++) {
+          if (c.get(x, y) === look.body) c.set(x, y, look.fin);
+        }
+      }
+    }
   }
 
   // --- dorsal fin. Spiny species get a sawtooth ridge instead of a sail.
@@ -472,7 +598,9 @@ export function makeFish(look: FishArt, seed: number, w = 22, h = 12): PixelCanv
   const dTo = Math.round(w * (shape === 'long' ? 0.70 : 0.52));
   for (let x = dFrom; x < dTo; x++) {
     const t = (x - dFrom) / Math.max(1, dTo - dFrom);
-    const base = shape === 'round' ? 0.30 : shape === 'long' ? 0.10 : 0.22;
+    const base = shape === 'fan' ? 0.52
+      : shape === 'round' ? 0.30
+        : shape === 'long' || shape === 'ribbon' ? 0.10 : 0.22;
     let up = Math.round(Math.sin(t * Math.PI) * h * base) + 1;
     if (shape === 'spiny') up = 1 + ((x - dFrom) % 2 === 0 ? 2 : 0);
     for (let k = 1; k <= up; k++) c.set(x, Math.round(cy - h * girth * 0.85) - k + 1, look.fin);
@@ -511,8 +639,56 @@ export function makeFish(look: FishArt, seed: number, w = 22, h = 12): PixelCanv
     if (c.get(sx, sy) === look.body) c.set(sx, sy, look.belly);
   }
 
+  if (exalted) exalt(c, look, w, h, cy, rng);
+
   c.outline(C.InkDeep, false);
   return c;
+}
+
+/** Turns a fish into a rare one: trailing filaments, a taller dorsal, and
+ *  a lit edge along the back. Drawn after the body so it reads as growth
+ *  on top of the animal rather than as a different animal. */
+function exalt(
+  c: PixelCanvas, look: FishArt, w: number, h: number,
+  cy: number, rng: Rng,
+): void {
+  const lit = C.White;
+
+  // Filaments streaming off the tail. Odd lengths, because three trailers
+  // of the same length read as a comb.
+  for (let k = 0; k < 3; k++) {
+    const y = Math.round(cy + (k - 1) * Math.max(2, h * 0.28));
+    const len = rng.int(2, 4) + (k === 1 ? 1 : 0);
+    for (let i = 0; i < len; i++) {
+      const x = w - 1 + i - 1;
+      if (x >= c.w) break;
+      c.set(x, y + (i > 1 ? (k - 1) : 0), look.fin);
+    }
+  }
+
+  // A taller dorsal crest over the middle of the back.
+  const from = Math.round(w * 0.30);
+  const to = Math.round(w * 0.56);
+  for (let x = from; x < to; x++) {
+    const t = (x - from) / Math.max(1, to - from);
+    const up = Math.round(Math.sin(t * Math.PI) * h * 0.26) + 1;
+    for (let k = 0; k < up; k++) {
+      const y = Math.round(cy - h * 0.34) - k;
+      if (y >= 0) c.set(x, y, k === up - 1 ? lit : look.fin);
+    }
+  }
+
+  // Rim light along the topmost lit pixel of each column — the one detail
+  // that makes something look like it is generating light rather than
+  // merely being a bright colour.
+  for (let x = 1; x < w - 1; x++) {
+    for (let y = 0; y < h; y++) {
+      const v = c.get(x, y);
+      if (v === TRANSPARENT) continue;
+      if (v === look.body || v === look.belly) c.set(x, y, lit);
+      break;
+    }
+  }
 }
 
 export interface CropArt {
