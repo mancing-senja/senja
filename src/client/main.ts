@@ -29,7 +29,9 @@ import {
 } from './render/indoors';
 import { DEFAULT_SPOT, spotAt } from './world/spots';
 import { districtAt } from './world/districts';
-import { LocalPlayer, drawActor, drawActorReflection, drawFishingLine } from './game/player';
+import {
+  LocalPlayer, drawActor, drawActorReflection, drawFishingLine, poseOf,
+} from './game/player';
 import { Fishing, phaseLabel, speciesById } from './game/fishing';
 import { Farm } from './game/farm';
 import { Net } from './game/net';
@@ -257,6 +259,13 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
    *  multi-second state machine with. */
   (window as unknown as Record<string, unknown>).__step = (n = 1): void => {
     for (let i = 0; i < n; i++) {
+      // The animation clock lives in frame(), not update(), and frame() is
+      // driven by requestAnimationFrame — which never fires in a headless
+      // pane. Stepping without advancing it froze every clock-driven
+      // animation under test while leaving the animT-driven walk cycle
+      // running, so idle breath, blink, the work swing and the talking nod
+      // all looked broken when they were only unticked.
+      clock += 1 / 60;
       update(1 / 60);
       input.endFrame();
     }
@@ -264,7 +273,11 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
   (window as unknown as Record<string, unknown>).__plots = () => plots();
   (window as unknown as Record<string, unknown>).__map = () => map;
   (window as unknown as Record<string, unknown>).__npcs = () =>
-    npcs.map((n) => ({ name: n.name, action: n.action, x: Math.round(n.x), y: Math.round(n.y) }));
+    npcs.map((n) => ({
+      name: n.name, action: n.action, talking: n.talking,
+      pose: poseOf(n, clock),
+      x: Math.round(n.x), y: Math.round(n.y),
+    }));
   (window as unknown as Record<string, unknown>).__dbg = () => ({
     fishing: fishing.state,
     indoors: indoors ? {
