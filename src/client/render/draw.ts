@@ -55,6 +55,15 @@ export class Draw {
   /** Turns normal-mapped lighting off for the next flush. */
   setUnlit(): void {
     this.batch.setLight(0, 0, 1, 1, 1, 1, 0);
+    this.batch.setLamps([]);
+  }
+
+  /** The lamps lighting this frame. Nearest first — the shader takes the
+   *  first eight and does not sort. */
+  setLamps(lamps: ReadonlyArray<{
+    x: number; y: number; r: number; col: [number, number, number];
+  }>): void {
+    this.batch.setLamps(lamps);
   }
 
   constructor(gl: GL, atlas: Atlas) {

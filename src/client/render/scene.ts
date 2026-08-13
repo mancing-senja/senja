@@ -470,6 +470,70 @@ export function drawReflections(d: Draw, map: WorldMap, camX: number, camY: numb
 
 /** Warm pools of light under lanterns and cabin windows, drawn additively
  *  once the sun is low. */
+export interface Lamp {
+  x: number;
+  y: number;
+  /** Reach in world pixels. */
+  r: number;
+  col: [number, number, number];
+}
+
+/** The lamps close enough to matter, nearest first.
+ *
+ *  This mirrors drawLampLight, which paints the *halo* — the glow you see
+ *  in the air. This one supplies the light that actually falls on things.
+ *  Both are needed and they are not the same effect: a halo with no lit
+ *  surfaces reads as a sticker, and lit surfaces with no halo read as a
+ *  world with no atmosphere.
+ *
+ *  Capped at eight because that is what the shader takes, and sorted so
+ *  the eight it gets are the ones the player can see nearest. */
+export function collectLamps(
+  map: WorldMap, camX: number, camY: number, night: number,
+): Lamp[] {
+  const out: Lamp[] = [];
+  if (night <= 0.02) return out;
+  const cx = camX + view.w / 2;
+  const cy = camY + view.h / 2;
+  // Anything beyond this cannot reach the screen even at full radius.
+  const range = Math.max(view.w, view.h) * 0.75 + 80;
+
+  for (const p of map.props) {
+    let r = 0;
+    let col: [number, number, number] = [1, 0.72, 0.36];
+    switch (p.kind) {
+      case 'lantern': r = 62; break;
+      case 'torch': r = 54; col = [1, 0.55, 0.22]; break;
+      case 'cabin':
+      case 'house': r = 56; col = [1, 0.78, 0.44]; break;
+      case 'sign': r = 58; col = [0.35, 0.9, 1]; break;
+      case 'crystal': r = 56; col = [0.7, 0.5, 1]; break;
+      case 'mushroom': r = 34; col = [0.5, 1, 0.8]; break;
+      default: continue;
+    }
+    const dx = p.x - cx;
+    const dy = p.y - cy;
+    const d2 = dx * dx + dy * dy;
+    if (d2 > range * range) continue;
+    // Lamps hang above the ground they light.
+    out.push({ x: p.x, y: p.y - 12, r, col: scaleCol(col, night) });
+    (out[out.length - 1] as Lamp & { d2: number }).d2 = d2;
+  }
+
+  out.sort((a, b) => (a as Lamp & { d2: number }).d2 - (b as Lamp & { d2: number }).d2);
+  return out.slice(0, 8);
+}
+
+function scaleCol(c: [number, number, number], k: number): [number, number, number] {
+  // Low, and it has to stay low. drawLampLight already paints the halo —
+  // the glow hanging in the air — and this pass only has to reveal the
+  // shading on the surfaces the lamp reaches. At 0.58 the two stacked and
+  // every house at night blew out to a white blob: a hole burned in the
+  // picture rather than a lit window.
+  const s = k * 0.26;
+  return [c[0] * s, c[1] * s, c[2] * s];
+}
+
 export function drawLampLight(d: Draw, map: WorldMap, time: number, L: Lighting): void {
   const strength = L.night;
   for (const p of map.props) {
