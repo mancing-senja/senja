@@ -6,7 +6,7 @@
  *  world gets its own seed, so the treeline never tiles visibly — which is
  *  the thing that makes a small pixel map feel cheap. */
 
-import { BAYER4, PixelCanvas, Rng, TRANSPARENT, valueNoise } from './canvas';
+import { BAYER4, PixelCanvas, Rng, TRANSPARENT, tileNoise, valueNoise } from './canvas';
 import { C } from './palette';
 
 /** Light comes from the upper-left, consistently, everywhere. */
@@ -434,7 +434,10 @@ export function makeGrassTile(seed: number, tone: 0 | 1 | 2): PixelCanvas {
   // grid shows straight through.
   for (let y = 0; y < 16; y++) {
     for (let x = 0; x < 16; x++) {
-      const n = valueNoise((x + seed * 16) * 0.19, (y + seed * 16) * 0.19, 7);
+      // Tileable, so the texture continues into the next tile instead of
+      // restarting at its edge. Plain tile-local noise put a visible seam
+      // on every boundary and the whole field read as a grid.
+      const n = tileNoise(x, y, 16, 0.19, 7 + seed * 131);
       c.set(x, y, n > 0.54 ? C.GrassDk : C.Forest);
     }
   }
@@ -450,14 +453,21 @@ export function makeGrassTile(seed: number, tone: 0 | 1 | 2): PixelCanvas {
     }
   }
 
-  const blades = tone === 0 ? rng.int(0, 1) : tone === 1 ? rng.int(2, 3) : rng.int(4, 6);
+  // Blades wrap around the tile edge rather than keeping clear of it.
+  // Insetting them left a blade-free lane down every seam, and a field of
+  // that is a lattice of empty lines — the single loudest source of the
+  // grid, louder than the noise seam was.
+  const wrap = (px: number, py: number, col: number): void => {
+    c.set(((px % 16) + 16) % 16, ((py % 16) + 16) % 16, col);
+  };
+  const blades = tone === 0 ? rng.int(1, 2) : tone === 1 ? rng.int(3, 4) : rng.int(5, 7);
   for (let i = 0; i < blades; i++) {
-    const x = rng.int(1, 14);
-    const y = rng.int(3, 14);
-    c.set(x, y, C.GrassDk);
-    c.set(x, y - 1, tone === 2 ? C.Grass : C.GrassDk);
-    if (tone === 2 && rng.chance(0.6)) c.set(x + 1, y - 2, C.GrassLt);
-    else if (rng.chance(0.4)) c.set(x + 1, y - 2, C.Grass);
+    const x = rng.int(0, 15);
+    const y = rng.int(0, 15);
+    wrap(x, y, C.GrassDk);
+    wrap(x, y - 1, tone === 2 ? C.Grass : C.GrassDk);
+    if (tone === 2 && rng.chance(0.6)) wrap(x + 1, y - 2, C.GrassLt);
+    else if (rng.chance(0.4)) wrap(x + 1, y - 2, C.Grass);
   }
   return c;
 }

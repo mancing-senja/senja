@@ -254,6 +254,29 @@ export const BAYER4 = [
 ];
 
 /** Value noise on a lattice — used for foliage clumping and grass variation. */
+/** Value noise that wraps seamlessly over a tile of `size`.
+ *
+ *  Sampling plain noise in tile-local coordinates restarts the pattern at
+ *  every tile boundary, and a whole field of that reads as a grid — which
+ *  is exactly what the grass looked like. Blending the four offset copies
+ *  makes the tile continue into itself, so a hundred of them laid side by
+ *  side have no seam to find. */
+export function tileNoise(
+  x: number, y: number, size: number, freq: number, seed: number,
+): number {
+  const u = x / size;
+  const v = y / size;
+  const sx = size * freq;
+  const sy = size * freq;
+  const fx = x * freq;
+  const fy = y * freq;
+  const a = valueNoise(fx, fy, seed);
+  const b = valueNoise(fx - sx, fy, seed);
+  const c = valueNoise(fx, fy - sy, seed);
+  const d = valueNoise(fx - sx, fy - sy, seed);
+  return (a * (1 - u) + b * u) * (1 - v) + (c * (1 - u) + d * u) * v;
+}
+
 export function valueNoise(x: number, y: number, seed: number): number {
   const xi = Math.floor(x);
   const yi = Math.floor(y);
