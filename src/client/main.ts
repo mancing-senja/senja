@@ -19,7 +19,8 @@ import { LOOKS, LOOK_COUNT } from './art/character';
 import { col01, C } from './art/palette';
 import { Draw } from './render/draw';
 import {
-  Particles, drawGround, drawLampLight, drawNeonWash, drawReflections, propRenderable,
+  Particles, collectLamps, drawGround, drawLampLight, drawNeonWash, drawReflections,
+  propRenderable,
   type Renderable,
 } from './render/scene';
 import { SkyWater } from './world/skywater';
@@ -398,6 +399,12 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
     draw.reload(buildAtlas(handDrawn, season));
     return `${season.label} — ${season.blurb}`;
   };
+
+  /** Drops straight into a fight with a chosen species and grade, so the reel
+   *  can be looked at without waiting on the odds. */
+  (window as unknown as Record<string, unknown>).__fight = (
+    speciesId: string, gradeId: string,
+  ) => fishing.debugFight(speciesId, gradeId, player);
 
   (window as unknown as Record<string, unknown>).__dbg = () => ({
     fishing: fishing.state,
@@ -856,6 +863,7 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
 
       draw.ambient = L.ambient;
       draw.setSun(L, LIGHT_AMOUNT);
+      draw.setLamps(collectLamps(map, cx, cy, L.night));
       draw.begin(cx, cy);
 
       drawGround(draw, map, cx, cy, clock, L);
@@ -922,6 +930,7 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
       n.drawPanel(draw, player.x, player.y);
     }
     fishing.drawHud(draw);
+    ui.reeling = fishing.state === 'reel';
     ui.draw(draw, {
       season: season.label,
       seasonDay: dayOfSeason(dayCount),

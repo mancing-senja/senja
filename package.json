@@ -12,7 +12,8 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "start": "tsx src/server/index.ts",
-    "serve": "npm run build && npm run start"
+    "serve": "npm run build && npm run start",
+    "fight": "tsx tools/fight-check.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.5",

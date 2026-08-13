@@ -71,6 +71,9 @@ export class Ui {
   chatOpen = false;
   chatText = '';
   private helpT = 14;
+  /** Set by the frame while the reel bar is up, so the help row gets out of
+   *  the way of it. */
+  reeling = false;
   /** True while a conversation panel is on screen. The controls hint lives
    *  in the same strip of screen, and two panels stacked there is unreadable. */
   talking = false;
@@ -175,7 +178,11 @@ export class Ui {
       const a = Math.min(1, this.toastT * 2);
       d.textCentered(this.toast, view.w / 2, view.h - 46, C.Lantern, C.InkDeep, a);
     }
-    if (this.helpT > 0 && !this.chatOpen && !this.talking) this.drawHelpHint(d);
+    // Not while a fish is on. The reel bar sits exactly here, and nobody
+    // fighting a Mitos needs telling which key walks.
+    if (this.helpT > 0 && !this.chatOpen && !this.talking && !this.reeling) {
+      this.drawHelpHint(d);
+    }
     if (this.showHelp) this.drawHelpPanel(d);
     if (this.showLog) this.drawLogPanel(d, ctx);
     if (this.showLog && this.inspecting) this.drawInspect(d, ctx);

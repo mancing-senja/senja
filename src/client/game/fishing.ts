@@ -24,6 +24,9 @@ import type { Season } from '../world/season';
 import {
   COMMON, gradeById, luckFrom, rollGrade, type Grade, type GradeId,
 } from './grade';
+import {
+  STYLES, applyGrade, newFight, styleFor, type FightState, type FightStyle,
+} from './fight';
 
 export interface Species {
   id: string;
@@ -608,9 +611,11 @@ export class Fishing {
   /** Reel bar. `tension` is what the player steers; `target` drifts. */
   private tension = 0.5;
   private target = 0.5;
-  private targetVel = 0;
   private progress = 0;
   private slack = 0;
+  /** How this fish fights, chosen when it takes the hook. */
+  private style: FightStyle = STYLES.tenang;
+  private fight: FightState = newFight();
 
   lastCatch: Catch | null = null;
   cardT = 0;
@@ -641,8 +646,16 @@ export class Fishing {
 
   /** Exposed for the dev harness, which drives the reel to verify the
    *  whole catch flow without a human on the keyboard. */
-  get reel(): { tension: number; target: number; progress: number } {
-    return { tension: this.tension, target: this.target, progress: this.progress };
+  get reel(): {
+    tension: number; target: number; progress: number;
+    style: string; zone: number; veil: boolean;
+  } {
+    return {
+      tension: this.tension, target: this.target, progress: this.progress,
+      style: this.style.id,
+      zone: Math.max(0.12, this.style.zone * (1 - this.pendingGrade.tier * 0.075)),
+      veil: this.fight.veil > 0,
+    };
   }
 
   update(
@@ -726,9 +739,10 @@ export class Fishing {
           this.t = 0;
           this.tension = 0.5;
           this.target = 0.5;
-          this.targetVel = 0;
           this.progress = 0.28;
           this.slack = 0;
+          this.style = styleFor(this.pending!);
+          this.fight = newFight();
           p.action = 'reel';
           audio.blip(520, 0.06, 0.2);
         } else if (this.t > 2.0) {
@@ -740,29 +754,33 @@ export class Fishing {
 
       case 'reel': {
         const fish = this.pending!;
-        // The fish wanders; you follow it. Wandering is smooth, never jerky.
         const fight = fish.fight * this.pendingGrade.fightMul;
-        this.targetVel += (Math.random() - 0.5) * dt * 9 * fight;
-        // Rare fish run. A surge every few seconds is what turns a steady
-        // drift into something you have to answer, and it is the only part
-        // of the reel that ever asks for attention rather than patience.
-        if (this.pendingGrade.tier >= 2) {
-          const surge = Math.sin(this.t * 1.7 + this.pendingGrade.tier);
-          if (surge > 0.93) this.targetVel += (this.target < 0.5 ? 1 : -1) * dt * 6;
-        }
-        this.targetVel *= 0.92;
-        this.target = clamp01(this.target + this.targetVel * dt);
-        if (this.target <= 0 || this.target >= 1) this.targetVel *= -0.6;
+
+        // The species decides the pattern, the grade decides the teeth.
+        // Everything that used to live here — one smooth wander plus a surge
+        // for rare fish — is now one style out of six.
+        const f = this.fight;
+        f.t += dt;
+        f.gainMul = 1;
+        this.style.step(f, dt, fight);
+        const tune = applyGrade(this.style, f, dt, this.pendingGrade.tier);
+        this.target = f.target;
 
         const pull = input.held(' ') ? 1 : -1;
         this.tension = clamp01(this.tension + pull * dt * 0.7);
 
-        // Wide zone, slow drain: the reel is meant to be something you do
-        // while looking at the lake, not a rhythm test. Losing a fish
-        // should take sustained inattention, not a moment of it.
+        // Still forgiving: the reel is something you do while looking at the
+        // lake, not a rhythm test. Losing a fish should take sustained
+        // inattention, not a moment of it — the styles differ in what they
+        // ask you to pay attention *to*, not in how sharp your hands are.
         const off = Math.abs(this.tension - this.target);
-        const inZone = off < 0.28;
-        this.progress += (inZone ? 0.42 : -0.10) * dt;
+        // A line at either stop is not holding anything: slack at the bottom,
+        // about to part at the top. Without this, letting go entirely beats a
+        // fish that dives — the bar pins at zero and so does the fish, and
+        // doing nothing at all counts as following it down.
+        const pinned = this.tension <= 0.03 || this.tension >= 0.97;
+        const inZone = off < tune.zone && !pinned;
+        this.progress += (inZone ? tune.gain : -tune.drain) * dt;
         this.slack = inZone ? Math.max(0, this.slack - dt * 0.6) : this.slack + dt * 0.5;
 
         this.bobX += (Math.random() - 0.5) * 12 * dt;
@@ -863,6 +881,36 @@ export class Fishing {
     return `${fish.label} / ${this.pendingGrade.label}`;
   }
 
+  /** Test seam: drop straight into the fight, for a chosen species and grade.
+   *
+   *  debugCatch skips to the card, which is no use for checking the reel
+   *  itself — and reaching a Mitos fight by casting is the same two-thousand
+   *  casts the card seam exists to avoid. */
+  debugFight(speciesId: string, gradeId: string, p: LocalPlayer): string {
+    const fish = SPECIES.find((f) => f.id === speciesId);
+    if (!fish) return `tidak ada spesies ${speciesId}`;
+    this.pending = fish;
+    const grade = gradeById(gradeId as GradeId);
+    // gradeById falls back to Biasa for anything it does not know, which in a
+    // test seam is worse than useless: a typo'd grade quietly produces a
+    // common fish and the screenshot proves nothing.
+    if (grade.id !== gradeId) return `tidak ada grade ${gradeId}`;
+    this.pendingGrade = grade;
+    this.style = styleFor(fish);
+    this.fight = newFight();
+    this.state = 'reel';
+    this.t = 0;
+    this.tension = 0.5;
+    this.target = 0.5;
+    this.progress = 0.28;
+    this.slack = 0;
+    this.bobX = p.x;
+    this.bobY = p.y - 8;
+    p.locked = true;
+    p.action = 'reel';
+    return `${fish.label} / ${this.pendingGrade.label} / ${this.style.label}`;
+  }
+
   private land(
     fish: Species, particles: Particles, audio: Audio,
     onCatch: (c: Catch) => void, p: LocalPlayer,
@@ -956,15 +1004,32 @@ export class Fishing {
       d.rect(x - 2, y - 2, w + 4, 14, C.InkDeep, 0.6);
       d.rect(x, y, w, 8, C.Slate, 0.95);
 
-      // The zone you are trying to sit in.
-      const zoneW = Math.round(w * 0.56);
+      // The zone you are trying to sit in. Its width is the style's, narrowed
+      // by the grade, and it has to be drawn at the width the rules actually
+      // use — a bar that lies about where the edge is teaches nothing.
+      const tier = this.pendingGrade.tier;
+      const zone = Math.max(0.13, this.style.zone - tier * 0.026);
+      const zoneW = Math.round(w * zone * 2);
       const zoneX = x + Math.round(this.target * w) - zoneW / 2;
-      d.rect(zoneX, y, zoneW, 8, C.Forest, 0.9);
-      d.rect(zoneX, y, zoneW, 1, C.Grass, 0.9);
+      if (this.fight.veil > 0) {
+        // Out of sight, top grades only. The zone is still there and still
+        // moving; you are holding the line on where you last saw it. Drawn as
+        // an outline rather than left blank — the player has to be able to
+        // tell "hidden" from "gone", or the bar looks broken.
+        d.frameRect(zoneX, y, zoneW, 8, C.Mist, 0.5);
+      } else {
+        d.rect(zoneX, y, zoneW, 8, C.Forest, 0.9);
+        d.rect(zoneX, y, zoneW, 1, C.Grass, 0.9);
+      }
 
-      // Your tension marker.
+      // Your tension marker. It goes red at either stop, because at the stops
+      // it is holding nothing — slack at one end, about to part at the other —
+      // and a bar that looks the same when it has stopped working is a bar
+      // that teaches the player a lie.
       const mx = x + Math.round(this.tension * w);
-      d.rect(mx - 1, y - 2, 3, 12, C.White);
+      const stuck = this.tension <= 0.03 || this.tension >= 0.97;
+      d.rect(mx - 1, y - 2, 3, 12, stuck ? C.Red : C.White);
+      if (stuck) d.textCentered('senar lepas!', cx, y + 15, C.Red, C.InkDeep, 0.95);
 
       // Progress toward landing it, in the grade's colour.
       //
@@ -987,7 +1052,15 @@ export class Fishing {
         );
       }
 
-      d.textCentered('tahan spasi', cx, y - 11, C.Pale, C.InkDeep, 0.85);
+      // What this fish does, and what to do about it, on one line. Naming the
+      // pattern is what turns six behaviours into six things a player can
+      // learn rather than six kinds of bad luck — but it went on its own line
+      // under the bar at first, where the slack-line warning landed on top of
+      // it. Below the bar belongs to the warning.
+      d.textCentered(
+        `${this.style.label}: ${this.style.hint}`,
+        cx, y - 11, C.Pale, C.InkDeep, 0.85,
+      );
     }
 
     if (this.state === 'miss') {
