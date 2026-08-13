@@ -2,7 +2,7 @@
  *  single texture at boot. One texture means the whole frame can usually be
  *  drawn in a handful of draw calls, which matters on integrated graphics. */
 
-import { PixelCanvas } from './canvas';
+import { PixelCanvas, TRANSPARENT } from './canvas';
 import { makeNormalMap } from './normals';
 import { C, PALETTE } from './palette';
 import {
@@ -14,6 +14,7 @@ import {
 import { GLYPH_H, glyph } from './font';
 import { buildCharacterFrames, charKey } from './character';
 import { buildPortraits, portraitKey } from './portrait';
+import { seasonal, type Season } from '../world/season';
 import {
   makeAnvil, makeBarrelIn, makeBed, makeChair, makeChest, makeFloorTile,
   makeLampIn, makePainting, makePlantPot, makeRugTile, makeShelf, makeStove,
@@ -134,7 +135,9 @@ export const VARIANTS = {
  *  wins over the generated version — see art/handdrawn.ts. */
 export type Overrides = ReadonlyMap<string, PixelCanvas>;
 
-export function buildAtlas(overrides: Overrides = new Map()): Atlas {
+export function buildAtlas(
+  overrides: Overrides = new Map(), season?: Season,
+): Atlas {
   const packer = new ShelfPacker(ATLAS_W, ATLAS_H);
   const frames = new Map<string, Frame>();
   const canvas = document.createElement('canvas');
@@ -163,8 +166,19 @@ export function buildAtlas(overrides: Overrides = new Map()): Atlas {
   const isSurface = (name: string): boolean =>
     SURFACE.some((p) => name.startsWith(p));
 
+  /** Sprites that are made of leaves. Only these follow the season: a green
+   *  hoodie does not turn orange in autumn, and recolouring every green in
+   *  the palette is what makes a seasonal filter read as a broken monitor. */
+  const FOLIAGE = [
+    'grass', 'fringe', 'tree', 'bush', 'reed', 'grove', 'shrub', 'hedge',
+    'canopy', 'leaf', 'vine', 'lily',
+  ];
+  const isFoliage = (name: string): boolean =>
+    FOLIAGE.some((p) => name.startsWith(p));
+
   const add = (name: string, pc: PixelCanvas): void => {
-    const art = overrides.get(name) ?? pc;
+    let art = overrides.get(name) ?? pc;
+    if (season && isFoliage(name)) art = recolour(art, season);
     const f = packer.place(art.w, art.h);
     ctx.putImageData(art.toImageData(), f.x, f.y);
     const nm = makeNormalMap(art, isSurface(name) ? 'surface' : 'object');
@@ -178,7 +192,7 @@ export function buildAtlas(overrides: Overrides = new Map()): Atlas {
   }
   // Conversation portraits. Same Look record as the world sprite, so the
   // face in the panel is always the person standing in front of you.
-  for (const pf of buildPortraits()) {
+  for (const pf of buildPortraits(season)) {
     add(portraitKey(pf.look, pf.mood), pf.canvas);
   }
 
@@ -354,4 +368,19 @@ export function buildAtlas(overrides: Overrides = new Map()): Atlas {
   }
 
   return { canvas, normals, frames, w: ATLAS_W, h: ATLAS_H };
+}
+
+/** A copy of a sprite with its foliage colours moved into the season.
+ *
+ *  Works on palette indices, before anything becomes RGBA, so a leaf that
+ *  was three greens is three autumn tones and still only three colours. A
+ *  tint applied afterwards could only darken — multiplying green by anything
+ *  never reaches orange. */
+function recolour(src: PixelCanvas, season: Season): PixelCanvas {
+  const out = new PixelCanvas(src.w, src.h);
+  for (let i = 0; i < src.px.length; i++) {
+    const v = src.px[i];
+    out.px[i] = v === TRANSPARENT ? v : seasonal(season, v);
+  }
+  return out;
 }

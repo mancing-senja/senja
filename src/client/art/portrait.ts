@@ -29,6 +29,7 @@ import { PixelCanvas, Rng, TRANSPARENT } from './canvas';
 import { C, RGB_PALETTE } from './palette';
 import { LOOKS, LOOK_COUNT, type Look } from './character';
 import { GARMENTS, clothFrom, drawGarment } from './garment';
+import { wearFor, type Season } from '../world/season';
 
 export const PORTRAIT_W = 64;
 export const PORTRAIT_H = 64;
@@ -244,14 +245,16 @@ function halfAt(row: number, g: Geom): number {
   return PROFILE[j] * g.wide;
 }
 
-export function makePortrait(lk: Look, mood: Mood, seed: number): PixelCanvas {
+export function makePortrait(
+  lk: Look, mood: Mood, seed: number, season?: Season,
+): PixelCanvas {
   const rng = new Rng(seed * 7451 + 19);
   const c = new PixelCanvas(PORTRAIT_W, PORTRAIT_H);
   const g = geomFor(rng);
 
   const eye = EYE_COLOURS[rng.int(0, EYE_COLOURS.length - 1)];
 
-  drawBust(c, lk, g);
+  drawBust(c, lk, g, season);
   drawNeck(c, lk, g);
   drawHead(c, lk, g);
   stampFace(c, lk, mood, g, eye);
@@ -518,7 +521,9 @@ function bustHalf(y: number, g: Geom): number {
   return Math.round(BUST[i] * g.wide);
 }
 
-function drawBust(c: PixelCanvas, lk: Look, g: Geom): void {
+function drawBust(
+  c: PixelCanvas, lk: Look, g: Geom, season?: Season,
+): void {
   const dim = lk.shirtDim;
   const lit = shift(lk.shirt, 1);
   for (let y = SHOULDER_Y; y < PORTRAIT_H; y++) {
@@ -545,8 +550,18 @@ function drawBust(c: PixelCanvas, lk: Look, g: Geom): void {
   // switch with four cases, and every villager was wearing the same shirt in
   // a different dye.
   const [skinDp, skinSh] = skinRamp(lk);
+  // The season dresses them; the character only decides the colours. This is
+  // the most human of the four things a season changes — a valley where the
+  // light shifts but everyone wears the same coat all year is a valley where
+  // nothing really happened.
+  //
+  // Keyed off the character, not rolled, so a villager keeps the same coat
+  // all season instead of changing it every time you say hello.
+  const wearing = season
+    ? wearFor(season, hashId(lk.id))
+    : lk.garment;
   drawGarment(
-    c, GARMENTS[lk.garment],
+    c, GARMENTS[wearing],
     clothFrom(lk.shirt, dim, lk.trim, innerFor(lk), skinSh, skinDp, shift),
     SX, SHOULDER_Y, PORTRAIT_H,
     (y) => bustHalf(y, g),
@@ -890,12 +905,25 @@ export interface PortraitFrame {
   canvas: PixelCanvas;
 }
 
-export function buildPortraits(): PortraitFrame[] {
+/** A small stable hash of the character id, so the same person draws the
+ *  same garment from a season's list on every machine. */
+function hashId(id: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < id.length; i++) {
+    h ^= id.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+export function buildPortraits(season?: Season): PortraitFrame[] {
   const out: PortraitFrame[] = [];
   const moods: Mood[] = ['neutral', 'warm', 'cold'];
   for (let i = 0; i < LOOK_COUNT; i++) {
     for (const mood of moods) {
-      out.push({ look: i, mood, canvas: makePortrait(LOOKS[i], mood, i + 1) });
+      out.push({
+        look: i, mood, canvas: makePortrait(LOOKS[i], mood, i + 1, season),
+      });
     }
   }
   return out;

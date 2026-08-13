@@ -10,6 +10,9 @@ import { RenderTarget, createContext } from './engine/gl';
 import { Input } from './engine/input';
 import { DEFAULT_ZOOM_INDEX, ZOOM_STEPS, applyView, fitView, view } from './engine/view';
 import { buildAtlas } from './art/atlas';
+import {
+  SEASON_DAYS, dayOfSeason, seasonForDay, type Season,
+} from './world/season';
 import { loadHandDrawn } from './art/handdrawn';
 import type { PixelCanvas } from './art/canvas';
 import { LOOKS, LOOK_COUNT } from './art/character';
@@ -70,7 +73,10 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
   const canvas = document.getElementById('game') as HTMLCanvasElement;
   const gl = createContext(canvas);
 
-  const atlas = buildAtlas(handDrawn);
+  let season: Season = seasonForDay(
+    Number(localStorage.getItem('senja.day') ?? 0),
+  );
+  const atlas = buildAtlas(handDrawn, season);
   const draw = new Draw(gl, atlas);
   const rt = new RenderTarget(gl, view.w, view.h);
   const skywater = new SkyWater(gl);
@@ -381,6 +387,18 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
       pose: poseOf(n, clock),
       x: Math.round(n.x), y: Math.round(n.y),
     }));
+  /** Jumps to a season, so all four can be looked at without playing
+   *  through twenty-eight in-game days. */
+  (window as unknown as Record<string, unknown>).__season = (id: string) => {
+    const next = seasonForDay(
+      ['semi', 'panas', 'gugur', 'dingin'].indexOf(id) * SEASON_DAYS,
+    );
+    if (next.id !== id) return `tidak ada musim ${id}`;
+    season = next;
+    draw.reload(buildAtlas(handDrawn, season));
+    return `${season.label} — ${season.blurb}`;
+  };
+
   (window as unknown as Record<string, unknown>).__dbg = () => ({
     fishing: fishing.state,
     indoors: indoors ? {
@@ -463,15 +481,34 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
     if (time < prevTime - 0.5) {
       dayCount++;
       localStorage.setItem('senja.day', String(dayCount));
-      ui.say(`hari ke-${dayCount + 1}`);
+      const next = seasonForDay(dayCount);
+      if (next.id !== season.id) {
+        // Foliage and clothing are baked into the atlas rather than tinted
+        // at draw time — a tint can only darken, and no amount of
+        // multiplying green reaches the orange of an autumn leaf. So the
+        // season turning means baking again. It happens once a week of
+        // in-game days and takes a frame.
+        season = next;
+        draw.reload(buildAtlas(handDrawn, season));
+        ui.say(`musim ${season.label.toLowerCase()} · ${season.blurb}`);
+      } else {
+        ui.say(`hari ke-${dayCount + 1} · ${season.label.toLowerCase()}`);
+      }
     }
     prevTime = time;
 
     const L = lightingAt(time, rain);
+    // Temperature, not exposure. A season that changes how bright the world
+    // is reads as a bug; a season that changes what colour the light is
+    // reads as a season.
+    L.ambient[0] *= season.warmth[0];
+    L.ambient[1] *= season.warmth[1];
+    L.ambient[2] *= season.warmth[2];
 
     if (indoors) player.updateIndoors(dt, input, indoors);
     else player.update(dt, input, map);
 
+    fishing.season = season;
     fishing.update(
       dt, input, player, map, time, particles, audio,
       (c) => {
@@ -654,6 +691,7 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
     }
 
     net.update(dt, player.x, player.y, player.facing, player.action);
+    particles.air = { kind: season.air, rate: season.airRate };
     particles.update(dt, camX, camY, L, rain);
     ui.update(dt);
     audio.update(dt, L.night, rain);
@@ -744,6 +782,9 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
    *  the four genres feeling like one world. */
   function districtLighting(): ReturnType<typeof lightingAt> {
     const L = lightingAt(time, rain);
+    L.ambient[0] *= season.warmth[0];
+    L.ambient[1] *= season.warmth[1];
+    L.ambient[2] *= season.warmth[2];
     const { district: dz, weight } = districtAt(player.x, player.y);
     if (!dz || weight <= 0.001) return L;
 
@@ -882,6 +923,8 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
     }
     fishing.drawHud(draw);
     ui.draw(draw, {
+      season: season.label,
+      seasonDay: dayOfSeason(dayCount),
       coins: farm.coins,
       room: net.room,
       time,

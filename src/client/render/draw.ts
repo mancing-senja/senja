@@ -57,10 +57,33 @@ export class Draw {
     this.batch.setLight(0, 0, 1, 1, 1, 1, 0);
   }
 
+  private gl: GL;
+
   constructor(gl: GL, atlas: Atlas) {
+    this.gl = gl;
     this.batch = new SpriteBatch(gl);
     this.tex = makeTextureFromCanvas(gl, atlas.canvas);
-    this.batch.setNormalTexture(makeTextureFromCanvas(gl, atlas.normals));
+    this.norm = makeTextureFromCanvas(gl, atlas.normals);
+    this.batch.setNormalTexture(this.norm);
+    this.frames = atlas.frames;
+    this.aw = atlas.w;
+    this.ah = atlas.h;
+  }
+
+  private norm: WebGLTexture;
+
+  /** Swaps in a freshly baked atlas.
+   *
+   *  Used when the season turns: foliage and clothing are baked, not tinted
+   *  at draw time, so changing them means baking again. The old textures are
+   *  deleted rather than dropped — four seasons over a long session is four
+   *  leaks otherwise, and each one is a full atlas. */
+  reload(atlas: Atlas): void {
+    this.gl.deleteTexture(this.tex);
+    this.gl.deleteTexture(this.norm);
+    this.tex = makeTextureFromCanvas(this.gl, atlas.canvas);
+    this.norm = makeTextureFromCanvas(this.gl, atlas.normals);
+    this.batch.setNormalTexture(this.norm);
     this.frames = atlas.frames;
     this.aw = atlas.w;
     this.ah = atlas.h;

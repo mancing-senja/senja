@@ -58,6 +58,9 @@ export interface HudCtx {
   L: Lighting;
   board: BoardEntry[];
   myName: string;
+  /** Season name and which day of it, for the clock panel. */
+  season: string;
+  seasonDay: number;
 }
 
 // Board swatches come straight from the character looks, so a row is
@@ -448,9 +451,12 @@ export class Ui {
 
     const x = 4;
     const y = 4;
-    d.panel(x, y, 58, 21, 0.9);
+    // Taller than it was, for the calendar line. A world with a season needs
+    // to say which one somewhere the player can find without asking.
+    d.panel(x, y, 58, 30, 0.9);
     d.text(label, x + 5, y + 3, C.White);
     d.text(ctx.phase, x + 5, y + 12, C.Amber, 0.9);
+    d.text(`${ctx.season} ${ctx.seasonDay}`, x + 5, y + 21, C.Mist, 0.85);
 
     // A tiny sun/moon arc that mirrors the real one in the sky.
     const cx = x + 44;

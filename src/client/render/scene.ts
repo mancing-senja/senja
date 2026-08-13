@@ -597,6 +597,12 @@ export class Particles {
     }
   }
 
+  /** What drifts through the air, and how much. Set by the frame from the
+   *  season: petals in spring, near nothing in the heat, leaves in autumn,
+   *  and a cold drift in winter. */
+  air: { kind: 'petal' | 'haze' | 'leaf' | 'mist'; rate: number } =
+    { kind: 'leaf', rate: 1 };
+
   update(dt: number, camX: number, camY: number, L: Lighting, rain: number): void {
     // --- ambient spawners, budgeted per second and tied to the weather
     this.acc += dt;
@@ -635,12 +641,19 @@ export class Particles {
       if (L.night < 0.5 && Math.random() < 0.02 && this.count('bird') < 4) {
         this.spawnBird(camX, camY);
       }
-      if (rain < 0.2 && Math.random() < 0.18 && this.count('leaf') < 8) {
+      // The season's own drift. Same particle, different weight and fall —
+      // a petal is slower and wanders more than a leaf, and cold air barely
+      // moves at all.
+      const cap = Math.round(8 * this.air.rate);
+      if (rain < 0.2 && Math.random() < 0.18 * this.air.rate && this.count('leaf') < cap) {
+        const slow = this.air.kind === 'petal' ? 0.55
+          : this.air.kind === 'mist' ? 0.35 : 1;
         this.items.push({
           x: camX + Math.random() * view.w,
           y: camY - 6,
-          vx: -6 - Math.random() * 8, vy: 9 + Math.random() * 7,
-          life: 0, maxLife: 7,
+          vx: (-6 - Math.random() * 8) * slow,
+          vy: (9 + Math.random() * 7) * slow,
+          life: 0, maxLife: 7 / slow,
           kind: 'leaf', seed: Math.random() * 100,
         });
       }
@@ -725,7 +738,16 @@ export class Particles {
           d.rect(p.x, p.y, 1, 1, C.SunGlow, fade * 0.5);
           break;
         case 'leaf':
-          d.rect(p.x, p.y, 2, 1, C.Amber, fade * 0.75);
+          // Coloured by what is in the air rather than always amber: an
+          // amber fleck falling through a spring canopy reads as ash.
+          d.rect(
+            p.x, p.y,
+            this.air.kind === 'mist' ? 3 : 2, 1,
+            this.air.kind === 'petal' ? C.Rose
+              : this.air.kind === 'mist' ? C.Pale
+                : this.air.kind === 'haze' ? C.SunGlow : C.Amber,
+            fade * (this.air.kind === 'mist' ? 0.4 : 0.75),
+          );
           break;
         case 'rain':
           d.rect(p.x, p.y, 1, 4, C.Pale, 0.32 * fade);
