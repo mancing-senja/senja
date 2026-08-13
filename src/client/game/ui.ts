@@ -6,13 +6,15 @@
 import { MAX_CHAT_LEN } from '../../shared/constants';
 import { view } from '../engine/view';
 import type { BoardEntry, FeedItem } from '../../shared/protocol';
-import { C } from '../art/palette';
+import { C, col01 } from '../art/palette';
 import { LINE_H, textWidth, wrapText } from '../art/font';
 import type { Draw } from '../render/draw';
 import type { Lighting } from '../world/lighting';
 import type { Input } from '../engine/input';
 import { CROP_INFO } from './farm';
 import { SPECIES } from './fishing';
+import { GRADES } from './grade';
+import { Blend } from '../engine/batch';
 import { lookColour } from '../art/character';
 import type { LoreFragment } from './lore';
 import type { Farm } from './farm';
@@ -21,6 +23,16 @@ import type { NetStatus } from './net';
 interface FeedLine {
   item: FeedItem;
   age: number;
+}
+
+/** Plain words for the fight number. "1.7" tells a player nothing; "kuat"
+ *  tells them to hold on. */
+function fightWord(f: number): string {
+  if (f < 0.6) return 'lemah';
+  if (f < 1.0) return 'sedang';
+  if (f < 1.5) return 'kuat';
+  if (f < 2.0) return 'berat';
+  return 'ganas';
 }
 
 /** Trims a label to fit a column, with an ellipsis when it does not. */
@@ -141,6 +153,7 @@ export class Ui {
   }
 
   update(dt: number): void {
+    this.inspectT = this.inspecting ? this.inspectT + dt : 0;
     for (const l of this.lines) l.age += dt;
     while (this.lines.length && this.lines[0].age > FEED_HOLD + FEED_FADE) this.lines.shift();
     this.helpT = Math.max(0, this.helpT - dt);
@@ -162,6 +175,7 @@ export class Ui {
     if (this.helpT > 0 && !this.chatOpen && !this.talking) this.drawHelpHint(d);
     if (this.showHelp) this.drawHelpPanel(d);
     if (this.showLog) this.drawLogPanel(d, ctx);
+    if (this.showLog && this.inspecting) this.drawInspect(d, ctx);
     if (this.showBoard) this.drawBoardPanel(d, ctx);
     if (this.reading) this.drawLorePanel(d);
   }
@@ -169,6 +183,10 @@ export class Ui {
   showLog = false;
   /** Which page of the catch journal is open. */
   logPage = 0;
+  /** Cursor within the page, 0..32. */
+  logSel = 0;
+  /** True while the species detail sheet is up. */
+  inspecting = false;
   showBoard = false;
 
   /** The fragment currently being read, if any. */
@@ -245,6 +263,130 @@ export class Ui {
 
   /** The catch log: every species, greyed out until you have landed one.
    *  Rows are laid out in two columns so the whole roster fits one screen. */
+  /** How many rows a journal page holds. Shared by the drawing and by the
+   *  cursor, so the two can never disagree about where the page ends. */
+  static readonly LOG_COLS = 3;
+  static readonly LOG_ROWS = 11;
+  static get LOG_PER_PAGE(): number { return Ui.LOG_COLS * Ui.LOG_ROWS; }
+
+  /** Which species the journal cursor is on right now. */
+  selectedSpecies(): (typeof SPECIES)[number] | null {
+    const i = this.logPage * Ui.LOG_PER_PAGE + this.logSel;
+    return SPECIES[i] ?? null;
+  }
+
+  /** The species sheet.
+   *
+   *  The journal answers "have I caught this"; it cannot answer "what is
+   *  it, where does it live, and how big do they get" — which is the
+   *  question anybody keeping a list actually has. So E on a row opens the
+   *  fish at size, at the best grade you have ever landed it at, with the
+   *  numbers that decide where you should go looking for a better one.
+   *
+   *  Nothing here is revealed for a species you have never caught. A
+   *  reference book that tells you the answers before you find them is a
+   *  spoiler, not a journal. */
+  private drawInspect(d: Draw, ctx: HudCtx): void {
+    const sp = this.selectedSpecies();
+    if (!sp) return;
+    const e = ctx.farm.log[sp.id];
+    // Two columns with a hard divide between them. The first pass let the
+    // blurb run under the whole panel width and it landed straight across
+    // the bite-time bars — the two halves have to own their own space.
+    const w = 224;
+    const h = 148;
+    const x = Math.round(view.w / 2 - w / 2);
+    const y = Math.round(view.h / 2 - h / 2);
+    const tier = e ? (e.bestGrade ?? 0) : 0;
+    const grade = GRADES[Math.min(GRADES.length - 1, Math.max(0, tier))];
+    const accent = e ? grade.colour : C.Slate;
+    const LEFT = x + 8;
+    const RIGHT = x + 110;
+
+    d.panel(x, y, w, h, 1, accent);
+
+    if (!e) {
+      d.text('BELUM PERNAH KETANGKAP', LEFT, y + 8, C.Slate);
+      d.textCentered('?', view.w / 2, y + 56, C.Slate, C.InkDeep, 0.9);
+      d.textCentered(
+        'catat sendiri, jangan dikasih tau',
+        view.w / 2, y + 78, C.Slate, C.InkDeep, 0.7,
+      );
+      d.textCentered('e tutup', view.w / 2, y + h - 10, C.Mist, C.InkDeep, 0.7);
+      return;
+    }
+
+    d.text(sp.label, LEFT, y + 7, C.White);
+    d.text(grade.label.toLowerCase(), x + w - textWidth(grade.label) - 8, y + 7, accent, 0.95);
+    d.rect(x + 6, y + 17, w - 12, 1, C.Slate, 0.6);
+    d.rect(RIGHT - 8, y + 20, 1, h - 32, C.Slate, 0.35);
+
+    // --- left: the fish, swimming, at the best grade you have landed it
+    // at. A still sprite in a reference panel reads as a diagram; the same
+    // bob the catch card uses reads as an animal.
+    const t = this.inspectT;
+    const bob = Math.sin(t * 2.4) * 1.5;
+    const sway = Math.sin(t * 2.4 - 0.7) * 1.0;
+    if (grade.glow > 0) {
+      const gs = grade.glow > 32 ? 64 : 32;
+      d.sprite(`glow${gs}`, LEFT + 40 - gs / 2, y + 40 - gs / 2, {
+        tint: col01(accent), alpha: 0.26 + tier * 0.05, blend: Blend.Add,
+      });
+    }
+    d.sprite(`fishg${tier}_${sp.id}`, LEFT + 20 + sway, y + 29 + bob, { alpha: 1 });
+
+    // --- left: the grade ladder, with the ones you have landed lit.
+    d.text('grade kamu', LEFT, y + 60, C.Mist, 0.8);
+    for (let i = 0; i < GRADES.length; i++) {
+      const gx = LEFT + i * 14;
+      const got = i <= tier;
+      d.rect(gx, y + 71, 12, 7, GRADES[i].colour, got ? 1 : 0.18);
+      if (got) d.rect(gx, y + 71, 12, 1, C.White, 0.5);
+    }
+
+    // --- left: what it is. Two lines, inside the left column's width.
+    const lines = wrapText(sp.blurb, 92);
+    for (let i = 0; i < Math.min(3, lines.length); i++) {
+      d.text(lines[i], LEFT, y + 88 + i * LINE_H, C.Mist, 0.85);
+    }
+
+    // --- right: the numbers that say where to go looking for a bigger one.
+    let ry = y + 24;
+    const row = (k: string, v: string, col: C): void => {
+      d.text(k, RIGHT, ry, C.Mist, 0.8);
+      d.text(v, x + w - textWidth(v) - 8, ry, col, 0.95);
+      ry += 11;
+    };
+    row('rekor kamu', `${e.best} cm`, C.Amber);
+    row('ukuran jenis', `${sp.minCm}-${sp.maxCm}`, C.Pale);
+    row('sudah dapat', `${e.count}x`, C.Pale);
+    row('harga dasar', `${sp.value}`, C.Lantern);
+    row('perlawanan', fightWord(sp.fight), C.Pale);
+
+    // --- right: when it bites. Four bars beat four numbers — the shape of
+    // the day is the actual answer to "when should I be out here".
+    ry += 4;
+    d.text('waktu gigit', RIGHT, ry, C.Mist, 0.8);
+    ry += 11;
+    const peak = Math.max(...sp.weight);
+    const PH = ['pagi', 'siang', 'senja', 'malam'];
+    for (let i = 0; i < 4; i++) {
+      const by = ry + i * 10;
+      d.text(PH[i], RIGHT, by, C.Pale, 0.85);
+      const bx = RIGHT + 32;
+      const bw = x + w - 8 - bx;
+      d.rect(bx, by + 1, bw, 5, C.Slate, 0.55);
+      const fill = Math.round((sp.weight[i] / peak) * bw);
+      const best = sp.weight[i] >= peak - 0.001;
+      d.rect(bx, by + 1, fill, 5, best ? C.Lantern : C.Water, 0.95);
+    }
+
+    d.textCentered('e tutup', view.w / 2, y + h - 10, C.Mist, C.InkDeep, 0.7);
+  }
+
+  /** Seconds the inspect sheet has been open, for its animation. */
+  inspectT = 0;
+
   private drawLogPanel(d: Draw, ctx: HudCtx): void {
     // Paged, because the roster is eighty-six species and a single sheet
     // needed four hundred and seventy pixels of a hundred-and-fifty-pixel
@@ -255,9 +397,8 @@ export class Ui {
     const h = 156;
     const x = Math.round(view.w / 2 - w / 2);
     const y = Math.round(view.h / 2 - h / 2);
-    const COLS = 3;
-    const ROWS = 11;
-    const perPage = COLS * ROWS;
+    const ROWS = Ui.LOG_ROWS;
+    const perPage = Ui.LOG_PER_PAGE;
     const pages = Math.max(1, Math.ceil(SPECIES.length / perPage));
     const page = ((this.logPage % pages) + pages) % pages;
 
@@ -276,6 +417,9 @@ export class Ui {
       const cx = x + 8 + Math.floor(k / ROWS) * 98;
       const cy = y + 18 + (k % ROWS) * 11;
       const e = ctx.farm.log[s.id];
+      if (k === this.logSel) {
+        d.rect(cx - 2, cy - 2, 94, 10, C.Amber, 0.22);
+      }
       if (e) {
         d.sprite(`fish_${s.id}`, cx, cy - 2, { scale: 1, alpha: 1, dw: 14, dh: 8 });
         // Names are longer than they were and the columns are narrower;
@@ -288,7 +432,9 @@ export class Ui {
       }
     }
 
-    const nav = pages > 1 ? `< ${page + 1}/${pages} >   a d ganti   j tutup` : 'j tutup';
+    const nav = pages > 1
+      ? `< ${page + 1}/${pages} >   a d halaman   w s pilih   e lihat   j tutup`
+      : 'w s pilih   e lihat   j tutup';
     d.textCentered(nav, view.w / 2, y + h - 10, C.Mist, C.InkDeep, 0.7);
   }
 

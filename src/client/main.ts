@@ -221,12 +221,25 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
     if (e.key === 'j' || e.key === 'J') {
       ui.showLog = !ui.showLog;
       ui.logPage = 0;
+      ui.logSel = 0;
+      ui.inspecting = false;
     }
-    // Page the journal while it is open. Guarded on the panel being open so
-    // A and D keep walking the player the rest of the time.
+    // Journal navigation. All guarded on the panel being open, so these
+    // keys keep walking the player the rest of the time.
     if (ui.showLog) {
-      if (e.key === 'a' || e.key === 'A' || e.key === 'ArrowLeft') ui.logPage--;
-      if (e.key === 'd' || e.key === 'D' || e.key === 'ArrowRight') ui.logPage++;
+      const k = e.key.toLowerCase();
+      if (k === 'e') {
+        ui.inspecting = !ui.inspecting;
+      } else if (!ui.inspecting) {
+        if (k === 'a' || e.key === 'ArrowLeft') ui.logPage--;
+        if (k === 'd' || e.key === 'ArrowRight') ui.logPage++;
+        // Down the column first, then wrap into the next one — that is the
+        // order the page is laid out in, so the cursor follows the eye.
+        if (k === 'w' || e.key === 'ArrowUp') ui.logSel--;
+        if (k === 's' || e.key === 'ArrowDown') ui.logSel++;
+        const per = Ui.LOG_PER_PAGE;
+        ui.logSel = ((ui.logSel % per) + per) % per;
+      }
     }
     if (e.key === 'b' || e.key === 'B') ui.showBoard = !ui.showBoard;
     if (e.key === 'm' || e.key === 'M') audio.toggleMute();
