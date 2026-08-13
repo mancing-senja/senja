@@ -134,6 +134,18 @@ const SWAMP_TY = 58;
 
 /** The village: a street of houses around a square with a well, set back
  *  from the lake between the pier and the farm. */
+/** Settlements beyond the original valley.
+ *
+ *  Placed well clear of every district's bounds and of the shoreline, in
+ *  the ground the map grew into. Smaller than the hub on purpose — the
+ *  village is still where the room gathers. */
+const OUTPOSTS: TownSpec[] = [
+  // East, past the neon quay: a road hamlet on the way out of the valley.
+  { cx: 228, cy: 44, reach: 11, hub: false },
+  // South, below the grove: the far shore of the southern flats.
+  { cx: 152, cy: 118, reach: 12, hub: false },
+];
+
 const VILLAGE_TX = 92;
 const VILLAGE_TY = 22;
 
@@ -324,6 +336,12 @@ export function buildMap(): WorldMap {
   buildGrove(set, get, props, rng);
 
   buildVillage(set, get, props, doors, rng);
+  // Two more places to arrive at, in the ground added east and south.
+  // Making the world bigger and making it worth crossing are different
+  // jobs; this is the second one.
+  for (const t of OUTPOSTS) {
+    buildVillage(set, get, props, doors, rng, t);
+  }
   // Lanes out of the village are narrow — a two-tile track everywhere turns
   // the whole valley into one brown smear.
   carvePath(set, get, (VILLAGE_TX - 2) * TILE, (VILLAGE_TY + 11) * TILE, PLOT_TX * TILE + 40, (PLOT_TY - 3) * TILE, 1, 14);
@@ -851,18 +869,63 @@ function buildGrove(
 /** Houses along a street, a square with a well and a stall, and fenced
  *  gardens behind. Laid out by hand rather than scattered — a village is
  *  the one thing in this world that people built on purpose. */
+/** How big a settlement is, and what it gets.
+ *
+ *  The hub keeps the well, the stall and the community board — those are
+ *  shared fixtures and a second copy of the board would split the room's
+ *  records in half. An outpost is a street, houses and a lantern or two:
+ *  somewhere to arrive at, not a second capital. */
+export interface TownSpec {
+  cx: number;
+  cy: number;
+  /** Half-width of the street, in tiles. */
+  reach: number;
+  /** Only the hub gets the well, stall and notice board. */
+  hub: boolean;
+}
+
+/** Plots along both sides of the street.
+ *
+ *  Count follows the street's length, spacing wobbles, and the two rows are
+ *  offset from each other so houses face gaps rather than each other's
+ *  front doors. */
+function lotsFor(
+  vx: number, vy: number, spec: TownSpec, rng: Rng,
+): Array<[number, number, number]> {
+  const out: Array<[number, number, number]> = [];
+  // Six, not seven: at seven the hub came out with two fewer houses than
+  // the hand-placed street it replaced, which is a regression dressed up as
+  // a refactor.
+  const step = 6;
+  const span = spec.reach - 1;
+  for (const side of [0, 1]) {
+    // The far row starts half a plot along, so the street is not a mirror.
+    const from = -span + (side ? Math.floor(step / 2) : 0);
+    for (let dx = from; dx <= span - 3; dx += step) {
+      if (Math.abs(dx) < 2) continue; // keep the square clear
+      out.push([
+        vx + dx + rng.int(-1, 1),
+        vy + (side ? 10 + rng.int(0, 1) : rng.int(0, 1)),
+        rng.int(0, 4),
+      ]);
+    }
+  }
+  return out;
+}
+
 function buildVillage(
   set: (tx: number, ty: number, t: Tile) => void,
   get: (tx: number, ty: number) => Tile,
   props: Prop[],
   doors: Door[],
   rng: Rng,
+  spec: TownSpec = { cx: VILLAGE_TX, cy: VILLAGE_TY, reach: 16, hub: true },
 ): void {
-  const vx = VILLAGE_TX;
-  const vy = VILLAGE_TY;
+  const vx = spec.cx;
+  const vy = spec.cy;
 
   // The street: two tiles wide, running east-west through the square.
-  for (let tx = vx - 16; tx <= vx + 16; tx++) {
+  for (let tx = vx - spec.reach; tx <= vx + spec.reach; tx++) {
     for (let k = 0; k < 2; k++) {
       if (get(tx, vy + 4 + k) === Tile.Grass) set(tx, vy + 4 + k, Tile.Dirt);
     }
@@ -880,10 +943,11 @@ function buildVillage(
 
   // Houses: north side faces the street, south side sits behind it.
   const lots: Array<[number, number, number]> = [
-    [vx - 15, vy + 1, 0], [vx - 9, vy, 1], [vx - 2, vy + 1, 2],
-    [vx + 5, vy, 3], [vx + 12, vy + 1, 4],
-    [vx - 13, vy + 10, 2], [vx - 5, vy + 11, 4], [vx + 3, vy + 10, 0],
-    [vx + 11, vy + 11, 1],
+    // Laid out from the street's own reach and jittered per settlement, so
+    // three towns are three towns. Fixed offsets gave every one of them the
+    // same nine plots in the same nine places — different house colours on
+    // an identical street, which reads as the same town copied.
+    ...lotsFor(vx, vy, spec, rng),
   ];
   for (const [htx, hty, style] of lots) {
     const px = htx * TILE + 24;
@@ -932,9 +996,16 @@ function buildVillage(
   }
 
   // The well and the stall, in the square.
-  props.push({ kind: 'well', x: vx * TILE, y: (vy + 6) * TILE, variant: 0, solidW: 10, solidH: 6, sways: false });
-  props.push({ kind: 'stall', x: (vx + 5) * TILE, y: (vy + 7) * TILE, variant: 0, solidW: 16, solidH: 6, sways: false });
-  props.push({ kind: 'board', x: (vx - 4) * TILE, y: (vy + 8) * TILE, variant: 0, solidW: 12, solidH: 4, sways: false });
+  // The well, the stall and the board are the hub's. A second notice board
+  // would split the room's shared records across two places, and a player
+  // would have no way of knowing which one they were reading.
+  if (spec.hub) {
+    props.push({ kind: 'well', x: vx * TILE, y: (vy + 6) * TILE, variant: 0, solidW: 10, solidH: 6, sways: false });
+    props.push({ kind: 'stall', x: (vx + 5) * TILE, y: (vy + 7) * TILE, variant: 0, solidW: 16, solidH: 6, sways: false });
+    props.push({ kind: 'board', x: (vx - 4) * TILE, y: (vy + 8) * TILE, variant: 0, solidW: 12, solidH: 4, sways: false });
+  } else {
+    props.push({ kind: 'well', x: vx * TILE, y: (vy + 6) * TILE, variant: 0, solidW: 10, solidH: 6, sways: false });
+  }
 
   // Fenced gardens behind the southern houses.
   for (const [htx, hty] of [[vx - 13, vy + 14], [vx + 3, vy + 14]] as const) {
