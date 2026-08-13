@@ -28,8 +28,9 @@
 import { PixelCanvas, Rng, TRANSPARENT } from './canvas';
 import { C, RGB_PALETTE } from './palette';
 import { LOOKS, LOOK_COUNT, type Look } from './character';
+import { GARMENTS, clothFrom, drawGarment } from './garment';
 
-export const PORTRAIT_W = 48;
+export const PORTRAIT_W = 64;
 export const PORTRAIT_H = 64;
 
 /** Expressions. Only three, but that is enough to make a conversation feel
@@ -75,7 +76,12 @@ function darkHair(lk: Look): number {
 
 // --- layout -----------------------------------------------------------
 
-const SX = 24;
+/** Centre column. The canvas is 64 wide rather than 48 because at 48 the
+ *  shoulders reached the frame and long hair was cut off square against it —
+ *  a straight vertical edge down the side of a person, which reads as damage
+ *  rather than as a crop. Everything here is positioned relative to SX, so
+ *  widening the canvas moved nothing. */
+const SX = 32;
 const HEAD_TOP = 5;
 /** Half-width of the head, row by row from HEAD_TOP. Authored: a circular
  *  cranium, a straight run through the temples, then eight rows of jaw
@@ -150,7 +156,7 @@ const FACE: readonly string[] = [
   // read as facing two directions at once.
   '...hhhhhhhh.......hhhhhh...', // 17
   '...hhhhhhhh.......hhhhhh...', // 18
-  '...jikkkkij.......jikkkj...', // 19  catchlight, then iris
+  '...jinkkkij.......jinkkj...', // 19  catchlight, then iris
   '...jkkllkkj.......jkllkj...', // 20  pupil
   '...jjKKKKjj.......jKKKKj...', // 21  iris floor, lit
   '....jjjjjj.........jjjj....', // 22  lower lid
@@ -315,9 +321,15 @@ function outlineSoft(c: PixelCanvas): void {
   }
 }
 
-/** Four skin values. Two cannot describe a sphere. */
+/** Four skin values: deep, shade, base, lit.
+ *
+ *  All four are now authored in the palette rather than reached by stepping
+ *  an index. The old version stepped the *wood* ramp, so the deepest tone on
+ *  a face was plank brown and every shadow ran toward mud. Skin in shadow
+ *  goes red, not brown, and no amount of index arithmetic over a furniture
+ *  ramp will produce that. */
 function skinRamp(lk: Look): [number, number, number, number] {
-  return [shift(lk.skinSh, -1), lk.skinSh, lk.skin, shift(lk.skin, 1)];
+  return [lk.skinDp, lk.skinSh, lk.skin, lk.skinLt];
 }
 
 function chinRow(g: Geom): number {
@@ -403,6 +415,12 @@ function stampFace(
       case 'd': return deep;
       case 'h': return lash;
       case 'i': return C.White;
+      // The catchlight. One pixel of pure white high in the iris, on the
+      // side the light comes from. It is the smallest mark on the face and
+      // the one that decides whether the eye is wet or painted on — every
+      // anime reference has it and this file did not, which is most of why
+      // the eyes read as flat discs.
+      case 'n': return C.White;
       // Sclera. Drawn in Pale it read as grey and the eye looked dirty;
       // white sclera against a big saturated iris is the anime contrast.
       case 'j': return C.White;
@@ -479,12 +497,34 @@ function drawNeck(c: PixelCanvas, lk: Look, g: Geom): void {
   }
 }
 
+/** Half-width of the torso at a row. Shared with the garment pass, which
+ *  needs the same silhouette so nothing gets painted into thin air. */
+/** Half-width of the torso, row by row from SHOULDER_Y. Authored, for the
+ *  same reason the skull is: the previous version widened by a square root
+ *  all the way to the bottom of the frame, so every bust was a cone that got
+ *  wider until it ran out of canvas. A shoulder slopes down and out from the
+ *  neck for a few rows and then the arm hangs — it does not keep spreading. */
+const BUST: readonly number[] = [
+  // The slope off the neck.
+  10, 13, 15, 17, 18, 19, 20, 20,
+  // Shoulder point, and then the arms drop.
+  21, 21, 21, 21, 21, 21,
+  21, 21, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22,
+];
+
+function bustHalf(y: number, g: Geom): number {
+  if (y < SHOULDER_Y) return 0;
+  const i = Math.min(BUST.length - 1, y - SHOULDER_Y);
+  return Math.round(BUST[i] * g.wide);
+}
+
 function drawBust(c: PixelCanvas, lk: Look, g: Geom): void {
   const dim = lk.shirtDim;
   const lit = shift(lk.shirt, 1);
   for (let y = SHOULDER_Y; y < PORTRAIT_H; y++) {
     const t = (y - SHOULDER_Y) / (PORTRAIT_H - SHOULDER_Y);
-    const half = Math.round((10 + Math.pow(t, 0.5) * 14) * g.wide);
+    const half = bustHalf(y, g);
+    if (half <= 0) continue;
     for (let x = SX - half; x <= SX + half; x++) {
       const nx = (x - SX) / half;
       // The boundary leans, following the slope of the shoulder. A vertical
@@ -493,11 +533,6 @@ function drawBust(c: PixelCanvas, lk: Look, g: Geom): void {
       c.set(x, y, nx < -0.5 + t * 0.2 ? lit : nx > 0.5 - t * 0.25 ? dim : lk.shirt);
     }
   }
-  for (let y = SHOULDER_Y + 3; y < PORTRAIT_H; y++) {
-    const s = Math.round(Math.sin((y - SHOULDER_Y) * 0.35) * 2);
-    c.set(SX - 13 + s, y, dim);
-    c.set(SX + 12 - s, y, dim);
-  }
   // The head casts onto the chest. Without it the bust reads as a backdrop
   // the head happens to be standing in front of.
   for (let y = SHOULDER_Y; y < SHOULDER_Y + 4; y++) {
@@ -505,37 +540,29 @@ function drawBust(c: PixelCanvas, lk: Look, g: Geom): void {
     for (let x = SX - w; x <= SX + w; x++) c.set(x, y, shift(dim, -1));
   }
 
-  const cy = SHOULDER_Y + 2;
-  switch (lk.outfit) {
-    case 'jacket':
-      for (let i = 0; i < 8; i++) {
-        c.set(SX - 4 - i, cy + i, dim);
-        c.set(SX - 3 - i, cy + i, lk.trim);
-        c.set(SX + 4 + i, cy + i, dim);
-        c.set(SX + 3 + i, cy + i, lk.trim);
-      }
-      break;
-    case 'hoodie':
-      for (let y = 0; y < 4; y++) {
-        for (let x = SX - 12 + y; x <= SX + 12 - y; x++) {
-          c.set(x, cy - 2 + y, y < 2 ? dim : shift(dim, -1));
-        }
-      }
-      break;
-    case 'tunic':
-      for (let x = SX - 6; x <= SX + 6; x++) {
-        c.set(x, cy + 2, lk.trim);
-        c.set(x, cy + 3, dim);
-      }
-      c.rect(SX - 1, cy + 4, 2, 2, C.Gold);
-      break;
-    default:
-      for (let i = 0; i < 5; i++) {
-        c.set(SX - 3 - i, cy + 2 + i, lk.trim);
-        c.set(SX + 3 + i, cy + 2 + i, lk.trim);
-      }
-      break;
-  }
+  // Then the garment itself: neckline, collar band, opening, seam, weave and
+  // the rim of light down the lit edge. This used to be a two-pixel V and a
+  // switch with four cases, and every villager was wearing the same shirt in
+  // a different dye.
+  const [skinDp, skinSh] = skinRamp(lk);
+  drawGarment(
+    c, GARMENTS[lk.garment],
+    clothFrom(lk.shirt, dim, lk.trim, innerFor(lk), skinSh, skinDp, shift),
+    SX, SHOULDER_Y, PORTRAIT_H,
+    (y) => bustHalf(y, g),
+  );
+}
+
+/** What shows through an open jacket.
+ *
+ *  A light inner layer against a dark outer one, or the reverse — the point
+ *  is contrast, because an opening filled with a near-identical tone is
+ *  invisible and the garment loses the thing that identifies it. */
+function innerFor(lk: Look): number {
+  // A step apart, not the opposite end of the scale. Reaching straight for
+  // white against every dark jacket put a near-white wedge down the middle
+  // of the chest, which outshouted the face directly above it.
+  return luma(lk.shirt) < 110 ? C.Mist : C.Slate;
 }
 
 /** Where the hairline falls at a column: lower over the middle of the brow,
@@ -600,14 +627,14 @@ function hemAt(x: number): number {
 }
 
 function drawHair(c: PixelCanvas, lk: Look, g: Geom, rng: Rng): void {
-  const dark = darkHair(lk);
-  // Take the highlight off the *lighter* of the pair. Black hair is stored
-  // [InkDeep, Ink], so `shift(lk.hair, 1)` landed on Ink — exactly the tone
-  // the cap is already drawn in. Every highlight strand disappeared and
-  // every dark strand became a bar, which is why the black-haired villager
-  // had scratch marks on her crown.
-  const light = dark === lk.hair ? lk.hairSh : lk.hair;
-  const hi = shift(light, 1);
+  // Named, not deduced. Hair used to carry two tones with no guarantee which
+  // was darker, so this had to compare luma and pick — and the highlight was
+  // then reached by stepping an index, which on the near-black hair landed on
+  // the tone the cap was already drawn in and vanished. Three authored tones
+  // per range ends both problems.
+  const dark = lk.hairSh;
+  const light = lk.hair;
+  const hi = lk.hairHi;
   const covered = lk.head === 'hat' || lk.head === 'hood';
   const [, sh] = skinRamp(lk);
 

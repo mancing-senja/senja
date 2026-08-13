@@ -19,7 +19,8 @@
  *  breath so the two never look like the same animation. */
 
 import { PixelCanvas, TRANSPARENT } from './canvas';
-import { C } from './palette';
+import { C, HAIR_TONES, SKIN_TONES } from './palette';
+import type { GarmentId } from './garment';
 
 export const CH_W = 16;
 export const CH_H = 24;
@@ -158,15 +159,23 @@ export type Outfit = 'shirt' | 'jacket' | 'hoodie' | 'tunic';
 
 export interface Look {
   id: string;
+  /** Lit, base, shade, deep. Four, because two cannot describe a face. */
+  skinLt: number;
   skin: number;
   skinSh: number;
+  skinDp: number;
   hair: number;
   hairSh: number;
+  /** The highlight band across the crown. */
+  hairHi: number;
   hairStyle: HairStyle;
   head: HeadGear;
   headCol: number;
   headSh: number;
   outfit: Outfit;
+  /** What the portrait dresses them in. The world sprite is sixteen pixels
+   *  wide and cannot tell a cardigan from a coat, so it keeps `outfit`. */
+  garment: GarmentId;
   shirt: number;
   shirtDim: number;
   trim: number;
@@ -174,19 +183,17 @@ export interface Look {
   boot: number;
 }
 
-const SKINS: Array<[number, number]> = [
-  [C.Skin, C.SkinSh],
-  [C.SkinSh, C.Wood],
-  [C.Wood, C.WoodDk],
-];
+/** Skin now comes from the palette's own skin ranges rather than from the
+ *  wood ramp it used to share. Sharing that ramp meant the darker two thirds
+ *  of the cast were drawn in plank brown and every shadow on every face ran
+ *  toward mud — wood gets darker, skin gets *redder*. */
+const SKINS: readonly (readonly C[])[] = SKIN_TONES;
 
-const HAIRS: Array<[number, number]> = [
-  [C.WoodDk, C.WoodDp],
-  [C.InkDeep, C.Ink],
-  [C.Wood, C.WoodDk],
-  [C.Slate, C.InkDeep],
-  [C.Red, C.Rose],
-];
+/** Three tones each, and the third is the point: hair is read by its
+ *  highlight band, and two tones cannot draw one. The old table had black
+ *  hair as [InkDeep, Ink] — a near-black that takes no highlight at all and
+ *  reads as a hole cut out of the head. */
+const HAIRS: readonly (readonly C[])[] = HAIR_TONES;
 
 /** Twelve looks, in modern casual clothes.
  *
@@ -205,34 +212,35 @@ const HAIRS: Array<[number, number]> = [
  *  as the network "hue", so remote players show up wearing the right thing. */
 export const LOOKS: Look[] = [
   // Black hoodie, khaki cargos, white trainers.
-  look('petani', 0, 0, 'short', 'cap', C.WoodDk, C.WoodDp, 'hoodie', C.Ink, C.InkDeep, C.Wood, C.Pale),
-  look('nelayan', 1, 2, 'crop', 'cap', C.Slate, C.InkDeep, 'jacket', C.Forest, C.ForestDp, C.Ink, C.Pale),
+  look('petani', 0, 0, 'short', 'cap', C.WoodDk, C.WoodDp, 'hoodie', 'flannel', C.Ink, C.InkDeep, C.Wood, C.Pale),
+  look('nelayan', 1, 2, 'crop', 'cap', C.Slate, C.InkDeep, 'jacket', 'overshirt', C.Forest, C.ForestDp, C.Ink, C.Pale),
   // Cream sweater over a dark skirt.
-  look('pedagang', 0, 3, 'tied', 'bare', 0, 0, 'hoodie', C.SunGlow, C.Amber, C.Slate, C.InkDeep),
-  look('pemuda', 2, 1, 'short', 'hood', C.Slate, C.Ink, 'hoodie', C.SlateLt, C.Slate, C.InkDeep, C.Ink),
+  look('pedagang', 0, 3, 'tied', 'bare', 0, 0, 'hoodie', 'knit', C.SunGlow, C.Amber, C.Slate, C.InkDeep),
+  look('pemuda', 2, 1, 'short', 'hood', C.Slate, C.Ink, 'hoodie', 'hoodie', C.SlateLt, C.Slate, C.InkDeep, C.Ink),
   // Purple hoodie, cream skirt.
-  look('gadis', 0, 4, 'bob', 'bare', 0, 0, 'hoodie', C.Purple, C.Dusk, C.SunGlow, C.Pale),
-  look('tetua', 1, 3, 'crop', 'bare', 0, 0, 'jacket', C.Mist, C.Slate, C.WoodDk, C.WoodDp),
-  look('kurir', 2, 1, 'crop', 'cap', C.WoodDk, C.WoodDp, 'jacket', C.Wood, C.WoodDk, C.Ink, C.Pale),
-  look('penjaga', 0, 3, 'short', 'cap', C.Slate, C.Ink, 'jacket', C.WaterDp, C.Ink, C.Slate, C.InkDeep),
+  look('gadis', 0, 4, 'bob', 'bare', 0, 0, 'hoodie', 'cardigan', C.Purple, C.Dusk, C.SunGlow, C.Pale),
+  look('tetua', 1, 3, 'crop', 'bare', 0, 0, 'jacket', 'trench', C.Mist, C.Slate, C.WoodDk, C.WoodDp),
+  look('kurir', 2, 1, 'crop', 'cap', C.WoodDk, C.WoodDp, 'jacket', 'varsity', C.Wood, C.WoodDk, C.Ink, C.Pale),
+  look('penjaga', 0, 3, 'short', 'cap', C.Slate, C.Ink, 'jacket', 'puffer', C.WaterDp, C.Ink, C.Slate, C.InkDeep),
   // Green jacket over a pale hoodie.
-  look('peramu', 1, 0, 'bob', 'hood', C.Forest, C.ForestDp, 'hoodie', C.GrassDk, C.Forest, C.Ink, C.Pale),
-  look('anak', 0, 2, 'short', 'bare', 0, 0, 'hoodie', C.Pale, C.Mist, C.WaterDp, C.Pale),
-  look('perantau', 2, 4, 'tied', 'hat', C.WoodDk, C.WoodDp, 'jacket', C.Dusk, C.InkDeep, C.WoodDk, C.WoodDp),
-  look('teknisi', 1, 1, 'crop', 'cap', C.CyberSlate, C.CyberVoid, 'hoodie', C.CyberSteel, C.CyberSlate, C.InkDeep, C.Slate),
+  look('peramu', 1, 0, 'bob', 'hood', C.Forest, C.ForestDp, 'hoodie', 'cardigan', C.GrassDk, C.Forest, C.Ink, C.Pale),
+  look('anak', 0, 2, 'short', 'bare', 0, 0, 'hoodie', 'knit', C.Pale, C.Mist, C.WaterDp, C.Pale),
+  look('perantau', 2, 4, 'tied', 'hat', C.WoodDk, C.WoodDp, 'jacket', 'batik', C.Dusk, C.InkDeep, C.WoodDk, C.WoodDp),
+  look('teknisi', 1, 1, 'crop', 'cap', C.CyberSlate, C.CyberVoid, 'hoodie', 'puffer', C.CyberSteel, C.CyberSlate, C.InkDeep, C.Slate),
 ];
 
 function look(
   id: string, skinI: number, hairI: number, hairStyle: HairStyle,
   head: HeadGear, headCol: number, headSh: number,
-  outfit: Outfit, shirt: number, shirtDim: number,
+  outfit: Outfit, garment: GarmentId, shirt: number, shirtDim: number,
   pants: number, boot: number,
 ): Look {
-  const [skin, skinSh] = SKINS[skinI];
-  const [hair, hairSh] = HAIRS[hairI];
+  const [skinLt, skin, skinSh, skinDp] = SKINS[skinI];
+  const [hairSh, hair, hairHi] = HAIRS[hairI];
   return {
-    id, skin, skinSh, hair, hairSh, hairStyle, head, headCol, headSh,
-    outfit, shirt, shirtDim,
+    id, skinLt, skin, skinSh, skinDp,
+    hair, hairSh, hairHi, hairStyle, head, headCol, headSh,
+    outfit, garment, shirt, shirtDim,
     trim: C.White,
     pants, boot,
   };
