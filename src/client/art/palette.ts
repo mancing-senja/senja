@@ -39,6 +39,45 @@ export const PALETTE: readonly string[] = [
   // --- 46-47: arcane. Violet for crystal and rune, light violet for the
   // bloom on top of it. Spirit glow borrows the neon mint above.
   '#7a3fd4', '#b98cff',
+
+  // --- 48-59: skin. Its own section, and the reason is a mistake worth
+  // naming: skin used to share the wood ramp at 6-10. Darker characters were
+  // therefore literally drawn in plank brown, and every shadow on every face
+  // ran toward mud, because that is what wood does and it is not what skin
+  // does. Skin in shadow shifts toward red — blood under it — and skin in
+  // light shifts toward yellow. A ramp that only gets darker is a ramp for
+  // furniture.
+  //
+  // Three ranges, four steps each: lit, base, shade, deep. Three rather than
+  // one long ramp because tone is not a slider — a fair face and a deep one
+  // have different hues at every step, not the same hue at different
+  // brightness, and stepping one ramp is what makes generated casts look
+  // like one person under six lamps.
+  // fair
+  '#ffe8d2', '#f8cdab', '#dc9f80', '#a96b5c',
+  // tan — the middle of the valley, and the most common here
+  '#f7d1a6', '#e3aa79', '#bd7c55', '#8d5040',
+  // deep
+  '#dc9f6e', '#b8764c', '#8b5034', '#5c3029',
+
+  // --- 60-77: hair. Six ranges of three: shade, base, shine.
+  //
+  // The third step is the point. Anime hair is read by its highlight band —
+  // the ring of light across the crown — and a two-tone ramp cannot draw
+  // one. Black hair is deliberately blue-black rather than #000: a true
+  // black takes no highlight at all and reads as a hole cut in the head.
+  // black
+  '#171a2b', '#2b3049', '#4c5474',
+  // brown
+  '#44291d', '#6b452f', '#96674a',
+  // auburn
+  '#5a2717', '#8a4326', '#b86a3e',
+  // blonde
+  '#a2743a', '#d9a951', '#f2d68b',
+  // ash
+  '#454a60', '#6f7488', '#9ba2b6',
+  // dyed — one saturated range, because someone in every town has dyed it
+  '#963f5b', '#d4667f', '#f295ac',
 ];
 
 /** Characters used in sprite string art. '.' is transparent. */
@@ -62,7 +101,39 @@ export const enum C {
 
   // fantasy
   Arcane = 46, ArcaneLt = 47,
+
+  // skin — lit, base, shade, deep
+  FairLt = 48, Fair = 49, FairSh = 50, FairDp = 51,
+  TanLt = 52, Tan = 53, TanSh = 54, TanDp = 55,
+  DeepLt = 56, DeepTone = 57, DeepSh = 58, DeepDp = 59,
+
+  // hair — shade, base, shine
+  HairBlackSh = 60, HairBlack = 61, HairBlackHi = 62,
+  HairBrownSh = 63, HairBrown = 64, HairBrownHi = 65,
+  HairAuburnSh = 66, HairAuburn = 67, HairAuburnHi = 68,
+  HairBlondeSh = 69, HairBlonde = 70, HairBlondeHi = 71,
+  HairAshSh = 72, HairAsh = 73, HairAshHi = 74,
+  HairDyedSh = 75, HairDyed = 76, HairDyedHi = 77,
 }
+
+/** The three skin ranges, lit → deep. Index by tone, never by arithmetic
+ *  across ranges: stepping from `FairDp` to `TanLt` is a hue jump, not a
+ *  shade. */
+export const SKIN_TONES: readonly (readonly C[])[] = [
+  [C.FairLt, C.Fair, C.FairSh, C.FairDp],
+  [C.TanLt, C.Tan, C.TanSh, C.TanDp],
+  [C.DeepLt, C.DeepTone, C.DeepSh, C.DeepDp],
+];
+
+/** The six hair ranges, shade → shine. */
+export const HAIR_TONES: readonly (readonly C[])[] = [
+  [C.HairBlackSh, C.HairBlack, C.HairBlackHi],
+  [C.HairBrownSh, C.HairBrown, C.HairBrownHi],
+  [C.HairAuburnSh, C.HairAuburn, C.HairAuburnHi],
+  [C.HairBlondeSh, C.HairBlonde, C.HairBlondeHi],
+  [C.HairAshSh, C.HairAsh, C.HairAshHi],
+  [C.HairDyedSh, C.HairDyed, C.HairDyedHi],
+];
 
 export interface RGB {
   r: number;

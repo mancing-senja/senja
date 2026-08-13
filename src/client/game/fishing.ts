@@ -20,6 +20,7 @@ import { districtAt, type District } from '../world/districts';
 import type { LocalPlayer } from './player';
 import { handPos } from './player';
 import type { Audio } from './audio';
+import type { Season } from '../world/season';
 import {
   COMMON, gradeById, luckFrom, rollGrade, type Grade, type GradeId,
 } from './grade';
@@ -532,6 +533,7 @@ function nightness(time: number): number {
  *  that is what makes walking to the swamp at night worth doing. */
 function rollSpecies(
   time: number, depth01: number, spot: Spot, district: District | null,
+  season: Season,
 ): Species {
   const p = phaseIndex(time);
   const weights = SPECIES.map((s) => {
@@ -545,6 +547,14 @@ function rollSpecies(
     // The district multiplies on top of the spot. Standing at the neon quay
     // is a bigger change to what bites than the hour ever is.
     if (district) w *= district.fish[s.id] ?? 1;
+    // The season, last and lightest. Warm water brings the surface fish up;
+    // cold water pushes everything to the bottom, so winter gives up fewer
+    // fish and better ones. Applied by where a species sits in the water
+    // rather than per species, because eighty-six hand-tuned seasonal
+    // multipliers would be eighty-six chances to make a fish disappear from
+    // the game for a week without anyone noticing.
+    const deep = Math.min(1, s.maxCm / 90);
+    w *= deep * season.deepBias + (1 - deep) * season.shallowBias;
     return w;
   });
   const total = weights.reduce((a, b) => a + b, 0);
@@ -590,6 +600,10 @@ export class Fishing {
   private spot: Spot = DEFAULT_SPOT;
   private district: District | null = null;
   private pending: Species | null = null;
+  /** Set by the frame. Shifts what is biting without touching any species'
+   *  own numbers. */
+  season!: Season;
+
   /** Rolled the moment the fish takes, not when it lands — the grade has to
    *  be known during the fight, because it is what makes the fight hard. */
   private pendingGrade: Grade = COMMON;
@@ -700,7 +714,9 @@ export class Fishing {
           break;
         }
         if (this.t >= this.biteAt) {
-          this.pending = rollSpecies(time, this.depth01, this.spot, this.district);
+          this.pending = rollSpecies(
+            time, this.depth01, this.spot, this.district, this.season,
+          );
           // Deep water, a good spot and the small hours all improve the
           // odds, so chasing a rare fish means going somewhere for it
           // rather than casting more times in the same place.
