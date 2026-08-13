@@ -16,7 +16,8 @@ import { LOOKS, LOOK_COUNT } from './art/character';
 import { col01, C } from './art/palette';
 import { Draw } from './render/draw';
 import {
-  Particles, drawGround, drawLampLight, drawNeonWash, drawReflections, propRenderable,
+  Particles, collectLamps, drawGround, drawLampLight, drawNeonWash, drawReflections,
+  propRenderable,
   type Renderable,
 } from './render/scene';
 import { SkyWater } from './world/skywater';
@@ -802,6 +803,7 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
 
       draw.ambient = L.ambient;
       draw.setSun(L, LIGHT_AMOUNT);
+      draw.setLamps(collectLamps(map, cx, cy, L.night));
       draw.begin(cx, cy);
 
       drawGround(draw, map, cx, cy, clock, L);

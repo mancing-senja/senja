@@ -12,11 +12,13 @@ uniform vec2 u_view;   // internal resolution
 uniform vec2 u_cam;    // camera top-left in world px
 out vec2 v_uv;
 out vec4 v_col;
+out vec2 v_world;
 void main(){
   vec2 p = a_pos - u_cam;
   vec2 clip = vec2(p.x / u_view.x * 2.0 - 1.0, 1.0 - p.y / u_view.y * 2.0);
   v_uv = a_uv;
   v_col = a_col;
+  v_world = a_pos;
   gl_Position = vec4(clip, 0.0, 1.0);
 }`;
 
@@ -24,6 +26,7 @@ const FRAG = `#version 300 es
 precision mediump float;
 in vec2 v_uv;
 in vec4 v_col;
+in vec2 v_world;
 uniform sampler2D u_tex;
 uniform sampler2D u_norm;
 /** 0 = normal tint (multiply), 1 = flat fill keeping source alpha.
@@ -37,6 +40,16 @@ uniform float u_lightAmt;
 /** Colour of the key light, so a sunset warms the lit faces and not only
  *  the ambient tint. */
 uniform vec3 u_lightCol;
+
+/** Lanterns, torches, windows and neon, in world pixels.
+ *
+ *  Eight is not a budget, it is a design decision: the nearest handful is
+ *  all that can be told apart, and a lake edge lined with thirty lamps
+ *  would just wash to a flat glow. xy is the position, z the radius. */
+#define MAX_LAMPS 8
+uniform int u_lampN;
+uniform vec3 u_lampPos[MAX_LAMPS];
+uniform vec3 u_lampCol[MAX_LAMPS];
 out vec4 o;
 void main(){
   vec4 t = texture(u_tex, v_uv);
@@ -51,6 +64,29 @@ void main(){
     float lam = dot(n, u_lightDir) * 0.5 + 0.5;
     float key = mix(1.0, lam * lam * 1.4, u_lightAmt);
     rgb *= mix(vec3(1.0), u_lightCol, u_lightAmt * 0.30) * key;
+
+    // Lamps. These *add* rather than multiply: a lantern brightens what it
+    // reaches and leaves everything else exactly as the sun left it, which
+    // is what stops a lit street flattening the shading it sits on.
+    vec3 lamp = vec3(0.0);
+    for (int i = 0; i < MAX_LAMPS; i++) {
+      if (i >= u_lampN) break;
+      vec2 d2 = u_lampPos[i].xy - v_world;
+      float r = u_lampPos[i].z;
+      float dist = length(d2);
+      if (dist > r) continue;
+      // Smooth to zero at the rim. A linear falloff leaves a visible disc
+      // edge, and a disc edge on a light is worse than no light.
+      float fall = 1.0 - dist / r;
+      fall *= fall;
+      // The lamp sits above the ground, so its direction has a height term.
+      // Without it a lamp lights the sprite's left and right sides equally
+      // and everything under it reads as flat.
+      vec3 ldir = normalize(vec3(d2 / max(r, 1.0), 0.75));
+      float nl = max(0.0, dot(n, ldir)) * 0.65 + 0.35;
+      lamp += u_lampCol[i] * fall * nl;
+    }
+    rgb += lamp * u_lightAmt;
   }
 
   o = vec4(rgb, t.a * v_col.a);
@@ -75,6 +111,9 @@ export class SpriteBatch {
   private lr = 1;
   private lg = 1;
   private lb = 1;
+  private lampN = 0;
+  private lampPos = new Float32Array(8 * 3);
+  private lampCol = new Float32Array(8 * 3);
   private vao: WebGLVertexArrayObject;
   private vbo: WebGLBuffer;
   private data: Float32Array;
@@ -225,6 +264,26 @@ export class SpriteBatch {
     this.norm = t;
   }
 
+  /** The lamps that matter this frame, in world pixels.
+   *
+   *  Whoever calls this is responsible for handing over the nearest ones —
+   *  the shader takes the first eight and does not sort. */
+  setLamps(lamps: ReadonlyArray<{
+    x: number; y: number; r: number; col: [number, number, number];
+  }>): void {
+    const n = Math.min(8, lamps.length);
+    for (let i = 0; i < n; i++) {
+      const l = lamps[i];
+      this.lampPos[i * 3] = l.x;
+      this.lampPos[i * 3 + 1] = l.y;
+      this.lampPos[i * 3 + 2] = Math.max(1, l.r);
+      this.lampCol[i * 3] = l.col[0];
+      this.lampCol[i * 3 + 1] = l.col[1];
+      this.lampCol[i * 3 + 2] = l.col[2];
+    }
+    this.lampN = n;
+  }
+
   flush(): void {
     if (this.count === 0 || !this.tex) return;
     const gl = this.gl;
@@ -238,6 +297,11 @@ export class SpriteBatch {
     this.shader.f('u_lightAmt', this.lightAmt);
     this.shader.v3('u_lightDir', this.lx, this.ly, this.lz);
     this.shader.v3('u_lightCol', this.lr, this.lg, this.lb);
+    this.shader.i('u_lampN', this.lampN);
+    if (this.lampN > 0) {
+      this.shader.v3v('u_lampPos', this.lampPos, this.lampN);
+      this.shader.v3v('u_lampCol', this.lampCol, this.lampN);
+    }
 
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.tex);

@@ -80,6 +80,11 @@ export class Shader {
   v3(name: string, x: number, y: number, z: number): void {
     this.gl.uniform3f(this.u(name), x, y, z);
   }
+  /** An array of vec3s. `n` is how many entries are live, so a half-full
+   *  buffer never uploads stale slots. */
+  v3v(name: string, data: Float32Array, n: number): void {
+    this.gl.uniform3fv(this.u(name), data.subarray(0, n * 3));
+  }
   v4(name: string, x: number, y: number, z: number, w: number): void {
     this.gl.uniform4f(this.u(name), x, y, z, w);
   }
