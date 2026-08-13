@@ -25,14 +25,34 @@ precision mediump float;
 in vec2 v_uv;
 in vec4 v_col;
 uniform sampler2D u_tex;
+uniform sampler2D u_norm;
 /** 0 = normal tint (multiply), 1 = flat fill keeping source alpha.
  *  The flat mode draws silhouettes: shadows, water reflections, flash. */
 uniform float u_flat;
+/** Direction the light arrives from, in screen space, normalised. */
+uniform vec3 u_lightDir;
+/** How much shading the normal map is allowed to do. Zero restores the
+ *  old flat look exactly, which is what the HUD pass wants. */
+uniform float u_lightAmt;
+/** Colour of the key light, so a sunset warms the lit faces and not only
+ *  the ambient tint. */
+uniform vec3 u_lightCol;
 out vec4 o;
 void main(){
   vec4 t = texture(u_tex, v_uv);
   if (t.a < 0.004) discard;
   vec3 rgb = mix(t.rgb * v_col.rgb, v_col.rgb, u_flat);
+
+  if (u_lightAmt > 0.001) {
+    vec3 n = normalize(texture(u_norm, v_uv).rgb * 2.0 - 1.0);
+    // Half-lambert. Straight N.L drives the away-facing half to black, and
+    // on a 48-colour palette that means every sprite grows a dead flat
+    // silhouette on its shadow side. Wrapping it keeps shape in the dark.
+    float lam = dot(n, u_lightDir) * 0.5 + 0.5;
+    float key = mix(1.0, lam * lam * 1.4, u_lightAmt);
+    rgb *= mix(vec3(1.0), u_lightCol, u_lightAmt * 0.30) * key;
+  }
+
   o = vec4(rgb, t.a * v_col.a);
 }`;
 
@@ -46,6 +66,15 @@ const FLOATS_PER_VERT = 8;
 
 export class SpriteBatch {
   private shader: Shader;
+  /** The normal atlas, bound to unit 1. */
+  private norm: WebGLTexture | null = null;
+  private lightAmt = 0;
+  private lx = -0.4;
+  private ly = -0.6;
+  private lz = 0.7;
+  private lr = 1;
+  private lg = 1;
+  private lb = 1;
   private vao: WebGLVertexArrayObject;
   private vbo: WebGLBuffer;
   private data: Float32Array;
@@ -174,6 +203,28 @@ export class SpriteBatch {
     this.count++;
   }
 
+  /** Where the key light is and what colour it is, this frame.
+   *
+   *  `dir` is the direction light arrives *from*, in screen space, and does
+   *  not need to be normalised. `amount` at zero is a bit-exact fallback to
+   *  the unlit look, which is what the HUD and the catch card use — a card
+   *  is a piece of paper on the screen, not an object in the world. */
+  setLight(
+    dx: number, dy: number, dz: number,
+    r: number, g: number, b: number, amount: number,
+  ): void {
+    const len = Math.hypot(dx, dy, dz) || 1;
+    this.lx = dx / len;
+    this.ly = dy / len;
+    this.lz = dz / len;
+    this.lr = r; this.lg = g; this.lb = b;
+    this.lightAmt = amount;
+  }
+
+  setNormalTexture(t: WebGLTexture): void {
+    this.norm = t;
+  }
+
   flush(): void {
     if (this.count === 0 || !this.tex) return;
     const gl = this.gl;
@@ -183,9 +234,18 @@ export class SpriteBatch {
     this.shader.v2('u_cam', this.camX, this.camY);
     this.shader.f('u_flat', this.flat);
     this.shader.i('u_tex', 0);
+    this.shader.i('u_norm', 1);
+    this.shader.f('u_lightAmt', this.lightAmt);
+    this.shader.v3('u_lightDir', this.lx, this.ly, this.lz);
+    this.shader.v3('u_lightCol', this.lr, this.lg, this.lb);
 
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.tex);
+    if (this.norm) {
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, this.norm);
+      gl.activeTexture(gl.TEXTURE0);
+    }
 
     if (this.blend === Blend.Add) {
       gl.blendFunc(gl.SRC_ALPHA, gl.ONE);

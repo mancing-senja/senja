@@ -39,6 +39,11 @@ import { loadMinds, saveMinds, witnessCatch } from './game/dialogue';
 import { LORE, loadRead, saveRead } from './game/lore';
 import { Audio } from './game/audio';
 
+/** How much of the sprite shading the normal maps do. Under a half the
+ *  effect is invisible; over about 0.75 the palette starts banding, because
+ *  a continuous light curve has only 48 colours to land on. */
+const LIGHT_AMOUNT = 0.62;
+
 const NAMES = ['Rian', 'Sari', 'Bayu', 'Nadia', 'Adit', 'Tari', 'Galih', 'Wulan', 'Dimas', 'Ayu'];
 
 function playerName(): string {
@@ -293,6 +298,12 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
     player.caught++;
     ui.say(`${c.species.label} ${c.cm} cm  +${c.coins}`);
   }, player);
+  /** Jumps the world clock, so the moving key light can be compared at
+   *  four times of day without waiting out a real day cycle. */
+  (window as unknown as Record<string, unknown>).__setTime = (t: number): void => {
+    time = ((t % 1) + 1) % 1;
+    prevTime = time;
+  };
   (window as unknown as Record<string, unknown>).__plots = () => plots();
   (window as unknown as Record<string, unknown>).__map = () => map;
   (window as unknown as Record<string, unknown>).__npcs = () =>
@@ -730,6 +741,7 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
       );
 
       draw.ambient = L.ambient;
+      draw.setSun(L, LIGHT_AMOUNT);
       draw.begin(cx, cy);
 
       drawGround(draw, map, cx, cy, clock, L);
@@ -789,6 +801,7 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
 
     // --- HUD, at full brightness and pinned to the screen
     draw.ambient = [1, 1, 1];
+    draw.setUnlit();
     draw.camera(0, 0);
     // Conversation panels sit above the HUD but below the modal panels.
     for (const n of indoors ? peopleIn(indoors) : npcs) {

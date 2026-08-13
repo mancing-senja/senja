@@ -3,6 +3,7 @@
  *  drawn in a handful of draw calls, which matters on integrated graphics. */
 
 import { PixelCanvas } from './canvas';
+import { makeNormalMap } from './normals';
 import { C, PALETTE } from './palette';
 import {
   makeAntenna, makeBanner, makeChainFence, makeCobbleTile, makeConcreteTile,
@@ -45,6 +46,9 @@ export interface Frame {
 
 export interface Atlas {
   canvas: HTMLCanvasElement;
+  /** Same size, same frame layout, surface directions instead of colours.
+   *  Sampled at the identical UV so no extra bookkeeping is needed. */
+  normals: HTMLCanvasElement;
   frames: Map<string, Frame>;
   w: number;
   h: number;
@@ -139,10 +143,32 @@ export function buildAtlas(overrides: Overrides = new Map()): Atlas {
   const ctx = canvas.getContext('2d', { willReadFrequently: false })!;
   ctx.clearRect(0, 0, ATLAS_W, ATLAS_H);
 
+  const normals = document.createElement('canvas');
+  normals.width = ATLAS_W;
+  normals.height = ATLAS_H;
+  const nctx = normals.getContext('2d', { willReadFrequently: false })!;
+  // Flat, facing the viewer. Anything the packer never writes to still
+  // reads as an unlit surface rather than as a hole.
+  nctx.fillStyle = 'rgb(128,128,255)';
+  nctx.fillRect(0, 0, ATLAS_W, ATLAS_H);
+
+  /** Sprite name prefixes that are cells of a continuous floor rather than
+   *  objects standing on it. They are lit flat: rounding each one from its
+   *  own outline gives every tile a bevel, and the ground comes out as a
+   *  quilt of embossed squares. */
+  const SURFACE = [
+    'grass', 'dirt', 'till', 'sand', 'cobble', 'masonry', 'concrete',
+    'grate', 'grove', 'floor', 'iwall', 'dockv', 'dockh', 'rug', 'dots',
+  ];
+  const isSurface = (name: string): boolean =>
+    SURFACE.some((p) => name.startsWith(p));
+
   const add = (name: string, pc: PixelCanvas): void => {
     const art = overrides.get(name) ?? pc;
     const f = packer.place(art.w, art.h);
     ctx.putImageData(art.toImageData(), f.x, f.y);
+    const nm = makeNormalMap(art, isSurface(name) ? 'surface' : 'object');
+    nctx.putImageData(new ImageData(nm.data, nm.w, nm.h), f.x, f.y);
     frames.set(name, f);
   };
 
@@ -327,5 +353,5 @@ export function buildAtlas(overrides: Overrides = new Map()): Atlas {
     ctx.putImageData(pc.toImageData(), f.x, f.y);
   }
 
-  return { canvas, frames, w: ATLAS_W, h: ATLAS_H };
+  return { canvas, normals, frames, w: ATLAS_W, h: ATLAS_H };
 }

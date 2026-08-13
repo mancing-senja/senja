@@ -35,9 +35,32 @@ export class Draw {
   /** Multiplied into every sprite drawn in world space. */
   ambient: [number, number, number] = [1, 1, 1];
 
+  /** Points the normal-mapped key light at the sun.
+   *
+   *  The sun already moves across the sky for the sky shader and the cast
+   *  shadows; this hands the same vector to the sprites so the whole world
+   *  turns with it instead of holding one baked-in noon. Z is kept well
+   *  positive so the light never rakes so flat that half of every sprite
+   *  goes dark — this is a cozy game at dusk, not a horror one.
+   *
+   *  Pass 0 to switch it off, which is what the HUD does: a panel is a
+   *  piece of paper on the screen, not an object in the world. */
+  setSun(L: { sunX: number; sunY: number; sunColor: [number, number, number] }, amount: number): void {
+    this.batch.setLight(
+      -L.sunX, -Math.max(0.15, L.sunY), 0.85,
+      L.sunColor[0], L.sunColor[1], L.sunColor[2], amount,
+    );
+  }
+
+  /** Turns normal-mapped lighting off for the next flush. */
+  setUnlit(): void {
+    this.batch.setLight(0, 0, 1, 1, 1, 1, 0);
+  }
+
   constructor(gl: GL, atlas: Atlas) {
     this.batch = new SpriteBatch(gl);
     this.tex = makeTextureFromCanvas(gl, atlas.canvas);
+    this.batch.setNormalTexture(makeTextureFromCanvas(gl, atlas.normals));
     this.frames = atlas.frames;
     this.aw = atlas.w;
     this.ah = atlas.h;
