@@ -8,10 +8,11 @@
 
 import { TILE } from '../../shared/constants';
 import { view } from '../engine/view';
-import { C } from '../art/palette';
+import { C, col01 } from '../art/palette';
 import { textWidth } from '../art/font';
 import type { Input } from '../engine/input';
 import type { Draw } from '../render/draw';
+import { Blend } from '../engine/batch';
 import type { Particles } from '../render/scene';
 import { Tile, isWater, tileAt, type WorldMap } from '../world/map';
 import { DEFAULT_SPOT, spotAt, type Spot } from '../world/spots';
@@ -19,6 +20,9 @@ import { districtAt, type District } from '../world/districts';
 import type { LocalPlayer } from './player';
 import { handPos } from './player';
 import type { Audio } from './audio';
+import {
+  COMMON, gradeById, luckFrom, rollGrade, type Grade, type GradeId,
+} from './grade';
 
 export interface Species {
   id: string;
@@ -200,6 +204,288 @@ export const SPECIES: Species[] = [
     blurb: 'Panjang, pelan, dan sama sekali tidak takut.',
   },
 
+  // --- Kampung: shallows and reed beds. What you actually catch most nights.
+  {
+    id: 'gurame', label: 'Gurame', value: 28, minCm: 18, maxCm: 40,
+    weight: [3, 4, 3, 1], fight: 1.0,
+    blurb: 'Tenang, tebal, ga suka buru-buru.',
+  },
+  {
+    id: 'nilem', label: 'Nilem', value: 13, minCm: 10, maxCm: 22,
+    weight: [4, 4, 3, 1.5], fight: 0.6,
+    blurb: 'Mulutnya nyedot lumut di batu.',
+  },
+  {
+    id: 'bader', label: 'Bader', value: 15, minCm: 10, maxCm: 24,
+    weight: [4, 4, 3, 1], fight: 0.7,
+    blurb: 'Perak tipis, gampang lepas dari tangan.',
+  },
+  {
+    id: 'lukas', label: 'Lukas', value: 17, minCm: 12, maxCm: 26,
+    weight: [3, 4, 3, 1.5], fight: 0.8,
+    blurb: 'Suka nunggu di bawah rakit bambu.',
+  },
+  {
+    id: 'keting', label: 'Keting', value: 19, minCm: 12, maxCm: 28,
+    weight: [2, 2, 3, 4], fight: 0.9,
+    blurb: 'Patilnya kecil tapi bikin kapok.',
+  },
+  {
+    id: 'baung', label: 'Baung', value: 38, minCm: 24, maxCm: 55,
+    weight: [1, 1, 3, 4], fight: 1.4,
+    blurb: 'Naik pas air keruh habis hujan.',
+  },
+  {
+    id: 'tambakan', label: 'Tambakan', value: 21, minCm: 14, maxCm: 30,
+    weight: [3, 3, 3, 1.5], fight: 0.8,
+    blurb: 'Bibirnya tebal, kayak lagi cemberut.',
+  },
+  {
+    id: 'sepatsiam', label: 'Sepat Siam', value: 12, minCm: 8, maxCm: 18,
+    weight: [4, 4, 3, 2], fight: 0.4,
+    blurb: 'Sepupu sepat yang lebih ramai.',
+  },
+  {
+    id: 'lais', label: 'Lais', value: 34, minCm: 22, maxCm: 48,
+    weight: [1.5, 1.5, 3, 3], fight: 1.2,
+    blurb: 'Pipih panjang, licin luar biasa.',
+  },
+  {
+    id: 'toman', label: 'Toman', value: 86, minCm: 40, maxCm: 95,
+    weight: [1, 1, 2, 2.5], fight: 2.0,
+    blurb: 'Anaknya oranye. Induknya bukan main.',
+  },
+  {
+    id: 'kelabau', label: 'Kelabau', value: 42, minCm: 26, maxCm: 52,
+    weight: [2, 2.5, 2.5, 1.5], fight: 1.3,
+    blurb: 'Sisiknya gede, kayak uang logam lama.',
+  },
+  {
+    id: 'betutu', label: 'Betutu', value: 66, minCm: 20, maxCm: 45,
+    weight: [0.5, 0.5, 2, 3.5], fight: 1.1,
+    blurb: 'Diam di dasar sampai kamu lupa dia ada.',
+  },
+  {
+    id: 'sili', label: 'Sili', value: 54, minCm: 28, maxCm: 64,
+    weight: [0.6, 0.6, 2.5, 3.5], fight: 1.5,
+    blurb: 'Bentuknya belut, tabiatnya bukan.',
+  },
+  {
+    id: 'tengadak', label: 'Tengadak', value: 30, minCm: 18, maxCm: 36,
+    weight: [2.5, 3, 3, 1], fight: 1.0,
+    blurb: 'Siripnya merah kalau kena senja.',
+  },
+  {
+    id: 'genggehek', label: 'Genggehek', value: 16, minCm: 11, maxCm: 22,
+    weight: [3.5, 3.5, 3, 1], fight: 0.7,
+    blurb: 'Kecil, tapi larinya paling kencang.',
+  },
+  {
+    id: 'waderpari', label: 'Wader Pari', value: 10, minCm: 7, maxCm: 15,
+    weight: [5, 4.5, 3, 1.5], fight: 0.4,
+    blurb: 'Punggungnya bergaris kayak jalur setapak.',
+  },
+  {
+    id: 'paray', label: 'Paray', value: 9, minCm: 6, maxCm: 14,
+    weight: [5, 4, 3, 2], fight: 0.35,
+    blurb: 'Suka loncat sendiri kalau kaget.',
+  },
+  {
+    id: 'beunteur', label: 'Beunteur', value: 11, minCm: 7, maxCm: 16,
+    weight: [4.5, 4, 3, 2], fight: 0.5,
+    blurb: 'Ramai di air dangkal berbatu.',
+  },
+  {
+    id: 'hampalaraja', label: 'Hampala Raja', value: 72, minCm: 38, maxCm: 70,
+    weight: [1.5, 2, 2.5, 1], fight: 1.9,
+    blurb: 'Yang tua. Sudah pernah lepas sekali.',
+  },
+  {
+    id: 'jambal', label: 'Jambal', value: 58, minCm: 30, maxCm: 72,
+    weight: [1, 1.5, 2.5, 2.5], fight: 1.6,
+    blurb: 'Berat, tenang, dan susah dibujuk.',
+  },
+
+  // --- Kampung after dark. These only come up once the light goes.
+  {
+    id: 'lelebulan', label: 'Lele Bulan', value: 46, minCm: 25, maxCm: 52,
+    weight: [0.4, 0.3, 2, 5], fight: 1.3,
+    blurb: 'Kumisnya panjang, ingatannya lebih panjang.',
+  },
+  {
+    id: 'udanggalah', label: 'Udang Galah', value: 33, minCm: 12, maxCm: 26,
+    weight: [1, 1, 2.5, 4], fight: 0.6,
+    blurb: 'Bukan ikan. Tetap masuk keranjang.',
+  },
+  {
+    id: 'sidatmuda', label: 'Sidat Muda', value: 62, minCm: 30, maxCm: 68,
+    weight: [0.5, 0.4, 2, 4.5], fight: 1.6,
+    blurb: 'Lahir jauh di laut, pulang ke sungai ini.',
+  },
+  {
+    id: 'ikankaca', label: 'Ikan Kaca', value: 44, minCm: 8, maxCm: 16,
+    weight: [0.6, 0.6, 2, 4], fight: 0.5,
+    blurb: 'Tulangnya kelihatan kalau diangkat ke lampu.',
+  },
+  {
+    id: 'betikapi', label: 'Betik Api', value: 52, minCm: 14, maxCm: 28,
+    weight: [0.3, 0.3, 2.5, 4.5], fight: 1.0,
+    blurb: 'Siripnya menyala sedikit di air gelap.',
+  },
+  {
+    id: 'kepitingrawa', label: 'Kepiting Rawa', value: 26, minCm: 10, maxCm: 20,
+    weight: [1.5, 1.5, 2, 3], fight: 0.7,
+    blurb: 'Capitnya lebih cepat dari tanganmu.',
+  },
+  {
+    id: 'gabusraja', label: 'Gabus Raja', value: 124, minCm: 45, maxCm: 88,
+    weight: [0.3, 0.3, 1.2, 2.2], fight: 2.1,
+    blurb: 'Yang paling sabar di rawa ini.',
+  },
+
+  // --- Benteng Lama. Cold moat water under old stone.
+  {
+    id: 'ikanperisai', label: 'Ikan Perisai', value: 68, minCm: 22, maxCm: 46,
+    weight: [1, 1, 1.8, 2.4], fight: 1.6,
+    blurb: 'Sisiknya tersusun rapi seperti pelat zirah.',
+  },
+  {
+    id: 'lelemenara', label: 'Lele Menara', value: 74, minCm: 30, maxCm: 62,
+    weight: [0.8, 0.8, 2, 2.8], fight: 1.7,
+    blurb: 'Ditemukan di dasar parit, dekat pondasi.',
+  },
+  {
+    id: 'ikanlonceng', label: 'Ikan Lonceng', value: 88, minCm: 16, maxCm: 34,
+    weight: [0.8, 1, 1.6, 1.8], fight: 1.2,
+    blurb: 'Kalau diangkat, siripnya berbunyi pelan.',
+  },
+  {
+    id: 'koipusaka', label: 'Koi Pusaka', value: 132, minCm: 28, maxCm: 55,
+    weight: [0.8, 1.2, 1.6, 1.0], fight: 1.5,
+    blurb: 'Coraknya tidak berubah sejak benteng masih berdiri.',
+  },
+  {
+    id: 'ikankunci', label: 'Ikan Kunci', value: 104, minCm: 14, maxCm: 30,
+    weight: [0.5, 0.6, 1.2, 1.6], fight: 1.1,
+    blurb: 'Bentuknya persis kunci gerbang yang hilang.',
+  },
+  {
+    id: 'guramibatu', label: 'Gurami Batu', value: 59, minCm: 20, maxCm: 42,
+    weight: [1.2, 1.4, 1.6, 1.2], fight: 1.3,
+    blurb: 'Abu-abu seperti tembok yang menaunginya.',
+  },
+  {
+    id: 'belutparit', label: 'Belut Parit', value: 77, minCm: 32, maxCm: 70,
+    weight: [0.6, 0.6, 1.8, 2.6], fight: 1.8,
+    blurb: 'Hidup di celah batu yang tidak ada yang ukur.',
+  },
+
+  // --- Dermaga Neon. Warm outfall water; nothing here is quite natural.
+  {
+    id: 'ikansolder', label: 'Ikan Solder', value: 70, minCm: 14, maxCm: 32,
+    weight: [1.2, 1.2, 1.8, 2.4], fight: 1.2,
+    blurb: 'Baunya seperti bengkel. Rasanya jangan tanya.',
+  },
+  {
+    id: 'sirippanel', label: 'Sirip Panel', value: 82, minCm: 18, maxCm: 36,
+    weight: [1, 1.2, 1.8, 2.4], fight: 1.4,
+    blurb: 'Siripnya datar dan bersegi, seperti dicetak.',
+  },
+  {
+    id: 'ikankabel', label: 'Ikan Kabel', value: 94, minCm: 26, maxCm: 58,
+    weight: [0.8, 0.8, 1.6, 2.6], fight: 1.6,
+    blurb: 'Panjang, berlapis, dan hangat waktu dipegang.',
+  },
+  {
+    id: 'parineon', label: 'Pari Neon', value: 148, minCm: 24, maxCm: 50,
+    weight: [0.5, 0.6, 1.4, 2.2], fight: 1.5,
+    blurb: 'Melayang, bukan berenang.',
+  },
+  {
+    id: 'ikanglitch', label: 'Ikan Glitch', value: 176, minCm: 12, maxCm: 28,
+    weight: [0.3, 0.3, 1.0, 2.0], fight: 1.0,
+    blurb: 'Warnanya tidak sama dua kali.',
+  },
+  {
+    id: 'bawalkrom', label: 'Bawal Krom', value: 86, minCm: 18, maxCm: 38,
+    weight: [1, 1.2, 1.6, 1.8], fight: 1.3,
+    blurb: 'Memantulkan papan reklame di seberang.',
+  },
+  {
+    id: 'lelevoltase', label: 'Lele Voltase', value: 112, minCm: 28, maxCm: 60,
+    weight: [0.6, 0.6, 1.6, 2.8], fight: 1.9,
+    blurb: 'Pegang di ekor. Serius.',
+  },
+  {
+    id: 'ikanpendingin', label: 'Ikan Pendingin', value: 96, minCm: 20, maxCm: 42,
+    weight: [1, 1, 1.4, 2.0], fight: 1.2,
+    blurb: 'Dingin walau airnya hangat.',
+  },
+
+  // --- Rimbun Cahaya. Only bite where the water lights itself.
+  {
+    id: 'ikanlentera', label: 'Ikan Lentera', value: 126, minCm: 14, maxCm: 30,
+    weight: [0.6, 0.5, 1.6, 2.8], fight: 1.0,
+    blurb: 'Membawa cahayanya sendiri ke dasar.',
+  },
+  {
+    id: 'sisikkabut', label: 'Sisik Kabut', value: 108, minCm: 16, maxCm: 34,
+    weight: [1.2, 1.0, 1.6, 2.2], fight: 0.9,
+    blurb: 'Batasnya kabur, seperti belum selesai digambar.',
+  },
+  {
+    id: 'ikanakar', label: 'Ikan Akar', value: 88, minCm: 22, maxCm: 48,
+    weight: [1.4, 1.2, 1.4, 1.8], fight: 1.4,
+    blurb: 'Sirip belakangnya bercabang seperti akar.',
+  },
+  {
+    id: 'ikandoa', label: 'Ikan Doa', value: 158, minCm: 18, maxCm: 38,
+    weight: [0.4, 0.4, 1.4, 2.4], fight: 1.2,
+    blurb: 'Yang menangkapnya konon berhenti meminta.',
+  },
+  {
+    id: 'naganilamuda', label: 'Naga Nila Muda', value: 96, minCm: 25, maxCm: 52,
+    weight: [0.6, 0.6, 1.4, 2.0], fight: 1.7,
+    blurb: 'Belum panjang. Sudah tidak takut.',
+  },
+  {
+    id: 'ikanpurnama', label: 'Ikan Purnama', value: 184, minCm: 22, maxCm: 46,
+    weight: [0.2, 0.2, 1.0, 2.4], fight: 1.5,
+    blurb: 'Hanya naik kalau bulannya bulat.',
+  },
+  {
+    id: 'ikanbisik', label: 'Ikan Bisik', value: 142, minCm: 10, maxCm: 22,
+    weight: [0.5, 0.4, 1.2, 2.2], fight: 0.8,
+    blurb: 'Kecil dan tidak pernah membuat riak.',
+  },
+  {
+    id: 'sidatcahaya', label: 'Sidat Cahaya', value: 206, minCm: 40, maxCm: 95,
+    weight: [0.15, 0.15, 0.8, 1.8], fight: 2.3,
+    blurb: 'Panjangnya diukur dari cerita, bukan dari meteran.',
+  },
+
+  // --- More of what the lake gives back.
+  {
+    id: 'jaringsobek', label: 'Jaring Sobek', value: 3, minCm: 20, maxCm: 40,
+    weight: [1, 1, 1, 1], fight: 0.4,
+    blurb: 'Punya siapa ini, tidak ada yang mengaku.',
+  },
+  {
+    id: 'botolkaca', label: 'Botol Kaca', value: 4, minCm: 12, maxCm: 20,
+    weight: [1, 1, 1, 1], fight: 0.3,
+    blurb: 'Ada kertas di dalamnya. Sudah hancur.',
+  },
+  {
+    id: 'rantaikarat', label: 'Rantai Karat', value: 6, minCm: 15, maxCm: 30,
+    weight: [0.8, 0.8, 1, 1], fight: 0.6,
+    blurb: 'Ujung satunya masih di dasar.',
+  },
+  {
+    id: 'papandermaga', label: 'Papan Dermaga', value: 5, minCm: 25, maxCm: 45,
+    weight: [1, 1, 1, 1], fight: 0.5,
+    blurb: 'Dari dermaga yang mana, tidak jelas.',
+  },
+
   // --- junk
   {
     id: 'oldboot', label: 'Sepatu Butut', value: 2, minCm: 25, maxCm: 30,
@@ -230,6 +516,12 @@ function phaseIndex(time: number): number {
 
 export function phaseLabel(time: number): string {
   return PHASES[phaseIndex(time)];
+}
+
+/** How dark it is, 0..1. Feeds the grade roll: the rare fish come up after
+ *  the light goes, which is the whole reason to still be out there. */
+function nightness(time: number): number {
+  return phaseIndex(time) === 3 ? 1 : phaseIndex(time) === 2 ? 0.5 : 0;
 }
 
 /** Three things decide what bites: the hour, how far out the bobber landed,
@@ -268,6 +560,12 @@ export interface Catch {
   cm: number;
   coins: number;
   perfect: boolean;
+  grade: Grade;
+}
+
+/** A palette index as the 0..1 triple the sprite tint wants. */
+function colTint(c: C): [number, number, number] {
+  return col01(c);
 }
 
 const MAX_CAST = 96;
@@ -289,6 +587,9 @@ export class Fishing {
   private spot: Spot = DEFAULT_SPOT;
   private district: District | null = null;
   private pending: Species | null = null;
+  /** Rolled the moment the fish takes, not when it lands — the grade has to
+   *  be known during the fight, because it is what makes the fight hard. */
+  private pendingGrade: Grade = COMMON;
 
   /** Reel bar. `tension` is what the player steers; `target` drifts. */
   private tension = 0.5;
@@ -387,6 +688,12 @@ export class Fishing {
         }
         if (this.t >= this.biteAt) {
           this.pending = rollSpecies(time, this.depth01, this.spot, this.district);
+          // Deep water, a good spot and the small hours all improve the
+          // odds, so chasing a rare fish means going somewhere for it
+          // rather than casting more times in the same place.
+          this.pendingGrade = rollGrade(
+            luckFrom(this.depth01, this.spot.depth, nightness(time)),
+          );
           this.state = 'bite';
           this.t = 0;
           particles.spawnSplash(this.bobX, this.bobY + 2, 5);
@@ -418,7 +725,15 @@ export class Fishing {
       case 'reel': {
         const fish = this.pending!;
         // The fish wanders; you follow it. Wandering is smooth, never jerky.
-        this.targetVel += (Math.random() - 0.5) * dt * 9 * fish.fight;
+        const fight = fish.fight * this.pendingGrade.fightMul;
+        this.targetVel += (Math.random() - 0.5) * dt * 9 * fight;
+        // Rare fish run. A surge every few seconds is what turns a steady
+        // drift into something you have to answer, and it is the only part
+        // of the reel that ever asks for attention rather than patience.
+        if (this.pendingGrade.tier >= 2) {
+          const surge = Math.sin(this.t * 1.7 + this.pendingGrade.tier);
+          if (surge > 0.93) this.targetVel += (this.target < 0.5 ? 1 : -1) * dt * 6;
+        }
         this.targetVel *= 0.92;
         this.target = clamp01(this.target + this.targetVel * dt);
         if (this.target <= 0 || this.target >= 1) this.targetVel *= -0.6;
@@ -514,24 +829,60 @@ export class Fishing {
     onCastNet(tx, ty);
   }
 
+  /** Test seam: land a specific species at a specific grade.
+   *
+   *  A Mitos is roughly one cast in two thousand, which is the correct
+   *  rarity and a hopeless way to check that its card renders. */
+  debugCatch(
+    speciesId: string, gradeId: string, particles: Particles, audio: Audio,
+    onCatch: (c: Catch) => void, p: LocalPlayer,
+  ): string {
+    const fish = SPECIES.find((f) => f.id === speciesId);
+    if (!fish) return `tidak ada spesies ${speciesId}`;
+    this.pendingGrade = gradeById(gradeId as GradeId);
+    this.slack = 0;
+    this.bobX = p.x;
+    this.bobY = p.y - 8;
+    this.land(fish, particles, audio, onCatch, p);
+    return `${fish.label} / ${this.pendingGrade.label}`;
+  }
+
   private land(
     fish: Species, particles: Particles, audio: Audio,
     onCatch: (c: Catch) => void, p: LocalPlayer,
   ): void {
-    const roll = Math.random() * Math.random(); // small fish are common
-    const cm = Math.round(fish.minCm + (fish.maxCm - fish.minCm) * (1 - roll));
+    const grade = this.pendingGrade;
+    // Small fish are common; a high grade drags the roll toward the top of
+    // the species' range rather than past it, so a Mitos wader is still a
+    // wader and the size numbers stay believable.
+    const roll = Math.random() * Math.random();
+    const k = Math.min(1, (1 - roll) + grade.sizeBias * roll);
+    const cm = Math.round(fish.minCm + (fish.maxCm - fish.minCm) * k);
     const sizeK = (cm - fish.minCm) / Math.max(1, fish.maxCm - fish.minCm);
     const perfect = this.slack < 0.35;
-    const coins = Math.max(1, Math.round(fish.value * (0.6 + sizeK * 0.9) * (perfect ? 1.25 : 1)));
+    const coins = Math.max(1, Math.round(
+      fish.value * (0.6 + sizeK * 0.9) * (perfect ? 1.25 : 1) * grade.valueMul,
+    ));
 
-    this.lastCatch = { species: fish, cm, coins, perfect };
+    this.lastCatch = { species: fish, cm, coins, perfect, grade };
     this.state = 'card';
     this.cardT = 0;
-    this.flash = 0.35;
     p.action = 'idle';
-    particles.spawnSplash(this.bobX, this.bobY, 14);
-    particles.spawnSpark(this.bobX, this.bobY - 6, 12);
-    audio.catchJingle(fish.value >= 40);
+
+    // The celebration scales with the grade. A Biasa gets the splash it
+    // always got; anything above that earns more of the screen, because a
+    // rare catch that looks exactly like a common one is a rare catch the
+    // player never finds out about.
+    const f = grade.fanfare;
+    this.flash = 0.35 + f * 0.16;
+    particles.spawnSplash(this.bobX, this.bobY, 14 + f * 6);
+    particles.spawnSpark(this.bobX, this.bobY - 6, 12 + f * 14);
+    // Rings for the top grades — a second, slower wave so the burst has a
+    // beat to it rather than being one puff.
+    for (let i = 0; i < f - 1; i++) {
+      particles.spawnSpark(this.bobX, this.bobY - 10 - i * 4, 8 + i * 4);
+    }
+    audio.catchJingle(fish.value >= 40 || f >= 2);
     onCatch(this.lastCatch);
   }
 
@@ -599,10 +950,26 @@ export class Fishing {
       const mx = x + Math.round(this.tension * w);
       d.rect(mx - 1, y - 2, 3, 12, C.White);
 
-      // Progress toward landing it.
+      // Progress toward landing it, in the grade's colour.
+      //
+      // Knowing something good is on the line *while you are fighting it*
+      // is most of the tension. Finding out only from the card afterwards
+      // makes every fight identical and the rare ones a lottery result
+      // rather than a moment.
+      const g = this.pendingGrade;
       const pw = Math.max(0, Math.round(w * Math.min(1, this.progress)));
       d.rect(x, y + 10, w, 2, C.Slate, 0.8);
-      d.rect(x, y + 10, pw, 2, C.Lantern);
+      d.rect(x, y + 10, pw, 2, g.tier > 0 ? g.colour : C.Lantern);
+
+      if (g.tier >= 2) {
+        // A pulsing frame around the whole bar. Faster the rarer it is.
+        const pulse = 0.45 + 0.55 * Math.abs(Math.sin(this.t * (2 + g.tier)));
+        d.frameRect(x - 3, y - 3, w + 6, 16, g.colour, pulse);
+        d.textCentered(
+          g.tier >= 4 ? 'berat sekali!' : 'ada yang besar',
+          cx, y - 21, g.colour, C.InkDeep, pulse,
+        );
+      }
 
       d.textCentered('tahan spasi', cx, y - 11, C.Pale, C.InkDeep, 0.85);
     }
@@ -616,24 +983,138 @@ export class Fishing {
 
   private drawCard(d: Draw): void {
     const c = this.lastCatch!;
+    const g = c.grade;
+    const t = this.cardT;
     const w = 132;
     const h = 62;
-    const pop = Math.min(1, this.cardT * 6);
+
+    // Entrance. A rare card arrives slower and overshoots before it
+    // settles — the overshoot is the whole reason it reads as landing
+    // rather than as appearing. Timing carries more of "this is valuable"
+    // than any amount of colour does.
+    const speed = 6 - g.fanfare * 0.7;
+    const pop = Math.min(1, t * speed);
     const ease = 1 - Math.pow(1 - pop, 3);
+    const overshoot = Math.sin(Math.min(1, t * speed * 0.8) * Math.PI) * (1 + g.tier) * 0.9;
     const x = Math.round(view.w / 2 - w / 2);
-    const y = Math.round(view.h / 2 - h / 2 - 14 + (1 - ease) * 8);
+    const y = Math.round(
+      view.h / 2 - h / 2 - 14 + (1 - ease) * (8 + g.fanfare * 4) - overshoot,
+    );
     const a = ease;
+    const cx = x + 28;
+    const cy = y + 29;
 
-    d.panel(x, y, w, h, a, c.perfect ? C.Lantern : C.Slate);
-    d.sprite(`fishbig_${c.species.id}`, x + 8, y + 18, { alpha: a });
+    // --- rays, behind everything. Spokes that turn slowly and breathe.
+    if (g.tier >= 3) {
+      const spokes = 6 + g.tier * 2;
+      for (let i = 0; i < spokes; i++) {
+        const ang = (i / spokes) * Math.PI * 2 + t * 0.5;
+        const len = 14 + Math.sin(t * 2.6 + i) * 4 + g.tier * 2;
+        for (let r = 6; r < len; r++) {
+          const px = cx + Math.cos(ang) * r;
+          const py = cy + Math.sin(ang) * r * 0.7;
+          d.rect(px, py, 1, 1, g.colour, a * 0.34 * (1 - r / len));
+        }
+      }
+    }
 
-    d.text(c.species.label, x + 54, y + 10, C.White, a);
-    d.text(`${c.cm} cm`, x + 54, y + 22, C.Amber, a);
-    d.text(`+${c.coins}`, x + 54, y + 34, C.Lantern, a);
-    d.text('koin', x + 54 + textWidth(`+${c.coins}`) + 3, y + 34, C.SunGlow, a * 0.8);
+    // --- the burst rings, expanding out past the card edge.
+    if (g.glow > 0) {
+      for (let i = 0; i < g.tier - 1; i++) {
+        const rt = Math.max(0, Math.min(1, t * 1.6 - i * 0.22));
+        if (rt <= 0 || rt >= 1) continue;
+        const r = 20 + rt * (60 + g.tier * 14);
+        d.sprite('glow64', view.w / 2 - r, y + h / 2 - r, {
+          tint: colTint(g.colour), alpha: (1 - rt) * 0.5, blend: Blend.Add,
+        });
+      }
+    }
 
-    if (c.perfect) d.text('mulus!', x + 54, y + 46, C.Grass, a);
-    else d.text(c.species.blurb.slice(0, 22), x + 8, y + 50, C.Mist, a * 0.8);
+    d.panel(x, y, w, h, a, g.tier > 0 ? g.colour : c.perfect ? C.Lantern : C.Slate);
+
+    // --- glow behind the fish, breathing.
+    if (g.glow > 0) {
+      const gs = g.glow > 32 ? 64 : 32;
+      const breathe = 0.85 + 0.15 * Math.sin(t * 3.1);
+      d.sprite(`glow${gs}`, cx - gs / 2, cy - gs / 2, {
+        tint: colTint(g.colour),
+        alpha: (0.30 + g.tier * 0.06) * breathe,
+        blend: Blend.Add,
+      });
+    }
+
+    // --- the fish itself, alive rather than pinned to a board. A slow
+    // vertical bob with a slight lag on the horizontal reads as swimming
+    // in place; a static sprite in a frame reads as a specimen.
+    const bob = Math.sin(t * 2.8) * 1.6;
+    const sway = Math.sin(t * 2.8 - 0.7) * 1.1;
+    const key = `fishg${g.tier}_${c.species.id}`;
+    d.sprite(key, x + 8 + sway, y + 18 + bob, { alpha: a });
+    if (g.tier >= 1) {
+      d.sprite(key, x + 8 + sway, y + 18 + bob, {
+        tint: colTint(g.colour),
+        // Barely there, and weaker the higher the grade. The sprite now
+        // carries the escalation itself — crest, filaments, spines — so
+        // the tint only has to say which colour the grade is. Left at the
+        // strength that suited a flat silhouette, it washed the top grades
+        // out to white blobs with fins.
+        alpha: a * (0.04 + g.tier * 0.012) * (0.8 + 0.2 * Math.sin(t * 3.4)),
+        blend: Blend.Add,
+        flat: true,
+      });
+    }
+
+    // --- sparks orbiting the catch, for the top two grades.
+    if (g.tier >= 4) {
+      for (let i = 0; i < 5 + g.tier; i++) {
+        const ang = (i / (5 + g.tier)) * Math.PI * 2 + t * 1.4;
+        const rr = 16 + Math.sin(t * 2 + i * 1.3) * 4;
+        const px = cx + Math.cos(ang) * rr;
+        const py = cy + Math.sin(ang) * rr * 0.6;
+        const tw = 0.4 + 0.6 * Math.abs(Math.sin(t * 5 + i));
+        d.rect(px, py, 1, 1, C.White, a * tw);
+      }
+    }
+
+    // --- a shine sweeping across the card face, once, on arrival.
+    if (g.tier >= 2) {
+      const sweep = (t * 0.9) % 2.2;
+      if (sweep < 1) {
+        const head = x - 20 + sweep * (w + 40);
+        for (let row = 1; row < h - 1; row++) {
+          // The band leans, so it reads as light crossing a surface rather
+          // than as a bar sliding sideways.
+          const sx = head + (h - row) * 0.45;
+          for (let k = 0; k < 5; k++) {
+            const px = sx + k;
+            if (px < x + 1 || px > x + w - 2) continue;
+            d.rect(px, y + row, 1, 1, C.White, a * 0.16 * (1 - Math.abs(k - 2) / 2.5));
+          }
+        }
+      }
+    }
+
+    // --- text, revealed in order. All four lines appearing at once is a
+    // form being filled in; one after another is somebody telling you what
+    // you caught.
+    const line = (i: number): number => {
+      const lt = Math.max(0, Math.min(1, (t - 0.10 - i * 0.09) * 7));
+      return a * lt;
+    };
+    d.text(c.species.label, x + 54, y + 8, C.White, line(0));
+    d.text(g.label.toLowerCase(), x + 54, y + 19, g.colour, line(1));
+    d.text(`${c.cm} cm`, x + 54, y + 30, C.Amber, line(2));
+
+    // The coins count up. Watching a number climb is the cheapest reward
+    // animation there is and it never stops working.
+    const cr = Math.max(0, Math.min(1, (t - 0.30) * 2.2));
+    const shown = Math.round(c.coins * (1 - Math.pow(1 - cr, 3)));
+    const coinTxt = `+${shown}`;
+    d.text(coinTxt, x + 54, y + 41, C.Lantern, line(3));
+    d.text('koin', x + 54 + textWidth(coinTxt) + 3, y + 41, C.SunGlow, line(3) * 0.8);
+
+    if (c.perfect) d.text('mulus!', x + 54, y + 52, C.Grass, line(4));
+    else d.text(c.species.blurb.slice(0, 22), x + 8, y + 52, C.Mist, line(4) * 0.8);
 
     d.textCentered('spasi', view.w / 2, y + h + 5, C.Mist, C.InkDeep, a * 0.7);
   }

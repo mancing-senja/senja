@@ -218,7 +218,29 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
   window.addEventListener('keydown', (e) => {
     if (ui.chatOpen) return;
     if (e.key === 'h' || e.key === 'H') ui.showHelp = !ui.showHelp;
-    if (e.key === 'j' || e.key === 'J') ui.showLog = !ui.showLog;
+    if (e.key === 'j' || e.key === 'J') {
+      ui.showLog = !ui.showLog;
+      ui.logPage = 0;
+      ui.logSel = 0;
+      ui.inspecting = false;
+    }
+    // Journal navigation. All guarded on the panel being open, so these
+    // keys keep walking the player the rest of the time.
+    if (ui.showLog) {
+      const k = e.key.toLowerCase();
+      if (k === 'e') {
+        ui.inspecting = !ui.inspecting;
+      } else if (!ui.inspecting) {
+        if (k === 'a' || e.key === 'ArrowLeft') ui.logPage--;
+        if (k === 'd' || e.key === 'ArrowRight') ui.logPage++;
+        // Down the column first, then wrap into the next one — that is the
+        // order the page is laid out in, so the cursor follows the eye.
+        if (k === 'w' || e.key === 'ArrowUp') ui.logSel--;
+        if (k === 's' || e.key === 'ArrowDown') ui.logSel++;
+        const per = Ui.LOG_PER_PAGE;
+        ui.logSel = ((ui.logSel % per) + per) % per;
+      }
+    }
     if (e.key === 'b' || e.key === 'B') ui.showBoard = !ui.showBoard;
     if (e.key === 'm' || e.key === 'M') audio.toggleMute();
     // Zoom. Changing it re-fits the buffer, so the pixel grid stays whole.
@@ -261,6 +283,16 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
       input.endFrame();
     }
   };
+  /** Forces a catch of a named species at a named grade, so the card, the
+   *  rare sprite and the celebration can be inspected without waiting for
+   *  a one-in-two-thousand roll to come up. */
+  (window as unknown as Record<string, unknown>).__catch = (
+    speciesId: string, gradeId: string,
+  ) => fishing.debugCatch(speciesId, gradeId, particles, audio, (c) => {
+    farm.addCatch(c);
+    player.caught++;
+    ui.say(`${c.species.label} ${c.cm} cm  +${c.coins}`);
+  }, player);
   (window as unknown as Record<string, unknown>).__plots = () => plots();
   (window as unknown as Record<string, unknown>).__map = () => map;
   (window as unknown as Record<string, unknown>).__npcs = () =>

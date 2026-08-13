@@ -366,9 +366,10 @@ export interface FishArt {
   fin: number;
   /** Body proportions, so species are told apart by silhouette and not
    *  only by colour: 'round' bream, 'long' eels, 'flat' rays, 'normal'. */
-  shape?: 'normal' | 'long' | 'round' | 'flat' | 'spiny';
+  shape?: 'normal' | 'long' | 'round' | 'flat' | 'spiny'
+    | 'ribbon' | 'fan' | 'bulb' | 'arrow';
   /** Extra markings. */
-  marks?: 'none' | 'stripes' | 'spots' | 'band';
+  marks?: 'none' | 'stripes' | 'spots' | 'band' | 'mesh' | 'ocelli' | 'blotch';
 }
 
 export const FISH_LOOKS: Record<string, FishArt> = {
@@ -396,6 +397,66 @@ export const FISH_LOOKS: Record<string, FishArt> = {
   oldboot: { body: C.WoodDk, belly: C.Wood, fin: C.WoodDp, shape: 'flat' },
   kaleng: { body: C.SlateLt, belly: C.Mist, fin: C.Slate, shape: 'flat' },
 
+  gurame: { body: C.SlateLt, belly: C.Pale, fin: C.Slate, shape: 'round', marks: 'mesh' },
+  nilem: { body: C.Mist, belly: C.White, fin: C.SlateLt, marks: 'mesh' },
+  bader: { body: C.Pale, belly: C.White, fin: C.Mist, shape: 'flat', marks: 'stripes' },
+  lukas: { body: C.GrassDk, belly: C.GrassLt, fin: C.Forest, marks: 'blotch' },
+  keting: { body: C.WoodDk, belly: C.Wood, fin: C.WoodDp, shape: 'spiny' },
+  baung: { body: C.Wood, belly: C.SkinSh, fin: C.WoodDp, shape: 'long', marks: 'blotch' },
+  tambakan: { body: C.Rose, belly: C.Pale, fin: C.Purple, shape: 'round', marks: 'band' },
+  sepatsiam: { body: C.Mist, belly: C.White, fin: C.SlateLt, shape: 'flat', marks: 'stripes' },
+  lais: { body: C.Pale, belly: C.White, fin: C.Mist, shape: 'ribbon' },
+  toman: { body: C.ForestDp, belly: C.Orange, fin: C.Forest, shape: 'long', marks: 'blotch' },
+  kelabau: { body: C.SkinSh, belly: C.Skin, fin: C.Wood, shape: 'round', marks: 'mesh' },
+  betutu: { body: C.WoodDp, belly: C.WoodDk, fin: C.Ink, shape: 'bulb', marks: 'blotch' },
+  sili: { body: C.Forest, belly: C.GrassDk, fin: C.ForestDp, shape: 'ribbon', marks: 'ocelli' },
+  tengadak: { body: C.Pale, belly: C.White, fin: C.Red, shape: 'round' },
+  genggehek: { body: C.Foam, belly: C.White, fin: C.WaterBr, shape: 'arrow', marks: 'stripes' },
+  waderpari: { body: C.GrassLt, belly: C.White, fin: C.GrassDk, marks: 'stripes' },
+  paray: { body: C.Foam, belly: C.White, fin: C.WaterSh, shape: 'arrow' },
+  beunteur: { body: C.Amber, belly: C.SunGlow, fin: C.Wood, marks: 'spots' },
+  hampalaraja: { body: C.SunGlow, belly: C.White, fin: C.Red, shape: 'arrow', marks: 'stripes' },
+  jambal: { body: C.Mist, belly: C.Pale, fin: C.Slate, shape: 'long' },
+
+  lelebulan: { body: C.Slate, belly: C.SlateLt, fin: C.Ink, shape: 'long', marks: 'spots' },
+  udanggalah: { body: C.Orange, belly: C.SunGlow, fin: C.Red, shape: 'arrow', marks: 'stripes' },
+  sidatmuda: { body: C.ForestDp, belly: C.GrassDk, fin: C.Ink, shape: 'ribbon' },
+  ikankaca: { body: C.Pale, belly: C.White, fin: C.Foam, shape: 'flat', marks: 'mesh' },
+  betikapi: { body: C.Red, belly: C.Orange, fin: C.Lantern, shape: 'fan', marks: 'ocelli' },
+  kepitingrawa: { body: C.Red, belly: C.Rose, fin: C.WoodDp, shape: 'bulb', marks: 'spots' },
+  gabusraja: { body: C.Ink, belly: C.Forest, fin: C.GrassDk, shape: 'long', marks: 'blotch' },
+
+  ikanperisai: { body: C.Stone, belly: C.StoneLt, fin: C.StoneShadow, shape: 'flat', marks: 'mesh' },
+  lelemenara: { body: C.StoneDk, belly: C.Stone, fin: C.StoneShadow, shape: 'long', marks: 'blotch' },
+  ikanlonceng: { body: C.Gold, belly: C.StonePale, fin: C.StoneDk, shape: 'bulb' },
+  koipusaka: { body: C.Banner, belly: C.StonePale, fin: C.Gold, shape: 'round', marks: 'spots' },
+  ikankunci: { body: C.StoneLt, belly: C.StonePale, fin: C.Gold, shape: 'arrow', marks: 'band' },
+  guramibatu: { body: C.StoneDk, belly: C.Stone, fin: C.StoneShadow, shape: 'round', marks: 'mesh' },
+  belutparit: { body: C.StoneShadow, belly: C.StoneDk, fin: C.BannerBlue, shape: 'ribbon', marks: 'ocelli' },
+
+  ikansolder: { body: C.CyberSteel, belly: C.StonePale, fin: C.Orange, marks: 'blotch' },
+  sirippanel: { body: C.CyberSlate, belly: C.CyberSteel, fin: C.NeonCyan, shape: 'flat', marks: 'mesh' },
+  ikankabel: { body: C.CyberVoid, belly: C.CyberSlate, fin: C.NeonMint, shape: 'ribbon', marks: 'stripes' },
+  parineon: { body: C.CyberSlate, belly: C.NeonCyan, fin: C.NeonMagenta, shape: 'flat', marks: 'ocelli' },
+  ikanglitch: { body: C.NeonMagenta, belly: C.NeonMint, fin: C.NeonCyan, shape: 'arrow', marks: 'blotch' },
+  bawalkrom: { body: C.StonePale, belly: C.White, fin: C.CyberSteel, shape: 'round' },
+  lelevoltase: { body: C.CyberVoid, belly: C.CyberSteel, fin: C.NeonCyan, shape: 'long', marks: 'spots' },
+  ikanpendingin: { body: C.WaterBr, belly: C.Foam, fin: C.CyberSteel, shape: 'bulb', marks: 'mesh' },
+
+  ikanlentera: { body: C.Arcane, belly: C.ArcaneLt, fin: C.SunGlow, shape: 'bulb', marks: 'ocelli' },
+  sisikkabut: { body: C.ArcaneLt, belly: C.White, fin: C.Mist, marks: 'mesh' },
+  ikanakar: { body: C.Forest, belly: C.GrassDk, fin: C.WoodDk, shape: 'fan', marks: 'blotch' },
+  ikandoa: { body: C.White, belly: C.SunGlow, fin: C.ArcaneLt, shape: 'fan' },
+  naganilamuda: { body: C.Arcane, belly: C.NeonMint, fin: C.ArcaneLt, shape: 'long', marks: 'band' },
+  ikanpurnama: { body: C.SunGlow, belly: C.White, fin: C.ArcaneLt, shape: 'round', marks: 'ocelli' },
+  ikanbisik: { body: C.Mist, belly: C.White, fin: C.ArcaneLt, shape: 'arrow' },
+  sidatcahaya: { body: C.NeonMint, belly: C.White, fin: C.Arcane, shape: 'ribbon', marks: 'stripes' },
+
+  jaringsobek: { body: C.Mist, belly: C.Pale, fin: C.Slate, shape: 'flat', marks: 'mesh' },
+  botolkaca: { body: C.Foam, belly: C.White, fin: C.WaterSh, shape: 'bulb' },
+  rantaikarat: { body: C.WoodDk, belly: C.Wood, fin: C.WoodDp, shape: 'ribbon', marks: 'mesh' },
+  papandermaga: { body: C.Wood, belly: C.WoodDk, fin: C.WoodDp, shape: 'flat', marks: 'stripes' },
+
   // --- Benteng Lama. Stone colours and heraldic accents; these live in the
   // cold water of the moat and under the walls.
   lelemail: { body: C.Stone, belly: C.StoneLt, fin: C.StoneDk, shape: 'long', marks: 'stripes' },
@@ -414,22 +475,47 @@ export const FISH_LOOKS: Record<string, FishArt> = {
 };
 
 /** A fish, drawn to size. Used for the catch card and the shop list. */
-export function makeFish(look: FishArt, seed: number, w = 22, h = 12): PixelCanvas {
+/** How a fish grows into its grade.
+ *
+ *  A grade is drawn, not tinted. See escalate() below for what each tier
+ *  adds; the short version is that the silhouette changes at every step,
+ *  because a fish you can identify as legendary from its shadow is
+ *  legendary and one you can only identify from its colour is the same
+ *  fish with a filter on. */
+export function makeFish(
+  look: FishArt, seed: number, w = 22, h = 12, tier = 0,
+): PixelCanvas {
   const rng = new Rng(seed * 6151 + 37);
   const c = new PixelCanvas(w, h);
   const cy = h / 2;
   const noseX = 1;
   const shape = look.shape ?? 'normal';
-  const tailX = Math.round(w * (shape === 'long' ? 0.80 : shape === 'round' ? 0.64 : 0.70));
-  const girth = shape === 'round' ? 0.50 : shape === 'long' ? 0.24 : shape === 'flat' ? 0.46 : 0.40;
+  const tailX = Math.round(w * (
+    shape === 'ribbon' ? 0.88 : shape === 'long' ? 0.80
+      : shape === 'round' || shape === 'bulb' ? 0.64
+        : shape === 'arrow' ? 0.76 : 0.70));
+  const girth =
+    shape === 'round' ? 0.50
+      : shape === 'bulb' ? 0.52
+        : shape === 'fan' ? 0.34
+          : shape === 'ribbon' ? 0.14
+            : shape === 'long' ? 0.24
+              : shape === 'flat' ? 0.46
+                : shape === 'arrow' ? 0.30 : 0.40;
 
   // --- body: a tapered spindle, not an ellipse. The taper toward the nose
   // and the wrist in front of the tail are what make it read as a fish.
   for (let x = noseX; x < tailX; x++) {
     const t = (x - noseX) / (tailX - noseX);
-    const fat = shape === 'long'
-      ? Math.sin(Math.pow(t, 0.5) * Math.PI) * 0.7 + 0.3
-      : Math.sin(Math.pow(t, 0.75) * Math.PI);
+    const fat =
+      shape === 'long' || shape === 'ribbon'
+        ? Math.sin(Math.pow(t, 0.5) * Math.PI) * 0.7 + 0.3
+        // A bulb is widest right behind the head and falls away fast; an
+        // arrow is the reverse. Those two profiles alone read as different
+        // animals before any colour is applied.
+        : shape === 'bulb' ? Math.sin(Math.pow(t, 1.6) * Math.PI)
+          : shape === 'arrow' ? Math.sin(Math.pow(t, 0.42) * Math.PI)
+            : Math.sin(Math.pow(t, 0.75) * Math.PI);
     const half = Math.max(0.6, fat * h * girth * (1 - t * 0.25));
     for (let y = Math.round(cy - half); y <= Math.round(cy + half); y++) {
       c.set(x, y, look.body);
@@ -465,6 +551,44 @@ export function makeFish(look: FishArt, seed: number, w = 22, h = 12): PixelCanv
     for (let x = bx; x < bx + 3; x++) {
       for (let y = 0; y < h; y++) if (c.get(x, y) === look.body) c.set(x, y, look.fin);
     }
+  } else if (look.marks === 'mesh') {
+    // A net of scales. Every other pixel on a diagonal lattice, which at
+    // this size reads as texture rather than as a pattern you can count.
+    for (let x = Math.round(w * 0.16); x < tailX; x++) {
+      for (let y = 0; y < h; y++) {
+        if (c.get(x, y) !== look.body) continue;
+        if ((x + y) % 3 === 0) c.set(x, y, look.fin);
+      }
+    }
+  } else if (look.marks === 'ocelli') {
+    // Two or three eye spots along the flank: a dark centre inside a lit
+    // ring. The ring is what stops them reading as dirt.
+    for (let i = 0; i < 3; i++) {
+      const sx = Math.round(w * (0.34 + i * 0.14));
+      const sy = Math.round(cy - h * 0.06);
+      if (c.get(sx, sy) === TRANSPARENT) continue;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (c.get(sx + dx, sy + dy) === TRANSPARENT) continue;
+          c.set(sx + dx, sy + dy, look.belly);
+        }
+      }
+      c.set(sx, sy, C.InkDeep);
+    }
+  } else if (look.marks === 'blotch') {
+    // Irregular patches. Camouflage, and the only marking that is allowed
+    // to break the body's silhouette lines.
+    for (let i = 0; i < 4; i++) {
+      const bx = Math.round(rng.range(w * 0.18, tailX - 2));
+      const by = Math.round(rng.range(cy - h * 0.3, cy + h * 0.2));
+      const bw = rng.int(2, 4);
+      const bh = rng.int(1, 3);
+      for (let y = by; y < by + bh; y++) {
+        for (let x = bx; x < bx + bw; x++) {
+          if (c.get(x, y) === look.body) c.set(x, y, look.fin);
+        }
+      }
+    }
   }
 
   // --- dorsal fin. Spiny species get a sawtooth ridge instead of a sail.
@@ -472,7 +596,9 @@ export function makeFish(look: FishArt, seed: number, w = 22, h = 12): PixelCanv
   const dTo = Math.round(w * (shape === 'long' ? 0.70 : 0.52));
   for (let x = dFrom; x < dTo; x++) {
     const t = (x - dFrom) / Math.max(1, dTo - dFrom);
-    const base = shape === 'round' ? 0.30 : shape === 'long' ? 0.10 : 0.22;
+    const base = shape === 'fan' ? 0.52
+      : shape === 'round' ? 0.30
+        : shape === 'long' || shape === 'ribbon' ? 0.10 : 0.22;
     let up = Math.round(Math.sin(t * Math.PI) * h * base) + 1;
     if (shape === 'spiny') up = 1 + ((x - dFrom) % 2 === 0 ? 2 : 0);
     for (let k = 1; k <= up; k++) c.set(x, Math.round(cy - h * girth * 0.85) - k + 1, look.fin);
@@ -511,8 +637,186 @@ export function makeFish(look: FishArt, seed: number, w = 22, h = 12): PixelCanv
     if (c.get(sx, sy) === look.body) c.set(sx, sy, look.belly);
   }
 
+  if (tier > 0) escalate(c, look, w, h, cy, tier, rng);
+
   c.outline(C.InkDeep, false);
   return c;
+}
+
+/** Grows a fish into its grade.
+ *
+ *  The first version had one extra cut for "rare" and used tint alone for
+ *  everything below it, which meant Biasa, Bagus and Langka were the same
+ *  sprite in three colours — the bottom half of the ladder had no art at
+ *  all. Each tier now changes the silhouette, and the changes compound:
+ *  brighter fins, then a sheen and a taller dorsal, then a crest and
+ *  trailing filaments, then barbels and a lit eye, then spines the whole
+ *  length of the back and a split tail.
+ *
+ *  Escalation has to happen in the outline, not the palette. */
+function escalate(
+  c: PixelCanvas, look: FishArt, w: number, h: number,
+  cy: number, tier: number, rng: Rng,
+): void {
+  const lit = C.White;
+  const bright = shiftUp(look.fin);
+
+  // --- tier 1: the fins catch more light, and a few scales spark.
+  for (let x = 0; x < w; x++) {
+    for (let y = 0; y < h; y++) {
+      if (c.get(x, y) === look.fin && rng.chance(0.30)) c.set(x, y, bright);
+    }
+  }
+  for (let i = 0; i < 2 + tier; i++) {
+    const sx = Math.round(rng.range(w * 0.22, w * 0.60));
+    const sy = Math.round(rng.range(cy - h * 0.26, cy + h * 0.05));
+    if (c.get(sx, sy) === look.body) c.set(sx, sy, lit);
+  }
+  if (tier < 2) return;
+
+  // --- tier 2: a sheen along the flank, and a taller dorsal.
+  for (let x = Math.round(w * 0.20); x < Math.round(w * 0.66); x++) {
+    const y = Math.round(cy - h * 0.20 + Math.sin((x / w) * 4) * 1.2);
+    const v = c.get(x, y);
+    if (v === look.body || v === look.belly) c.set(x, y, lit);
+  }
+  ridge(c, look, h, cy, Math.round(w * 0.28), Math.round(w * 0.54), 0.20, bright);
+  if (tier < 3) return;
+
+  // --- tier 3: a real crest, filaments off the tail, a lit back edge.
+  ridge(c, look, h, cy, Math.round(w * 0.26), Math.round(w * 0.58), 0.32, lit);
+  filaments(c, look, w, h, cy, 3, rng);
+  rimLight(c, look, w, lit);
+  if (tier < 4) return;
+
+  // --- tier 4: barbels at the jaw, more filaments, an eye that carries.
+  const jaw = Math.round(w * 0.14);
+  for (let k = 0; k < 3; k++) {
+    c.set(jaw - k, Math.round(cy + h * 0.18) + k, look.fin);
+    c.set(jaw - k, Math.round(cy + h * 0.32) + k, bright);
+  }
+  filaments(c, look, w, h, cy, 5, rng);
+  const ex = Math.round(w * 0.12);
+  const ey = Math.round(cy - h * 0.14);
+  c.set(ex, ey, lit);
+  c.set(ex - 1, ey, bright);
+  c.set(ex + 1, ey, bright);
+  c.set(ex, ey - 1, bright);
+  if (tier < 5) return;
+
+  // --- tier 5: spines the whole length of the back, and a split tail.
+  for (let x = Math.round(w * 0.20); x < Math.round(w * 0.68); x += 2) {
+    const top = topOf(c, x);
+    if (top < 1) continue;
+    c.set(x, top - 1, look.fin);
+    c.set(x, top - 2, lit);
+  }
+  for (let k = -2; k <= 2; k++) {
+    if (k === 0) continue;
+    const y = Math.round(cy + k * Math.max(2, h * 0.22));
+    for (let i = 0; i < 4; i++) {
+      const x = w - 3 + i;
+      if (x >= c.w) break;
+      c.set(x, y + (i > 1 ? Math.sign(k) : 0), i > 2 ? bright : look.fin);
+    }
+  }
+}
+
+/** One ramp step brighter, for fins and crests. Kept local so the fish art
+ *  does not have to reach into the portrait's ramp table. */
+function shiftUp(col: number): number {
+  const RAMPS: number[][] = [
+    [C.InkDeep, C.Ink, C.Slate, C.SlateLt, C.Mist, C.Pale, C.White],
+    [C.WoodDp, C.WoodDk, C.Wood, C.SkinSh, C.Skin, C.SunGlow],
+    [C.ForestDp, C.Forest, C.GrassDk, C.Grass, C.GrassLt, C.LeafLt],
+    [C.WaterDp, C.Water, C.WaterSh, C.WaterBr, C.Foam],
+    [C.Dusk, C.Purple, C.Rose, C.Red, C.Orange, C.Amber, C.SunGlow],
+    [C.StoneShadow, C.StoneDk, C.Stone, C.StoneLt, C.StonePale],
+    [C.CyberVoid, C.CyberSlate, C.CyberSteel, C.NeonCyan],
+    [C.Arcane, C.ArcaneLt],
+  ];
+  for (const r of RAMPS) {
+    const i = r.indexOf(col);
+    if (i >= 0) return r[Math.min(r.length - 1, i + 1)];
+  }
+  return col;
+}
+
+/** The topmost non-empty row of a column, or -1. */
+function topOf(c: PixelCanvas, x: number): number {
+  for (let y = 0; y < c.h; y++) if (c.get(x, y) !== TRANSPARENT) return y;
+  return -1;
+}
+
+/** A crest, grown from the back rather than floated above it.
+ *
+ *  Two mistakes worth keeping a note of. The first cut measured up from
+ *  the body centre, which put the crest in mid-air over the thin-bodied
+ *  species — a hat hovering above an eel; a fin has to start on the pixel
+ *  the body actually ends on. The second filled it solid, which reads as
+ *  a lump of flesh rather than a fin. Real dorsals are rays with membrane
+ *  between them, and the height has to answer to how deep the body is at
+ *  that column or an eel ends up wearing a sail.
+ */
+function ridge(
+  c: PixelCanvas, look: FishArt, h: number, cy: number,
+  from: number, to: number, height: number, tipCol: number,
+): void {
+  void cy;
+  for (let x = from; x < to; x++) {
+    const base = topOf(c, x);
+    if (base < 1) continue;
+    const depth = bodyDepth(c, x);
+    if (depth < 2) continue;
+    const t = (x - from) / Math.max(1, to - from);
+    // Rays: every other column runs full height, the ones between stop
+    // short. That alternation is what separates a fin from a bump.
+    const ray = x % 2 === 0 ? 1 : 0.55;
+    const up = Math.max(1, Math.round(
+      Math.sin(t * Math.PI) * Math.min(h * height, depth * 0.9) * ray,
+    ));
+    for (let k = 1; k <= up; k++) {
+      const y = base - k;
+      if (y < 0) break;
+      c.set(x, y, k === up ? tipCol : look.fin);
+    }
+  }
+}
+
+/** How many rows of fish sit in this column. */
+function bodyDepth(c: PixelCanvas, x: number): number {
+  let n = 0;
+  for (let y = 0; y < c.h; y++) if (c.get(x, y) !== TRANSPARENT) n++;
+  return n;
+}
+
+/** Streamers off the tail. Odd lengths — trailers all the same length read
+ *  as a comb rather than as something living. */
+function filaments(
+  c: PixelCanvas, look: FishArt, w: number, h: number,
+  cy: number, n: number, rng: Rng,
+): void {
+  for (let k = 0; k < n; k++) {
+    const y = Math.round(cy + (k - (n - 1) / 2) * Math.max(2, h * 0.22));
+    const len = rng.int(2, 4) + (k === Math.floor(n / 2) ? 2 : 0);
+    for (let i = 0; i < len; i++) {
+      const x = w - 2 + i;
+      if (x >= c.w) break;
+      c.set(x, y, look.fin);
+    }
+  }
+}
+
+/** Lights the topmost pixel of each column — the one detail that makes
+ *  something look like it is generating light rather than merely being a
+ *  bright colour. */
+function rimLight(c: PixelCanvas, look: FishArt, w: number, lit: number): void {
+  for (let x = 1; x < w - 1; x++) {
+    const y = topOf(c, x);
+    if (y < 0) continue;
+    const v = c.get(x, y);
+    if (v === look.body || v === look.belly) c.set(x, y, lit);
+  }
 }
 
 export interface CropArt {

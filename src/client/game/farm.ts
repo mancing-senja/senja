@@ -39,6 +39,14 @@ export type FarmAction =
 
 const REACH = 22;
 
+export interface LogEntry {
+  count: number;
+  best: number;
+  /** Highest grade tier ever landed of this species. Optional on read:
+   *  a log saved before grades existed has no such field. */
+  bestGrade: number;
+}
+
 export class Farm {
   coins = 30;
   seeds: Record<string, number> = { tomat: 3, labu: 0, terong: 0, jagung: 2 };
@@ -60,13 +68,16 @@ export class Farm {
 
   /** What has been caught at least once, and the biggest of each. The log
    *  is the reason to keep casting once coins stop mattering. */
-  log: Record<string, { count: number; best: number }> = {};
+  log: Record<string, LogEntry> = {};
 
   addCatch(c: Catch): void {
     this.basket.push(c);
-    const e = this.log[c.species.id] ?? { count: 0, best: 0 };
+    const e = this.log[c.species.id] ?? { count: 0, best: 0, bestGrade: 0 };
     e.count++;
     e.best = Math.max(e.best, c.cm);
+    // The best grade ever landed, so the journal can show the species at
+    // its finest rather than always at its plainest.
+    e.bestGrade = Math.max(e.bestGrade ?? 0, c.grade.tier);
     this.log[c.species.id] = e;
   }
 

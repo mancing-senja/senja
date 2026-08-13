@@ -51,7 +51,15 @@ export interface Atlas {
 }
 
 const ATLAS_W = 1024;
-const ATLAS_H = 1024;
+/** Taller, not wider.
+ *
+ *  The 1024-square sheet was already about 95% full before the roster grew
+ *  to eighty-six species; three sprites each tipped it over and the packer
+ *  threw. Growing the height doubles the space for eight megabytes of
+ *  texture instead of the sixteen a 2048 square would cost, and the packer
+ *  fills in shelves top to bottom so the extra room is exactly where it
+ *  gets used. Both dimensions stay powers of two. */
+const ATLAS_H = 2048;
 const PAD = 1;
 
 class ShelfPacker {
@@ -281,7 +289,14 @@ export function buildAtlas(overrides: Overrides = new Map()): Atlas {
   let fishSeed = 1;
   for (const [name, look] of Object.entries(FISH_LOOKS)) {
     add(`fish_${name}`, makeFish(look, fishSeed++, 22, 12));
-    add(`fishbig_${name}`, makeFish(look, fishSeed++, 40, 22));
+    // One big sprite per grade. Sharing a sprite across the bottom three
+    // grades left half the ladder with no art at all — the same fish in
+    // three colours. Only the big size is graded: the small one is a feed
+    // icon and crests and filaments are illegible at 22 pixels.
+    const fishSeedForSpecies = fishSeed++;
+    for (let tier = 0; tier < 6; tier++) {
+      add(`fishg${tier}_${name}`, makeFish(look, fishSeedForSpecies, 40, 22, tier));
+    }
   }
   for (const [name, look] of Object.entries(CROP_LOOKS)) {
     for (let s = 0; s <= 4; s++) add(`crop_${name}_${s}`, makeCrop(look, s));
