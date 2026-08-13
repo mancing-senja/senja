@@ -157,7 +157,7 @@ const FACE: readonly string[] = [
   // read as facing two directions at once.
   '...hhhhhhhh.......hhhhhh...', // 17
   '...hhhhhhhh.......hhhhhh...', // 18
-  '...jinkkkij.......jinkkj...', // 19  catchlight, then iris
+  '...jineekij.......jineej...', // 19  catchlight, then shadowed iris
   '...jkkllkkj.......jkllkj...', // 20  pupil
   '...jjKKKKjj.......jKKKKj...', // 21  iris floor, lit
   '....jjjjjj.........jjjj....', // 22  lower lid
@@ -431,6 +431,11 @@ function stampFace(
       // vertical gradient inside a big iris is the second anime tell after
       // the size of the eye itself.
       case 'k': return eye;
+      // The top of the iris, in shadow under the lid. The references run a
+      // three-step gradient down a big iris — dark, mid, lit — and with
+      // only mid and lit the eye reads as a flat disc with a bright strip
+      // under it.
+      case 'e': return shift(eye, -1);
       case 'K': return shift(eye, 2);
       case 'l': return C.InkDeep;
       // Blush. Anime wears it high on the cheekbone and openly — it is a
@@ -618,21 +623,34 @@ const HAIR_SPAN: readonly number[] = [
   // of radius 17 actually has, because a dome that widens too slowly at
   // the top comes out flat, and a flat-topped mass reads as a helmet
   // however good the fringe under it is.
-  6, 8, 10, 11,
-  12, 13, 14, 14, 15, 15,
-  // Temples. Hair is three or four pixels wider than the head here — in
-  // every reference the hair mass is plainly bigger than the skull, and
-  // that gap is what makes it read as hair rather than as paint on a head.
-  16, 16, 16, 17, 17, 17,
-  // Falling past the eyes.
-  16, 16, 15, 14,
+  7, 10, 12, 13,
+  14, 15, 16, 17, 17, 18,
+  // Temples, and this is where the volume lives.
+  //
+  // Four pixels of clearance over the skull was not enough: the mass still
+  // hugged the head and read as paint on it. In the references the hair is
+  // plainly a *bigger object* than the skull inside it — it bulges widest
+  // just above the ear and only then falls away. Seven or eight pixels of
+  // clearance, bulging rather than running parallel, is what turns a cap
+  // into hair.
+  19, 20, 21, 21, 21, 20,
+  // Falling past the eyes, still wide.
+  19, 18, 17, 15,
 ];
 
-function hairSpanAt(y: number, g: Geom): number {
+/** How much the hair mass is pressed down by whatever is on top of it.
+ *
+ *  A hat does not grow to fit the hair — it flattens it. Widening every cap
+ *  to clear the new volume instead turned half the cast into sun hats, which
+ *  is the wrong end of the problem: the hair under a cap is squashed, and
+ *  only what escapes below the band keeps its full width. */
+const COVERED_SQUASH = 0.72;
+
+function hairSpanAt(y: number, g: Geom, squash = 1): number {
   const i = y - (HEAD_TOP - 4);
   if (i < 0) return 0;
-  if (i >= HAIR_SPAN.length) return HAIR_SPAN[HAIR_SPAN.length - 1] * g.wide;
-  return HAIR_SPAN[i] * g.wide;
+  if (i >= HAIR_SPAN.length) return HAIR_SPAN[HAIR_SPAN.length - 1] * g.wide * squash;
+  return HAIR_SPAN[i] * g.wide * squash;
 }
 
 function hemAt(x: number): number {
@@ -662,8 +680,9 @@ function drawHair(c: PixelCanvas, lk: Look, g: Geom, rng: Rng): void {
     //
     // So the fringe hem is authored, one entry per column, as four wedges.
     // The hem is the shape; everything else is colour on top of it.
+    const squash = lk.head === 'bare' ? 1 : COVERED_SQUASH;
     for (let y = HEAD_TOP - 4; y <= FACE_Y + 6; y++) {
-      const half = hairSpanAt(y, g);
+      const half = hairSpanAt(y, g, squash);
       for (let x = Math.round(SX - half); x <= Math.round(SX + half); x++) {
         if (y > hemAt(x)) continue;
         c.set(x, y, light);
@@ -835,8 +854,9 @@ function drawHeadwear(c: PixelCanvas, lk: Look, g: Geom): void {
       }
     }
     // Brim, seen slightly from below, so it dips at the sides.
-    for (let x = SX - 18; x <= SX + 18; x++) {
-      const nx = (x - SX) / 18;
+    const brimHalf = 18;
+    for (let x = SX - brimHalf; x <= SX + brimHalf; x++) {
+      const nx = (x - SX) / brimHalf;
       const y = brimY + Math.round(nx * nx * 3);
       c.set(x, y, lk.headCol);
       c.set(x, y + 1, lk.headSh);
