@@ -381,6 +381,12 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
       pose: poseOf(n, clock),
       x: Math.round(n.x), y: Math.round(n.y),
     }));
+  /** Drops straight into a fight with a chosen species and grade, so the reel
+   *  can be looked at without waiting on the odds. */
+  (window as unknown as Record<string, unknown>).__fight = (
+    speciesId: string, gradeId: string,
+  ) => fishing.debugFight(speciesId, gradeId, player);
+
   (window as unknown as Record<string, unknown>).__dbg = () => ({
     fishing: fishing.state,
     indoors: indoors ? {
@@ -881,6 +887,7 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
       n.drawPanel(draw, player.x, player.y);
     }
     fishing.drawHud(draw);
+    ui.reeling = fishing.state === 'reel';
     ui.draw(draw, {
       coins: farm.coins,
       room: net.room,
