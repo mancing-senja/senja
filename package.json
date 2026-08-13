@@ -10,18 +10,23 @@
     "dev:server": "tsx watch src/server/index.ts",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "start": "tsx src/server/index.ts",
+    "serve": "npm run build && npm run start"
   },
   "devDependencies": {
     "@types/node": "^22.10.5",
     "@types/ws": "^8.5.13",
     "concurrently": "^9.1.2",
     "playwright": "^1.62.1",
-    "tsx": "^4.19.2",
     "typescript": "^5.7.3",
     "vite": "^6.0.7"
   },
   "dependencies": {
+    "tsx": "^4.19.2",
     "ws": "^8.18.0"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

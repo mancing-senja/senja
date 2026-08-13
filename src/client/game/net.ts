@@ -7,12 +7,42 @@
 
 import { INPUT_HZ } from '../../shared/constants';
 import {
-  safeParse, type BoardEntry, type ClientMsg, type FeedItem, type PlayerState,
-  type PlotState, type ServerMsg,
+  safeParse,
+  type BoardEntry,
+  type ClientMsg,
+  type FeedItem,
+  type PlayerState,
+  type PlotState,
+  type ProfileData,
+  type ServerMsg,
 } from '../../shared/protocol';
 import { RemotePlayer } from './player';
 
 export type NetStatus = 'offline' | 'connecting' | 'online' | 'full';
+
+/** This player's save key.
+ *
+ *  Minted once, in the browser, and never shown to anybody. It is not an
+ *  account: there is no password, nothing to reset, and the server learns
+ *  nothing about who you are. What it buys is a profile that survives a
+ *  cache clear and can be carried to another machine by copying one string
+ *  — which is the whole of what a cozy fishing game needs, and none of the
+ *  risk that comes with storing credentials.
+ *
+ *  crypto.randomUUID is available in every browser this game renders in;
+ *  the fallback exists so a page opened over plain http on a LAN, where
+ *  the crypto API is not exposed, still gets a stable key. */
+export function playerToken(): string {
+  const KEY = 'senja.token';
+  let t = localStorage.getItem(KEY);
+  if (t && /^[A-Za-z0-9_-]{16,64}$/.test(t)) return t;
+  const uuid = globalThis.crypto?.randomUUID?.();
+  t = (uuid ?? `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`)
+    .replace(/-/g, '')
+    .slice(0, 32);
+  localStorage.setItem(KEY, t);
+  return t;
+}
 
 export class Net {
   private ws: WebSocket | null = null;
@@ -33,6 +63,8 @@ export class Net {
   serverRain = 0;
 
   onFeed: ((item: FeedItem) => void) | null = null;
+  /** Fired once on connect when the server recognises this player. */
+  onProfile: ((p: ProfileData) => void) | null = null;
   onPlots: ((plots: PlotState[]) => void) | null = null;
 
   constructor(private name: string, private hue: number) {
@@ -62,7 +94,10 @@ export class Net {
 
     ws.onopen = () => {
       this.retries = 0;
-      this.send({ t: 'join', room: this.room, name: this.name, hue: this.hue });
+      this.send({
+        t: 'join', room: this.room, name: this.name, hue: this.hue,
+        token: playerToken(),
+      });
     };
 
     ws.onmessage = (ev) => {
@@ -89,6 +124,10 @@ export class Net {
 
   private handle(msg: ServerMsg): void {
     switch (msg.t) {
+      case 'profile':
+        this.onProfile?.(msg.profile);
+        break;
+
       case 'welcome':
         this.status = 'online';
         this.youId = msg.you;

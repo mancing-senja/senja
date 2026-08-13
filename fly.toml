@@ -1,0 +1,35 @@
+# Deploy target for Senja.
+#
+# One machine, one port, one volume. The volume is the important line: the
+# player profiles live on disk, and without it every deploy would reset
+# everybody to zero coins.
+#
+#   fly launch --no-deploy      (once, to claim the app name)
+#   fly volumes create senja_data --size 1
+#   fly deploy
+#
+# app is left blank on purpose — `fly launch` fills it in with a name that
+# is actually available.
+
+app = ""
+primary_region = "sin"   # Singapore, the closest region to Indonesia
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8080"
+  SENJA_DATA = "/data/players.json"
+
+[[mounts]]
+  source = "senja_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Never scale to zero: the room server holds the world clock and the
+  # connected players, and a cold start would drop everybody mid-cast.
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1

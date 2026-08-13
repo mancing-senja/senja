@@ -150,6 +150,66 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
     }
   });
   net.onFeed = (item) => ui.push(item);
+
+  /** The server's copy of this player wins on connect.
+   *
+   *  localStorage is per-browser: clear the site data and a month of
+   *  fishing is gone, and opening the game on a laptop makes you a
+   *  stranger with no coins. The stored profile is the real one; the local
+   *  copy is a cache that keeps solo play working when there is no server. */
+  net.onProfile = (p) => {
+    if (p.name) {
+      localStorage.setItem('senja.name', p.name);
+      player.name = p.name;
+    }
+    if (Number.isFinite(p.look)) {
+      localStorage.setItem('senja.look', String(p.look % LOOK_COUNT));
+      player.hue = p.look % LOOK_COUNT;
+    }
+    farm.coins = Math.max(farm.coins, p.coins ?? 0);
+    player.caught = Math.max(player.caught, p.caught ?? 0);
+    dayCount = Math.max(dayCount, p.day ?? 0);
+    localStorage.setItem('senja.day', String(dayCount));
+
+    // Journals merge rather than replace: a catch landed offline a minute
+    // ago must not be thrown away by a profile that predates it.
+    for (const [id, e] of Object.entries(p.log ?? {})) {
+      const cur = farm.log[id] ?? { count: 0, best: 0, bestGrade: 0 };
+      farm.log[id] = {
+        count: Math.max(cur.count, e.count ?? 0),
+        best: Math.max(cur.best, e.best ?? 0),
+        bestGrade: Math.max(cur.bestGrade ?? 0, e.bestGrade ?? 0),
+      };
+    }
+    for (const id of p.lore ?? []) loreRead.add(id);
+    saveRead(loreRead);
+    ui.loreRead = loreRead.size;
+    ui.say('progres dimuat');
+  };
+
+  /** Pushes this player's record up. Called on a timer and on the way out;
+   *  the server rate-limits and merges forward, so sending too often is
+   *  wasteful rather than harmful. */
+  const pushProfile = (): void => {
+    if (net.status !== 'online') return;
+    net.send({
+      t: 'save',
+      profile: {
+        name: player.name,
+        look: player.hue,
+        coins: farm.coins,
+        caught: player.caught,
+        day: dayCount,
+        log: farm.log,
+        lore: [...loreRead],
+      },
+    });
+  };
+  setInterval(pushProfile, 15000);
+  // A closing tab is the most common way a session ends, and it is the one
+  // moment a timer is guaranteed to miss.
+  window.addEventListener('pagehide', pushProfile);
+
   ui.loreTotal = LORE.length;
   ui.loreRead = loreRead.size;
 
