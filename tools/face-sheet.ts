@@ -12,7 +12,7 @@ import { buildPortraits, PORTRAIT_H, PORTRAIT_W } from '../src/client/art/portra
 import { RGB_PALETTE } from '../src/client/art/palette';
 
 const SCALE = Number(process.argv[2] ?? 5);
-const COLS = 9;
+const COLS = Number(process.env.FACE_COLS ?? 9);
 
 /** A minimal PNG writer. One dependency less than reaching for a library, and
  *  the format is four chunks. */
@@ -53,7 +53,10 @@ function png(w: number, h: number, rgba: Uint8Array): Buffer {
   ]);
 }
 
-const frames = buildPortraits();
+const only = process.env.FACE_ONLY;
+const frames = buildPortraits()
+  .filter((f) => !only || only.split(',').includes(String(f.look)))
+  .filter((f) => f.mood === (process.env.FACE_MOOD ?? 'neutral'));
 const rows = Math.ceil(frames.length / COLS);
 const W = COLS * PORTRAIT_W * SCALE;
 const H = rows * PORTRAIT_H * SCALE;

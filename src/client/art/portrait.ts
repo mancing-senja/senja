@@ -675,18 +675,37 @@ function drawHair(c: PixelCanvas, lk: Look, g: Geom, rng: Rng): void {
     // HAIR_SPAN instead, where it is part of the silhouette rather than
     // stuck onto it.
 
-    // Clump edges. Every wedge gets a dark line down its leading side,
-    // which is what separates one clump from the next — without it the
-    // authored hem just makes a single scalloped block.
+    // Lock edges, drawn as swept diagonals rather than vertical lines.
+    //
+    // This is the whole difference between hair and a comb. The previous
+    // version ran a straight dark column down each clump's leading side,
+    // and across the brow the result was a picket fence — a row of upright
+    // bars standing on a forehead. Hair does not hang in bars. It leaves a
+    // parting and sweeps outward, so a lock's edge is a curve that starts
+    // near the part and accelerates away from it.
+    const part = SX - 4;
     for (let k = 0; k < BANG_HEM.length; k++) {
-      const x = SX - 13 + k;
-      const hemHere = BANG_HEM[k];
-      const hemPrev = BANG_HEM[Math.max(0, k - 1)];
-      // A column that hangs lower than the one before it starts a clump.
-      if (hemHere <= hemPrev) continue;
-      for (let y = HEAD_TOP + 2; y <= hemHere; y++) {
+      const xTip = SX - 13 + k;
+      const yTip = BANG_HEM[k];
+      if (yTip <= BANG_HEM[Math.max(0, k - 1)]) continue;
+      const xRoot = xTip + (xTip < part ? 4 : -4);
+      const yRoot = HEAD_TOP + 1;
+      const steps = Math.max(1, yTip - yRoot);
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        // Squared, so the stroke leaves the parting slowly and swings out
+        // hard near the tip — which is how a lock actually falls.
+        const x = Math.round(xRoot + (xTip - xRoot) * t * t);
+        const y = yRoot + i;
         if (c.get(x, y) === light) c.set(x, y, dark);
       }
+    }
+
+    // The parting. Off centre, because a centre part on every character in
+    // the cast reads as a uniform.
+    for (let y = HEAD_TOP - 2; y < HEAD_TOP + 5; y++) {
+      const x = part + Math.round((y - HEAD_TOP) * 0.3);
+      if (c.get(x, y) === light) c.set(x, y, dark);
     }
 
     // The tip of each wedge, darkened, so the point reads as a point.
@@ -694,24 +713,41 @@ function drawHair(c: PixelCanvas, lk: Look, g: Geom, rng: Rng): void {
       const x = SX - 13 + k;
       if (BANG_HEM[k] <= BANG_HEM[k - 1] || BANG_HEM[k] < BANG_HEM[k + 1]) continue;
       c.set(x, BANG_HEM[k], dark);
-      c.set(x, BANG_HEM[k] - 1, lk.hairSh === light ? lk.hair : lk.hairSh);
+      // No highlight above the tip. Lightening every tip put a row of short
+      // dashes across the brow — the picket fence coming back in a paler
+      // form. The dark point is enough to read as a point.
     }
 
-    // One bold sheen band, two rows thick, following the curve of the
-    // skull. Anime hair has exactly one of these and it is unmissable —
-    // a scatter of light pixels is texture, not shine.
-    // Only when the highlight actually reads. On the near-black hair the
-    // brightest tone available is one dim step up, and a band of it came
-    // out as blue dashes scattered over the crown — texture noise rather
-    // than shine. Better no highlight than a broken one.
-    if (luma(hi) - luma(light) > 14) {
-      const shineY = HEAD_TOP + 4;
-      for (let x = SX - 10; x <= SX + 9; x++) {
-        const nx = (x - SX) / 10;
-        const y = shineY + Math.round(nx * nx * 3);
+    // The shine, as a broken arc following the skull.
+    //
+    // Broken, and that matters. A continuous band came out as a solid strip
+    // of rectangles straight across the crown and read as a headband rather
+    // than as light on hair. Every reference splits the highlight into
+    // segments of unequal length with gaps between them, sitting where the
+    // skull turns toward the light rather than at its top.
+    //
+    // Not under a hat. The crown is what carries a highlight, and with a hat
+    // over it the segments landed down in the fringe instead and read as
+    // scratches across the forehead.
+    const shineY = HEAD_TOP + 2;
+    const SEGMENTS: ReadonlyArray<readonly [number, number]> = covered
+      ? []
+      // Two long runs and one short, rather than three even ones. Even
+      // spacing is a dashed line, and a dashed line reads as debris.
+      : [[-11, -5], [-3, 2], [5, 7]];
+    for (let si = 0; si < SEGMENTS.length; si++) {
+      const [a, b] = SEGMENTS[si];
+      for (let x = SX + a; x <= SX + b; x++) {
+        const nx = (x - SX + 3) / 11;
+        // A gentle arc. At four the curve stepped a row every couple of
+        // pixels and broke each segment into a staircase of loose blocks,
+        // which reads as debris on the hair rather than as light along it.
+        const y = shineY + Math.round(nx * nx * 2);
         if (c.get(x, y) !== light && c.get(x, y) !== dark) continue;
         c.set(x, y, hi);
-        if (Math.abs(nx) < 0.7) c.set(x, y + 1, hi);
+        // Two rows thick only on the segment facing the light, so the band
+        // has weight where the skull is broadest and thins as it turns.
+        if (si === 0 && c.get(x, y + 1) === light) c.set(x, y + 1, hi);
       }
     }
 
