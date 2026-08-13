@@ -6,10 +6,17 @@
  *  sprite of authoring each direction rather than thirty-six, and adding a
  *  thirteenth is a row of data.
  *
- *  Animation: walk is four frames (leg swap plus a one-pixel torso bob),
- *  and idle is not a still frame. A character standing perfectly rigid is
- *  the thing that makes a world look switched off, so idle breathes on a
- *  slow two-frame cycle and blinks every few seconds. */
+ *  Animation, and the rule behind all of it: a character standing
+ *  perfectly rigid is the thing that makes a world look switched off.
+ *
+ *  Walk is four frames — legs, a one-pixel torso bob, and arms swinging
+ *  opposite the legs. Arms held rigid at the sides are the clearest tell
+ *  that a sprite is a paper doll being slid across the ground, and one
+ *  pixel of counter-swing is enough to read at sixteen pixels wide.
+ *
+ *  Idle breathes on a slow two-frame cycle and blinks every few seconds.
+ *  Working swings a tool on two beats. Talking nods, faster than the
+ *  breath so the two never look like the same animation. */
 
 import { PixelCanvas, TRANSPARENT } from './canvas';
 import { C } from './palette';
@@ -133,11 +140,12 @@ export type Pose =
   | 'idle' | 'idle2' | 'blink'
   | 'walk0' | 'walk1' | 'walk2' | 'walk3'
   | 'hold' | 'pull'
-  | 'tend0' | 'tend1';
+  | 'tend0' | 'tend1'
+  | 'talk';
 
 export const POSES: Pose[] = [
   'idle', 'idle2', 'blink', 'walk0', 'walk1', 'walk2', 'walk3', 'hold', 'pull',
-  'tend0', 'tend1',
+  'tend0', 'tend1', 'talk',
 ];
 
 export type Dir = 'front' | 'back' | 'side';
@@ -390,6 +398,60 @@ function raiseArm(c: PixelCanvas, dir: Dir, pull: boolean, lk: Look): void {
   if (dir !== 'side') c.set(armX - 1, from - lift, lk.skinSh);
 }
 
+/** Arms swing when the legs do.
+ *
+ *  The walk cycle used to move nothing but the legs and the torso's
+ *  one-pixel bob, and arms held rigid at the sides is the single clearest
+ *  tell that a sprite is a paper doll being slid across the ground. Real
+ *  gait swings the arms *opposite* the legs, and even one pixel of that is
+ *  enough to read at sixteen pixels wide.
+ *
+ *  `phase` is -1, 0 or +1 — the leading arm's direction on this frame. */
+function walkArms(c: PixelCanvas, dir: Dir, phase: number, lk: Look): void {
+  if (phase === 0) return;
+
+  if (dir === 'side') {
+    // Seen from the side the swing is horizontal: the visible arm travels
+    // in front of the body and back behind it.
+    const from = 12;
+    const to = from + phase;
+    for (let y = 15; y <= 16; y++) c.set(from, y, TRANSPARENT);
+    c.set(to, 15, lk.skin);
+    c.set(to, 16, lk.skinSh);
+    // The shoulder stays put, so a pixel of sleeve bridges the gap.
+    if (phase > 0) c.set(from, 14, lk.shirt);
+    return;
+  }
+
+  // Face on, the swing reads as the hands rising and falling — and they
+  // have to move in opposite directions, or it is a shrug, not a walk.
+  const cols: Array<[number, number]> = [[2, phase], [13, -phase]];
+  for (const [x, d] of cols) {
+    for (let y = 15; y <= 17; y++) c.set(x, y, TRANSPARENT);
+    c.set(x, 15 + d, lk.skin);
+    c.set(x, 16 + d, lk.skin);
+    c.set(x, 17 + d, lk.skinSh);
+  }
+}
+
+/** A slow nod, for someone in the middle of saying something.
+ *
+ *  A villager who talks without moving reads as a vending machine. One
+ *  pixel of head dip on a two-beat cycle is all it takes, and it costs two
+ *  poses rather than a rig. */
+function nod(c: PixelCanvas, dir: Dir, down: boolean): void {
+  if (!down) return;
+  // Everything above the collar drops a row. Copied top-down so a pixel is
+  // never read after it has already been overwritten.
+  for (let y = 12; y >= 0; y--) {
+    for (let x = 0; x < CH_W; x++) {
+      c.set(x, y + 1, c.get(x, y));
+    }
+  }
+  for (let x = 0; x < CH_W; x++) c.set(x, 0, TRANSPARENT);
+  void dir;
+}
+
 /** Both arms reach down and forward, and a tool shaft goes with them. The
  *  down-stroke pushes the hands lower and tilts the shaft — that swing is
  *  what turns "standing near a plot" into "working on it". */
@@ -434,11 +496,15 @@ function poseCanvas(dir: Dir, pose: Pose, lk: Look): PixelCanvas {
 
   let legFrame = 0;
   let bob = 0;
+  // Which way the leading arm is swinging. Zero on the contact frames,
+  // where the legs are together and the arms pass the body.
+  let swing = 0;
   switch (pose) {
-    case 'walk0': legFrame = 0; bob = 0; break;
-    case 'walk1': legFrame = 1; bob = -1; break;
-    case 'walk2': legFrame = 2; bob = 0; break;
-    case 'walk3': legFrame = 3; bob = -1; break;
+    case 'walk0': legFrame = 0; bob = 0; swing = 0; break;
+    case 'walk1': legFrame = 1; bob = -1; swing = 1; break;
+    case 'walk2': legFrame = 2; bob = 0; swing = 0; break;
+    case 'walk3': legFrame = 3; bob = -1; swing = -1; break;
+    case 'talk': legFrame = 0; bob = 0; break;
     // The breath: the torso settles one pixel. Nothing else moves.
     case 'idle2': legFrame = 0; bob = 1; break;
     // Working: the whole torso drops as they bend to the ground and comes
@@ -469,9 +535,11 @@ function poseCanvas(dir: Dir, pose: Pose, lk: Look): PixelCanvas {
   c.replace(M_SKIN, lk.skin);
   c.replace(M_SKIN_SH, lk.skinSh);
 
+  if (swing !== 0) walkArms(c, dir, swing, lk);
   if (pose === 'hold' || pose === 'pull') raiseArm(c, dir, pose === 'pull', lk);
   if (pose === 'tend0' || pose === 'tend1') workArms(c, dir, pose === 'tend1', lk);
   if (pose === 'blink') closeEyes(c, dir, lk);
+  if (pose === 'talk') nod(c, dir, true);
 
   c.outline(C.InkDeep, false);
   return c;

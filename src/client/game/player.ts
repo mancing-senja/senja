@@ -31,6 +31,8 @@ export interface Actor {
   /** Per-character phase offset, so idles are not synchronised. */
   idleSeed: number;
   bobber: { x: number; y: number } | null;
+  /** True while this actor has a line on screen. Only villagers set it. */
+  talking?: boolean;
 }
 
 export class LocalPlayer implements Actor {
@@ -202,6 +204,12 @@ export class RemotePlayer implements Actor {
   }
 }
 
+/** Exported so a test can assert which pose an actor is actually in —
+ *  reading that off a screenshot of a sixteen-pixel sprite is guesswork. */
+export function poseOf(a: Actor, clock: number): Pose {
+  return poseFor(a, clock);
+}
+
 function poseFor(a: Actor, clock: number): Pose {
   switch (a.action) {
     case 'cast':
@@ -220,9 +228,13 @@ function poseFor(a: Actor, clock: number): Pose {
       return (['walk0', 'walk1', 'walk2', 'walk3'] as const)[f];
     }
     default: {
+      const phase = clock + a.idleSeed;
+      // Mid-sentence, the head nods. A villager who talks without moving
+      // reads as a vending machine — and the nod is faster than the breath,
+      // so the two never look like the same animation.
+      if (a.talking) return Math.floor(phase * 3.2) % 2 === 0 ? 'idle' : 'talk';
       // Standing still is still animated. A slow breath, plus a blink on a
       // per-character offset so a crowd never blinks in unison.
-      const phase = clock + a.idleSeed;
       const blinkCycle = 4.4 + (a.idleSeed % 2.6);
       if (phase % blinkCycle < 0.13) return 'blink';
       return Math.floor(phase * 0.7) % 2 === 0 ? 'idle' : 'idle2';

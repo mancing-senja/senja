@@ -87,6 +87,11 @@ export class Npc implements Actor {
     return this.def.route.length <= 1;
   }
 
+  /** Drives the nodding pose while a line is on screen. */
+  get talking(): boolean {
+    return this.sayT > 0;
+  }
+
   update(dt: number, map: WorldMap): void {
     this.step(dt, (tx, ty) => isWalkable(map, tx, ty));
   }
