@@ -475,17 +475,15 @@ export const FISH_LOOKS: Record<string, FishArt> = {
 };
 
 /** A fish, drawn to size. Used for the catch card and the shop list. */
-/** One extra sprite per species, for the top three grades.
+/** How a fish grows into its grade.
  *
- *  Tint alone cannot carry "this is the rarest thing in the lake" — a
- *  recoloured minnow is still a minnow. The exalted cut lengthens the
- *  fins, trails filaments off the tail and runs a rim light along the
- *  back, so an Epik reads as a different animal at a glance and not as the
- *  same animal wearing a colour. Two sprites per species is the cheapest
- *  place to buy that: the remaining three grades are handled with tint and
- *  additive glow at draw time, which costs nothing at all. */
+ *  A grade is drawn, not tinted. See escalate() below for what each tier
+ *  adds; the short version is that the silhouette changes at every step,
+ *  because a fish you can identify as legendary from its shadow is
+ *  legendary and one you can only identify from its colour is the same
+ *  fish with a filter on. */
 export function makeFish(
-  look: FishArt, seed: number, w = 22, h = 12, exalted = false,
+  look: FishArt, seed: number, w = 22, h = 12, tier = 0,
 ): PixelCanvas {
   const rng = new Rng(seed * 6151 + 37);
   const c = new PixelCanvas(w, h);
@@ -639,55 +637,185 @@ export function makeFish(
     if (c.get(sx, sy) === look.body) c.set(sx, sy, look.belly);
   }
 
-  if (exalted) exalt(c, look, w, h, cy, rng);
+  if (tier > 0) escalate(c, look, w, h, cy, tier, rng);
 
   c.outline(C.InkDeep, false);
   return c;
 }
 
-/** Turns a fish into a rare one: trailing filaments, a taller dorsal, and
- *  a lit edge along the back. Drawn after the body so it reads as growth
- *  on top of the animal rather than as a different animal. */
-function exalt(
+/** Grows a fish into its grade.
+ *
+ *  The first version had one extra cut for "rare" and used tint alone for
+ *  everything below it, which meant Biasa, Bagus and Langka were the same
+ *  sprite in three colours — the bottom half of the ladder had no art at
+ *  all. Each tier now changes the silhouette, and the changes compound:
+ *  brighter fins, then a sheen and a taller dorsal, then a crest and
+ *  trailing filaments, then barbels and a lit eye, then spines the whole
+ *  length of the back and a split tail.
+ *
+ *  Escalation has to happen in the outline, not the palette. */
+function escalate(
   c: PixelCanvas, look: FishArt, w: number, h: number,
-  cy: number, rng: Rng,
+  cy: number, tier: number, rng: Rng,
 ): void {
   const lit = C.White;
+  const bright = shiftUp(look.fin);
 
-  // Filaments streaming off the tail. Odd lengths, because three trailers
-  // of the same length read as a comb.
-  for (let k = 0; k < 3; k++) {
-    const y = Math.round(cy + (k - 1) * Math.max(2, h * 0.28));
-    const len = rng.int(2, 4) + (k === 1 ? 1 : 0);
-    for (let i = 0; i < len; i++) {
-      const x = w - 1 + i - 1;
-      if (x >= c.w) break;
-      c.set(x, y + (i > 1 ? (k - 1) : 0), look.fin);
-    }
-  }
-
-  // A taller dorsal crest over the middle of the back.
-  const from = Math.round(w * 0.30);
-  const to = Math.round(w * 0.56);
-  for (let x = from; x < to; x++) {
-    const t = (x - from) / Math.max(1, to - from);
-    const up = Math.round(Math.sin(t * Math.PI) * h * 0.26) + 1;
-    for (let k = 0; k < up; k++) {
-      const y = Math.round(cy - h * 0.34) - k;
-      if (y >= 0) c.set(x, y, k === up - 1 ? lit : look.fin);
-    }
-  }
-
-  // Rim light along the topmost lit pixel of each column — the one detail
-  // that makes something look like it is generating light rather than
-  // merely being a bright colour.
-  for (let x = 1; x < w - 1; x++) {
+  // --- tier 1: the fins catch more light, and a few scales spark.
+  for (let x = 0; x < w; x++) {
     for (let y = 0; y < h; y++) {
-      const v = c.get(x, y);
-      if (v === TRANSPARENT) continue;
-      if (v === look.body || v === look.belly) c.set(x, y, lit);
-      break;
+      if (c.get(x, y) === look.fin && rng.chance(0.30)) c.set(x, y, bright);
     }
+  }
+  for (let i = 0; i < 2 + tier; i++) {
+    const sx = Math.round(rng.range(w * 0.22, w * 0.60));
+    const sy = Math.round(rng.range(cy - h * 0.26, cy + h * 0.05));
+    if (c.get(sx, sy) === look.body) c.set(sx, sy, lit);
+  }
+  if (tier < 2) return;
+
+  // --- tier 2: a sheen along the flank, and a taller dorsal.
+  for (let x = Math.round(w * 0.20); x < Math.round(w * 0.66); x++) {
+    const y = Math.round(cy - h * 0.20 + Math.sin((x / w) * 4) * 1.2);
+    const v = c.get(x, y);
+    if (v === look.body || v === look.belly) c.set(x, y, lit);
+  }
+  ridge(c, look, h, cy, Math.round(w * 0.28), Math.round(w * 0.54), 0.20, bright);
+  if (tier < 3) return;
+
+  // --- tier 3: a real crest, filaments off the tail, a lit back edge.
+  ridge(c, look, h, cy, Math.round(w * 0.26), Math.round(w * 0.58), 0.32, lit);
+  filaments(c, look, w, h, cy, 3, rng);
+  rimLight(c, look, w, lit);
+  if (tier < 4) return;
+
+  // --- tier 4: barbels at the jaw, more filaments, an eye that carries.
+  const jaw = Math.round(w * 0.14);
+  for (let k = 0; k < 3; k++) {
+    c.set(jaw - k, Math.round(cy + h * 0.18) + k, look.fin);
+    c.set(jaw - k, Math.round(cy + h * 0.32) + k, bright);
+  }
+  filaments(c, look, w, h, cy, 5, rng);
+  const ex = Math.round(w * 0.12);
+  const ey = Math.round(cy - h * 0.14);
+  c.set(ex, ey, lit);
+  c.set(ex - 1, ey, bright);
+  c.set(ex + 1, ey, bright);
+  c.set(ex, ey - 1, bright);
+  if (tier < 5) return;
+
+  // --- tier 5: spines the whole length of the back, and a split tail.
+  for (let x = Math.round(w * 0.20); x < Math.round(w * 0.68); x += 2) {
+    const top = topOf(c, x);
+    if (top < 1) continue;
+    c.set(x, top - 1, look.fin);
+    c.set(x, top - 2, lit);
+  }
+  for (let k = -2; k <= 2; k++) {
+    if (k === 0) continue;
+    const y = Math.round(cy + k * Math.max(2, h * 0.22));
+    for (let i = 0; i < 4; i++) {
+      const x = w - 3 + i;
+      if (x >= c.w) break;
+      c.set(x, y + (i > 1 ? Math.sign(k) : 0), i > 2 ? bright : look.fin);
+    }
+  }
+}
+
+/** One ramp step brighter, for fins and crests. Kept local so the fish art
+ *  does not have to reach into the portrait's ramp table. */
+function shiftUp(col: number): number {
+  const RAMPS: number[][] = [
+    [C.InkDeep, C.Ink, C.Slate, C.SlateLt, C.Mist, C.Pale, C.White],
+    [C.WoodDp, C.WoodDk, C.Wood, C.SkinSh, C.Skin, C.SunGlow],
+    [C.ForestDp, C.Forest, C.GrassDk, C.Grass, C.GrassLt, C.LeafLt],
+    [C.WaterDp, C.Water, C.WaterSh, C.WaterBr, C.Foam],
+    [C.Dusk, C.Purple, C.Rose, C.Red, C.Orange, C.Amber, C.SunGlow],
+    [C.StoneShadow, C.StoneDk, C.Stone, C.StoneLt, C.StonePale],
+    [C.CyberVoid, C.CyberSlate, C.CyberSteel, C.NeonCyan],
+    [C.Arcane, C.ArcaneLt],
+  ];
+  for (const r of RAMPS) {
+    const i = r.indexOf(col);
+    if (i >= 0) return r[Math.min(r.length - 1, i + 1)];
+  }
+  return col;
+}
+
+/** The topmost non-empty row of a column, or -1. */
+function topOf(c: PixelCanvas, x: number): number {
+  for (let y = 0; y < c.h; y++) if (c.get(x, y) !== TRANSPARENT) return y;
+  return -1;
+}
+
+/** A crest, grown from the back rather than floated above it.
+ *
+ *  Two mistakes worth keeping a note of. The first cut measured up from
+ *  the body centre, which put the crest in mid-air over the thin-bodied
+ *  species — a hat hovering above an eel; a fin has to start on the pixel
+ *  the body actually ends on. The second filled it solid, which reads as
+ *  a lump of flesh rather than a fin. Real dorsals are rays with membrane
+ *  between them, and the height has to answer to how deep the body is at
+ *  that column or an eel ends up wearing a sail.
+ */
+function ridge(
+  c: PixelCanvas, look: FishArt, h: number, cy: number,
+  from: number, to: number, height: number, tipCol: number,
+): void {
+  void cy;
+  for (let x = from; x < to; x++) {
+    const base = topOf(c, x);
+    if (base < 1) continue;
+    const depth = bodyDepth(c, x);
+    if (depth < 2) continue;
+    const t = (x - from) / Math.max(1, to - from);
+    // Rays: every other column runs full height, the ones between stop
+    // short. That alternation is what separates a fin from a bump.
+    const ray = x % 2 === 0 ? 1 : 0.55;
+    const up = Math.max(1, Math.round(
+      Math.sin(t * Math.PI) * Math.min(h * height, depth * 0.9) * ray,
+    ));
+    for (let k = 1; k <= up; k++) {
+      const y = base - k;
+      if (y < 0) break;
+      c.set(x, y, k === up ? tipCol : look.fin);
+    }
+  }
+}
+
+/** How many rows of fish sit in this column. */
+function bodyDepth(c: PixelCanvas, x: number): number {
+  let n = 0;
+  for (let y = 0; y < c.h; y++) if (c.get(x, y) !== TRANSPARENT) n++;
+  return n;
+}
+
+/** Streamers off the tail. Odd lengths — trailers all the same length read
+ *  as a comb rather than as something living. */
+function filaments(
+  c: PixelCanvas, look: FishArt, w: number, h: number,
+  cy: number, n: number, rng: Rng,
+): void {
+  for (let k = 0; k < n; k++) {
+    const y = Math.round(cy + (k - (n - 1) / 2) * Math.max(2, h * 0.22));
+    const len = rng.int(2, 4) + (k === Math.floor(n / 2) ? 2 : 0);
+    for (let i = 0; i < len; i++) {
+      const x = w - 2 + i;
+      if (x >= c.w) break;
+      c.set(x, y, look.fin);
+    }
+  }
+}
+
+/** Lights the topmost pixel of each column — the one detail that makes
+ *  something look like it is generating light rather than merely being a
+ *  bright colour. */
+function rimLight(c: PixelCanvas, look: FishArt, w: number, lit: number): void {
+  for (let x = 1; x < w - 1; x++) {
+    const y = topOf(c, x);
+    if (y < 0) continue;
+    const v = c.get(x, y);
+    if (v === look.body || v === look.belly) c.set(x, y, lit);
   }
 }
 

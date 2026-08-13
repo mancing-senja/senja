@@ -1048,15 +1048,17 @@ export class Fishing {
     // in place; a static sprite in a frame reads as a specimen.
     const bob = Math.sin(t * 2.8) * 1.6;
     const sway = Math.sin(t * 2.8 - 0.7) * 1.1;
-    const key = `${g.exalted ? 'fishrare' : 'fishbig'}_${c.species.id}`;
+    const key = `fishg${g.tier}_${c.species.id}`;
     d.sprite(key, x + 8 + sway, y + 18 + bob, { alpha: a });
     if (g.tier >= 1) {
       d.sprite(key, x + 8 + sway, y + 18 + bob, {
         tint: colTint(g.colour),
-        // Weak on purpose. Additive light over a flat silhouette saturates
-        // fast, and at the strength that looked right on a Langka the top
-        // two grades came out as white blobs with fins.
-        alpha: a * (0.05 + g.tier * 0.03) * (0.8 + 0.2 * Math.sin(t * 3.4)),
+        // Barely there, and weaker the higher the grade. The sprite now
+        // carries the escalation itself — crest, filaments, spines — so
+        // the tint only has to say which colour the grade is. Left at the
+        // strength that suited a flat silhouette, it washed the top grades
+        // out to white blobs with fins.
+        alpha: a * (0.04 + g.tier * 0.012) * (0.8 + 0.2 * Math.sin(t * 3.4)),
         blend: Blend.Add,
         flat: true,
       });

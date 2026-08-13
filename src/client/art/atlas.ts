@@ -289,10 +289,14 @@ export function buildAtlas(overrides: Overrides = new Map()): Atlas {
   let fishSeed = 1;
   for (const [name, look] of Object.entries(FISH_LOOKS)) {
     add(`fish_${name}`, makeFish(look, fishSeed++, 22, 12));
-    add(`fishbig_${name}`, makeFish(look, fishSeed++, 40, 22));
-    // The rare cut. Only the big size — the small sprite is a feed icon and
-    // filaments are illegible at 22 pixels.
-    add(`fishrare_${name}`, makeFish(look, fishSeed - 1, 40, 22, true));
+    // One big sprite per grade. Sharing a sprite across the bottom three
+    // grades left half the ladder with no art at all — the same fish in
+    // three colours. Only the big size is graded: the small one is a feed
+    // icon and crests and filaments are illegible at 22 pixels.
+    const fishSeedForSpecies = fishSeed++;
+    for (let tier = 0; tier < 6; tier++) {
+      add(`fishg${tier}_${name}`, makeFish(look, fishSeedForSpecies, 40, 22, tier));
+    }
   }
   for (const [name, look] of Object.entries(CROP_LOOKS)) {
     for (let s = 0; s <= 4; s++) add(`crop_${name}_${s}`, makeCrop(look, s));
