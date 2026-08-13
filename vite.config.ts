@@ -46,7 +46,10 @@ function roomProxy() {
     '/room': {
       target: `ws://localhost:${process.env.SENJA_PORT ?? 8787}`,
       ws: true,
-      rewrite: (path: string) => path.replace(/^\/room/, ''),
+      // The path is kept. The socket server listens on /room now, because
+      // in production it shares a port with the static client — stripping
+      // the prefix here would send the dev handshake to a path the server
+      // no longer answers on.
     },
   };
 }

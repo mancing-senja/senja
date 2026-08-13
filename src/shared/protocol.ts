@@ -75,8 +75,21 @@ export interface FeedItem {
 
 // ---------------------------------------------------------------- client → server
 
+/** What a player carries between sessions. Small on purpose: the world
+ *  regenerates from a seed, so only the player's own record travels. */
+export interface ProfileData {
+  name: string;
+  look: number;
+  coins: number;
+  caught: number;
+  day: number;
+  log: Record<string, { count: number; best: number; bestGrade: number }>;
+  lore: string[];
+}
+
 export type ClientMsg =
-  | { t: 'join'; room: string; name: string; hue: number }
+  | { t: 'join'; room: string; name: string; hue: number; token?: string }
+  | { t: 'save'; profile: Partial<ProfileData> }
   | { t: 'move'; x: number; y: number; facing: Facing; action: PlayerAction['kind'] }
   | { t: 'cast'; bx: number; by: number }
   | { t: 'reel' }
@@ -98,6 +111,8 @@ export type ServerMsg
   | { t: 'you'; coins: number; caught: number }
   | { t: 'board'; entries: BoardEntry[] }
   | { t: 'full' }
+  /** Sent once after joining, when the server recognises the token. */
+  | { t: 'profile'; profile: ProfileData }
   | { t: 'ping' };
 
 export function safeParse<T>(raw: string): T | null {

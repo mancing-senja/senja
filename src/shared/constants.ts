@@ -9,8 +9,16 @@ export const TILE = 16;
 
 /** World size in tiles. Big enough to hold several distinct fishing spots
  *  with real walking between them. */
-export const MAP_W = 180;
-export const MAP_H = 96;
+/** The lake and its shore, in tiles.
+ *
+ *  Grown from 180x96. The old map fit on about two and a half screens and
+ *  you could walk its whole width in under a minute, which is the thing
+ *  that made it read as a diorama rather than as somewhere. Everything
+ *  that was already placed keeps its exact tile position — the new ground
+ *  is added east and south, so no existing walk gets longer and nothing
+ *  that referenced a landmark by coordinate has to move. */
+export const MAP_W = 280;
+export const MAP_H = 150;
 
 export const WORLD_W = MAP_W * TILE;
 export const WORLD_H = MAP_H * TILE;
