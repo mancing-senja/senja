@@ -984,69 +984,135 @@ export class Fishing {
   private drawCard(d: Draw): void {
     const c = this.lastCatch!;
     const g = c.grade;
+    const t = this.cardT;
     const w = 132;
     const h = 62;
-    // A rare card arrives slower and settles further. Timing is most of
-    // what makes something feel valuable — the same panel snapping in
-    // instantly reads as a receipt.
-    const speed = 6 - g.fanfare * 0.7;
-    const pop = Math.min(1, this.cardT * speed);
-    const ease = 1 - Math.pow(1 - pop, 3);
-    const x = Math.round(view.w / 2 - w / 2);
-    const y = Math.round(view.h / 2 - h / 2 - 14 + (1 - ease) * (8 + g.fanfare * 4));
-    const a = ease;
 
-    // The burst: rings expanding out from behind the card, in the grade's
-    // colour, for the top grades only.
+    // Entrance. A rare card arrives slower and overshoots before it
+    // settles — the overshoot is the whole reason it reads as landing
+    // rather than as appearing. Timing carries more of "this is valuable"
+    // than any amount of colour does.
+    const speed = 6 - g.fanfare * 0.7;
+    const pop = Math.min(1, t * speed);
+    const ease = 1 - Math.pow(1 - pop, 3);
+    const overshoot = Math.sin(Math.min(1, t * speed * 0.8) * Math.PI) * (1 + g.tier) * 0.9;
+    const x = Math.round(view.w / 2 - w / 2);
+    const y = Math.round(
+      view.h / 2 - h / 2 - 14 + (1 - ease) * (8 + g.fanfare * 4) - overshoot,
+    );
+    const a = ease;
+    const cx = x + 28;
+    const cy = y + 29;
+
+    // --- rays, behind everything. Spokes that turn slowly and breathe.
+    if (g.tier >= 3) {
+      const spokes = 6 + g.tier * 2;
+      for (let i = 0; i < spokes; i++) {
+        const ang = (i / spokes) * Math.PI * 2 + t * 0.5;
+        const len = 14 + Math.sin(t * 2.6 + i) * 4 + g.tier * 2;
+        for (let r = 6; r < len; r++) {
+          const px = cx + Math.cos(ang) * r;
+          const py = cy + Math.sin(ang) * r * 0.7;
+          d.rect(px, py, 1, 1, g.colour, a * 0.34 * (1 - r / len));
+        }
+      }
+    }
+
+    // --- the burst rings, expanding out past the card edge.
     if (g.glow > 0) {
-      for (let i = 0; i < 1 + g.tier - 1; i++) {
-        const t = Math.max(0, Math.min(1, this.cardT * 1.6 - i * 0.22));
-        if (t <= 0 || t >= 1) continue;
-        const r = 20 + t * (60 + g.tier * 14);
+      for (let i = 0; i < g.tier - 1; i++) {
+        const rt = Math.max(0, Math.min(1, t * 1.6 - i * 0.22));
+        if (rt <= 0 || rt >= 1) continue;
+        const r = 20 + rt * (60 + g.tier * 14);
         d.sprite('glow64', view.w / 2 - r, y + h / 2 - r, {
-          tint: colTint(g.colour), alpha: (1 - t) * 0.5, blend: Blend.Add,
+          tint: colTint(g.colour), alpha: (1 - rt) * 0.5, blend: Blend.Add,
         });
-        void r;
       }
     }
 
     d.panel(x, y, w, h, a, g.tier > 0 ? g.colour : c.perfect ? C.Lantern : C.Slate);
 
-    // Glow behind the fish itself, so the sprite looks lit rather than
-    // merely tinted.
+    // --- glow behind the fish, breathing.
     if (g.glow > 0) {
       const gs = g.glow > 32 ? 64 : 32;
-      d.sprite(`glow${gs}`, x + 28 - gs / 2, y + 29 - gs / 2, {
-        tint: colTint(g.colour), alpha: 0.30 + g.tier * 0.06, blend: Blend.Add,
+      const breathe = 0.85 + 0.15 * Math.sin(t * 3.1);
+      d.sprite(`glow${gs}`, cx - gs / 2, cy - gs / 2, {
+        tint: colTint(g.colour),
+        alpha: (0.30 + g.tier * 0.06) * breathe,
+        blend: Blend.Add,
       });
     }
-    // The fish is drawn in its own colours, then given a *lit* pass of the
-    // grade colour on top. Tinting the sprite itself was the obvious move
-    // and the wrong one: tint multiplies, so a violet Naga Nila under a
-    // green Bagus wash came out muddy green and stopped being a Naga Nila.
-    // The species has to survive the grade, or the ladder eats the roster.
+
+    // --- the fish itself, alive rather than pinned to a board. A slow
+    // vertical bob with a slight lag on the horizontal reads as swimming
+    // in place; a static sprite in a frame reads as a specimen.
+    const bob = Math.sin(t * 2.8) * 1.6;
+    const sway = Math.sin(t * 2.8 - 0.7) * 1.1;
     const key = `${g.exalted ? 'fishrare' : 'fishbig'}_${c.species.id}`;
-    d.sprite(key, x + 8, y + 18, { alpha: a });
+    d.sprite(key, x + 8 + sway, y + 18 + bob, { alpha: a });
     if (g.tier >= 1) {
-      d.sprite(key, x + 8, y + 18, {
+      d.sprite(key, x + 8 + sway, y + 18 + bob, {
         tint: colTint(g.colour),
         // Weak on purpose. Additive light over a flat silhouette saturates
         // fast, and at the strength that looked right on a Langka the top
         // two grades came out as white blobs with fins.
-        alpha: a * (0.05 + g.tier * 0.03),
+        alpha: a * (0.05 + g.tier * 0.03) * (0.8 + 0.2 * Math.sin(t * 3.4)),
         blend: Blend.Add,
         flat: true,
       });
     }
 
-    d.text(c.species.label, x + 54, y + 8, C.White, a);
-    d.text(g.label.toLowerCase(), x + 54, y + 19, g.colour, a);
-    d.text(`${c.cm} cm`, x + 54, y + 30, C.Amber, a);
-    d.text(`+${c.coins}`, x + 54, y + 41, C.Lantern, a);
-    d.text('koin', x + 54 + textWidth(`+${c.coins}`) + 3, y + 41, C.SunGlow, a * 0.8);
+    // --- sparks orbiting the catch, for the top two grades.
+    if (g.tier >= 4) {
+      for (let i = 0; i < 5 + g.tier; i++) {
+        const ang = (i / (5 + g.tier)) * Math.PI * 2 + t * 1.4;
+        const rr = 16 + Math.sin(t * 2 + i * 1.3) * 4;
+        const px = cx + Math.cos(ang) * rr;
+        const py = cy + Math.sin(ang) * rr * 0.6;
+        const tw = 0.4 + 0.6 * Math.abs(Math.sin(t * 5 + i));
+        d.rect(px, py, 1, 1, C.White, a * tw);
+      }
+    }
 
-    if (c.perfect) d.text('mulus!', x + 54, y + 52, C.Grass, a);
-    else d.text(c.species.blurb.slice(0, 22), x + 8, y + 52, C.Mist, a * 0.8);
+    // --- a shine sweeping across the card face, once, on arrival.
+    if (g.tier >= 2) {
+      const sweep = (t * 0.9) % 2.2;
+      if (sweep < 1) {
+        const head = x - 20 + sweep * (w + 40);
+        for (let row = 1; row < h - 1; row++) {
+          // The band leans, so it reads as light crossing a surface rather
+          // than as a bar sliding sideways.
+          const sx = head + (h - row) * 0.45;
+          for (let k = 0; k < 5; k++) {
+            const px = sx + k;
+            if (px < x + 1 || px > x + w - 2) continue;
+            d.rect(px, y + row, 1, 1, C.White, a * 0.16 * (1 - Math.abs(k - 2) / 2.5));
+          }
+        }
+      }
+    }
+
+    // --- text, revealed in order. All four lines appearing at once is a
+    // form being filled in; one after another is somebody telling you what
+    // you caught.
+    const line = (i: number): number => {
+      const lt = Math.max(0, Math.min(1, (t - 0.10 - i * 0.09) * 7));
+      return a * lt;
+    };
+    d.text(c.species.label, x + 54, y + 8, C.White, line(0));
+    d.text(g.label.toLowerCase(), x + 54, y + 19, g.colour, line(1));
+    d.text(`${c.cm} cm`, x + 54, y + 30, C.Amber, line(2));
+
+    // The coins count up. Watching a number climb is the cheapest reward
+    // animation there is and it never stops working.
+    const cr = Math.max(0, Math.min(1, (t - 0.30) * 2.2));
+    const shown = Math.round(c.coins * (1 - Math.pow(1 - cr, 3)));
+    const coinTxt = `+${shown}`;
+    d.text(coinTxt, x + 54, y + 41, C.Lantern, line(3));
+    d.text('koin', x + 54 + textWidth(coinTxt) + 3, y + 41, C.SunGlow, line(3) * 0.8);
+
+    if (c.perfect) d.text('mulus!', x + 54, y + 52, C.Grass, line(4));
+    else d.text(c.species.blurb.slice(0, 22), x + 8, y + 52, C.Mist, line(4) * 0.8);
 
     d.textCentered('spasi', view.w / 2, y + h + 5, C.Mist, C.InkDeep, a * 0.7);
   }
