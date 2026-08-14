@@ -906,10 +906,24 @@ function drawHeadwear(c: PixelCanvas, lk: Look, g: Geom): void {
   // and wider than the pointed one, and the opening has to follow it or
   // the hood crops the chin off.
   const faceCY = Math.round((HEAD_TOP + CHIN) / 2) + 1;
+  // An egg, not a circle, and offset the same two pixels the face is.
+  //
+  // A true circle cut in a flat shape is a porthole: the face inside stopped
+  // reading as someone wearing a hood and started reading as a head posted
+  // through a hole. A hood opening is wide across the brow, narrows toward
+  // the chin, and sits on the same three-quarter turn as everything else on
+  // this head.
   const inOpening = (x: number, y: number, grow = 0): boolean => {
-    const ox = (x - SX) / (14 + grow);
-    const oy = (y - faceCY) / (15 + grow);
-    return ox * ox + oy * oy < 1;
+    const ox = (x - SX + TURN) / (14 + grow);
+    const dy = (y - faceCY) / (16.5 + grow);
+    // Taper below the eyeline. Above it the opening keeps its full width.
+    //
+    // Gently. At 0.55 the opening closed in faster than the jaw does and
+    // sliced the chin off flat, leaving a block of shadow under the mouth
+    // where a chin should be — the hood was cutting the face, not framing
+    // it.
+    const taper = dy > 0 ? 1 + dy * 0.22 : 1;
+    return (ox * taper) * (ox * taper) + dy * dy < 1;
   };
 
   for (let y = HEAD_TOP - 8; y <= SHOULDER_Y + 5; y++) {
@@ -930,9 +944,19 @@ function drawHeadwear(c: PixelCanvas, lk: Look, g: Geom): void {
       c.set(x, y, x < SX ? shift(lk.headCol, 1) : lk.headCol);
     }
   }
-  for (let k = -2; k <= 2; k++) {
-    const fx = SX + k * 6;
-    for (let y = HEAD_TOP - 7; y <= SHOULDER_Y + 5; y++) {
+  // Drape, radiating from the crown.
+  //
+  // These were five straight vertical lines at fixed columns, which on a
+  // curved shape is corduroy — the same mistake the hair fringe made before
+  // it was rewritten. Cloth over a head falls *away* from the highest point,
+  // so every fold is a diagonal that spreads as it descends.
+  const crownY = HEAD_TOP - 7;
+  for (let k = -3; k <= 3; k++) {
+    if (k === 0) continue;
+    for (let y = crownY; y <= SHOULDER_Y + 5; y++) {
+      const t = (y - crownY) / Math.max(1, SHOULDER_Y + 5 - crownY);
+      // Spreading, and faster low down where the fabric hangs free.
+      const fx = Math.round(SX + k * (2.5 + t * t * 7));
       if (inOpening(fx, y, 3)) continue;
       const v = c.get(fx, y);
       if (v === lk.headSh || v === lk.headCol) c.set(fx, y, shift(lk.headSh, -1));
