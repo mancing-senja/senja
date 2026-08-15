@@ -139,12 +139,14 @@ const SWAMP_TY = 58;
  *  Placed well clear of every district's bounds and of the shoreline, in
  *  the ground the map grew into. Smaller than the hub on purpose — the
  *  village is still where the room gathers. */
-const OUTPOSTS: TownSpec[] = [
-  // East, past the neon quay: a road hamlet on the way out of the valley.
-  { cx: 228, cy: 44, reach: 11, hub: false },
-  // South, below the grove: the far shore of the southern flats.
-  { cx: 152, cy: 118, reach: 12, hub: false },
-];
+export const EAST_OUTPOST: TownSpec = {
+  cx: 228, cy: 44, reach: 11, hub: false,
+};
+export const SOUTH_OUTPOST: TownSpec = {
+  cx: 152, cy: 118, reach: 12, hub: false,
+};
+
+const OUTPOSTS: TownSpec[] = [EAST_OUTPOST, SOUTH_OUTPOST];
 
 const VILLAGE_TX = 92;
 const VILLAGE_TY = 22;
@@ -342,6 +344,41 @@ export function buildMap(): WorldMap {
   for (const t of OUTPOSTS) {
     buildVillage(set, get, props, doors, rng, t);
   }
+
+  // The outposts were built as destinations but still sat beyond empty
+  // wilderness. These two branches turn them into part of the same travel
+  // network as the hub: east continues out of the neon quay, while south
+  // picks up at the river bridge that is already tied to the farm. Carve
+  // them before scatter so trees respect the road instead of growing through
+  // it and turning a visible route into an obstacle course.
+  carvePath(
+    set, get,
+    (QUAY_TX + 18) * TILE, (QUAY_TY + 15) * TILE,
+    (EAST_OUTPOST.cx - EAST_OUTPOST.reach) * TILE, (EAST_OUTPOST.cy + 5) * TILE,
+    1, 8,
+  );
+  carvePath(
+    set, get,
+    riverPath.bridgeX * TILE, (riverPath.bridgeY + 1) * TILE,
+    (SOUTH_OUTPOST.cx + SOUTH_OUTPOST.reach) * TILE, (SOUTH_OUTPOST.cy + 5) * TILE,
+    1, 14,
+  );
+
+  // A marker beside each approach gives the long walk a visible arrival
+  // cue without turning either outpost into a second hub.
+  props.push({
+    kind: 'milestone',
+    x: (EAST_OUTPOST.cx - EAST_OUTPOST.reach - 2) * TILE + 8,
+    y: (EAST_OUTPOST.cy + 7) * TILE + 12,
+    variant: 0, solidW: 4, solidH: 3, sways: false,
+  });
+  props.push({
+    kind: 'milestone',
+    x: (SOUTH_OUTPOST.cx + SOUTH_OUTPOST.reach + 2) * TILE + 8,
+    y: (SOUTH_OUTPOST.cy + 7) * TILE + 12,
+    variant: 0, solidW: 4, solidH: 3, sways: false,
+  });
+
   // Lanes out of the village are narrow — a two-tile track everywhere turns
   // the whole valley into one brown smear.
   carvePath(set, get, (VILLAGE_TX - 2) * TILE, (VILLAGE_TY + 11) * TILE, PLOT_TX * TILE + 40, (PLOT_TY - 3) * TILE, 1, 14);
