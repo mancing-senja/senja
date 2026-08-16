@@ -1,22 +1,21 @@
 # Senja
 
-Game mancing santai buat dimainin bareng. Satu danau, satu desa, dan
-beberapa distrik yang genrenya beda-beda. Buat orang yang baru pulang kerja.
+Game mancing santai buat dimainin bareng. Satu danau, satu desa utama,
+dua kampung kecil, dan beberapa distrik yang genrenya beda-beda. Buat orang
+yang baru pulang kerja.
 
 [![CI](https://github.com/mancing-senja/senja/actions/workflows/ci.yml/badge.svg)](https://github.com/mancing-senja/senja/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-> **Ga ada file gambar di repo ini.** Semua art di-generate lewat kode saat
-> boot, dari satu palet 48 warna. Musiknya juga disintesis. Baca
-> [CONTRIBUTING.md](CONTRIBUTING.md) sebelum ngoding.
+> **Mayoritas art runtime di-generate lewat kode** dari satu palet 48 warna.
+> Ada beberapa PNG di `public/art/portraits/` sebagai palette/template buat
+> authoring potret; sprite game tetap dipanggang ke atlas saat boot. Musiknya
+> juga disintesis. Baca [CONTRIBUTING.md](CONTRIBUTING.md) sebelum ngoding.
 
 ## Jalanin
 
 ```bash
 npm install
-```
-
-```bash
 npm run dev
 ```
 
@@ -40,7 +39,7 @@ npm run lan
 Vite nampilin alamat Network (misal `http://192.168.1.5:5173`). Kasih itu ke
 temen — udah, gitu doang.
 
-### Beda jaringan
+### Beda jaringan saat development
 
 Butuh tunnel. Yang paling gampang, ga perlu daftar akun:
 
@@ -51,25 +50,23 @@ npx cloudflared tunnel --url http://localhost:5173
 Dia bakal ngasih URL `https://xxx.trycloudflare.com`. Kirim ke temen, lengkap
 sama `#kode-room`-nya.
 
-**Cukup satu tunnel ke port 5173 doang.** Socket room-nya di-proxy lewat
-`/room` di origin yang sama, jadi ga usah nge-expose port 8787 terpisah —
-dan itu penting, karena kebanyakan tunnel instan ga mau nerusin WebSocket
-kalau portnya beda.
+**Cukup satu tunnel ke port 5173 doang.** Vite nge-proxy `/room` ke server
+room, jadi ga perlu nge-expose port 8787 terpisah.
 
 > Tunnel ini bikin game lu **bisa diakses siapa pun yang punya linknya**
 > selama tunnelnya nyala. Matiin (Ctrl+C) kalau udah selesai.
 
-### Deploy beneran
+### Deploy produksi
 
-Kalau mau nyalain terus, server room-nya butuh reverse proxy yang nerusin
-`/room` ke port 8787 dengan upgrade WebSocket. Contoh Caddy:
+Produksi sekarang cuma butuh satu proses. Build client lalu server Node akan
+melayani file hasil build dan WebSocket `/room` dari origin yang sama:
 
+```bash
+npm run serve
 ```
-senja.example.com {
-    reverse_proxy /room* localhost:8787
-    reverse_proxy localhost:5173
-}
-```
+
+Secara default server memakai port 8787. Bisa diubah lewat `PORT` atau
+`SENJA_PORT`.
 
 ## Kontrol
 
@@ -93,83 +90,73 @@ layar yang pakai display scaling.
 
 ## Isinya
 
-- **32 jenis ikan.** Yang naik tergantung jam, seberapa jauh kail dilempar,
-  **spot**-nya, dan **distrik**-nya.
+- **86 jenis ikan × 6 grade = 516 kombinasi tangkapan.** Grade-nya Biasa,
+  Bagus, Langka, Epik, Legendaris, dan Mitos. Jenis dan peluangnya dipengaruhi
+  jam, kedalaman, spot, distrik, dan musim.
 - **7 spot mancing** dengan isi beda-beda: Dermaga Tua, Teluk Eceng
   (dangkal, ikan kecil rame), Tanjung Batu (langsung dalam, ikan besar),
-  Muara Sungai, Sungai Bening, Rawa Teduh (gelap, gabus & lele & ikan
-  hantu), dan Lubuk Dalam (paling langka).
-- **4 distrik bergenre** dalam satu peta: desa pastoral di tengah, Benteng
-  Lama (abad pertengahan) di barat, Dermaga Neon (cyberpunk) di timur, dan
-  Rimbun Cahaya (fantasi) di selatan. Tiap distrik punya warna, kabut, ikan,
-  musik, dan gaya bicara warganya sendiri.
-- **Jalan utama** nyambungin semuanya, lengkap sama tetenger, pos
-  terbengkalai, dan barisan tiang listrik.
-- **16 catatan sejarah** tersebar di prasasti, terminal, dan batu bertulis.
-  Dibaca pakai `E`. Isinya satu sejarah yang nyambung, sebagian saling
-  bertentangan.
-- **Desa** dengan rumah-rumah, sumur, warung, papan komunitas, dan
-  **19 warga** yang jalan-jalan sendiri.
+  Muara Sungai, Sungai Bening, Rawa Teduh, dan Lubuk Dalam.
+- **4 area utama** dalam satu peta: desa pastoral sebagai hub, Benteng Lama
+  (abad pertengahan), Dermaga Neon (cyberpunk), dan Rimbun Cahaya (fantasi).
+  Tiap distrik genre punya warna, kabut, ikan, musik, dan gaya bicara sendiri.
+- **Dua kampung tambahan** di timur dan selatan, sekarang sudah tersambung ke
+  jaringan jalan dan punya warga yang berkegiatan di luar rumah.
+- **Jalan utama dan jalur cabang** nyambungin area-area penting, lengkap sama
+  tetenger, pos terbengkalai, dan barisan tiang listrik.
+- **16 catatan sejarah** tersebar di prasasti, terminal, batu bertulis, dan
+  papan. Dibaca pakai `E`; sebagian catatannya sengaja saling bertentangan.
+- **23 warga outdoor** yang jalan, bekerja, ngobrol, dan punya watak masing-masing.
 - **Papan komunitas** (`B`) — papan peringkat serumah: siapa dapat berapa
   jenis, rekor terbesar siapa, siapa lagi online.
-- **Catatan tangkapan** (`J`) — 32 slot, kebuka satu-satu.
+- **Catatan tangkapan** (`J`) dipaging buat roster 86 spesies dan menyimpan
+  hasil tangkapan yang sudah ditemukan.
 - **Kebun bareng.** Petak-petaknya milik room, bukan milik orang. Tanaman
   temen bisa kamu siram, dan tumbuh terus walau kamu lagi ga main.
 - **Siklus hari 20 menit.** Server yang pegang jamnya, jadi semua orang di
   room lihat senja yang sama persis.
 - **Cuaca.** Hujan datang sendiri, nyiram semua tanaman gratis, dan bikin
   ikan lebih susah keliatan.
+- **Empat musim.** Musim mengubah dedaunan, temperatur cahaya, partikel udara,
+  pakaian warga, dan aktivitas ikan.
 
 ## Warga desa
 
-Warga di sini ga punya naskah. Tiap orang punya:
+Warga di sini ga punya naskah tetap. Tiap orang punya:
 
 - **Watak** — enam sumbu: ramah, blak-blakan, humor, hitungan, percaya
-  cerita lama, cerewet. Mbah Tarno pendiam dan percaya takhayul; Bagas
-  hitungan dan banyak omong. Watak ini yang nentuin mereka lebih sering
-  ngomongin apa.
-- **Mood harian** — diundi ulang tiap hari dari watak + tanggal. Orang yang
-  sama bisa hangat hari ini dan males ngomong besok.
-- **Ingatan** — enam slot doang, dan yang paling ga penting kebuang duluan.
-  Yang disimpan: pertama kali ketemu kamu, rekor ikan terbesar yang mereka
-  **lihat** kamu tarik (harus dekat — ga bisa pamer ke orang yang ga di
-  sana), ikan langka, janjian, dan kalau kamu ilang berhari-hari.
+  cerita lama, cerewet.
+- **Mood harian** — diundi ulang tiap hari dari watak + tanggal.
+- **Ingatan** — enam slot. Mereka bisa ingat pertama kali ketemu, rekor ikan
+  yang mereka lihat kamu tarik, ikan langka, janjian, dan kalau kamu lama
+  ga muncul.
 
-Kalimatnya dirakit pas mereka ngomong, dari watak + mood + ingatan +
-keadaan sekarang (jam, hujan, kamu lagi berdiri di spot mana, ikan terakhir
-kamu apa). Tiap topik punya kantong kalimat yang diacak — satu kalimat ga
-akan keluar lagi sebelum semua kalimat di topik itu kepakai. Ingatannya
-disimpan di browser, jadi balik seminggu lagi mereka masih kenal kamu, dan
-malah negur "kemana aja".
+Kalimat dirakit saat mereka ngomong dari watak + mood + ingatan + keadaan
+sekarang. Tiap topik punya kantong kalimat yang diacak, jadi satu kalimat ga
+akan keluar lagi sebelum isi kantongnya terpakai.
 
 ## Catatan teknis
 
-Ga ada satupun file gambar atau suara di repo ini.
+Mayoritas sprite runtime digambar sebagai data lalu dipanggang jadi texture
+atlas saat boot (`src/client/art/`). Pohon, semak, batu, rumput, dan petak
+kebun di-generate dari seed. Palet utama dikunci di 48 warna supaya semua
+area tetap terasa berasal dari dunia yang sama.
 
-Semua sprite digambar sebagai data lalu dipanggang jadi satu texture atlas
-pas booting (`src/client/art/`). Pohon, semak, batu, rumput, dan petak kebun
-di-generate dari seed — jadi ga ada dua pohon yang sama persis, dan ga ada
-pola ubin yang keliatan berulang. Palet dikunci di 48 warna
-(`art/palette.ts`) supaya yang digambar tangan dan yang di-generate keliatan
-dari tangan yang sama. 32 indeks pertama itu inti pastoral; 16 sisanya buat
-distrik bergenre (batu & panji, neon, arkana).
+File PNG di `public/art/portraits/` adalah aset authoring/template potret,
+bukan pengganti sistem atlas runtime.
 
-Langit dan air satu shader (`world/skywater.ts`). Airnya harfiah langit yang
-disampel di koordinat cermin yang bergoyang — makanya matahari terbenam
-otomatis jatuh ke danau, dan pantulannya selalu cocok sama langit di atasnya.
+Langit dan air satu shader (`world/skywater.ts`). Airnya mengambil warna
+langit pada koordinat cermin yang bergoyang, jadi matahari terbenam otomatis
+terpantul di danau.
 
-Suara di-sintesis pas jalan pakai WebAudio. Ambient (`game/audio.ts`): bed
-air, angin, jangkrik malam, burung siang. Musiknya (`game/music.ts`) band
-generatif — pad nahan akor, bass di root, melodi diundi ulang tiap bar
-terhadap akor yang lagi jalan, perkusi sikat. Empat mood ikut distrik, dan
-musiknya nunduk sebentar pas ikan nyantol.
+Suara di-sintesis saat jalan pakai WebAudio. Musiknya generatif dan berubah
+mengikuti area; volumenya juga turun sebentar waktu ikan nyantol.
 
 ### Struktur
 
-```
+```text
 src/
   shared/      protokol + konstanta yang dipakai client dan server
-  server/      server room: jam, cuaca, petak kebun, chat
+  server/      server room, profile, static production server
   client/
     engine/    WebGL2, sprite batcher, input
     art/       palet, kanvas indexed-color, generator sprite, atlas
@@ -182,21 +169,20 @@ src/
 
 | Perintah | Fungsi |
 | --- | --- |
-| `npm run dev` | client + server room |
-| `npm run lan` | sama, tapi client-nya kebuka buat jaringan lokal |
+| `npm run dev` | client Vite + server room |
+| `npm run lan` | sama, tapi client kebuka buat jaringan lokal |
 | `npm run build` | typecheck lalu build produksi |
 | `npm run typecheck` | typecheck doang |
+| `npm run serve` | build lalu jalankan server produksi satu proses |
+| `npm run fight` | simulasi headless sistem fight ikan |
 | `node scripts/smoke.mjs` | boot game di headless Chromium, gagal kalau ada error runtime |
 
 ### Verifikasi waktu development
 
-Halaman ini nyediain beberapa hook di `window` buat ngedrive game dari
-console tanpa tangan di keyboard: `__step(n)` maju simulasi tanpa gambar,
-`__snap(waktu, langkah)` balikin PNG data URL satu frame, `__dbg()` balikin
-state, dan `__tp(tx, ty)` mindahin pemain. Frame yang di-capture bisa
-dilempar ke `POST /__shot` buat disimpen ke `.shots/` (plugin Vite, cuma
-aktif waktu dev).
-
+Halaman menyediakan beberapa hook di `window` buat ngetes game dari console:
+`__step(n)` maju simulasi, `__snap(waktu, langkah)` menghasilkan satu frame,
+`__dbg()` membaca state, `__tp(tx, ty)` teleport pemain, dan `__catch(...)`
+bisa dipakai untuk memaksa tangkapan saat menguji grade/journal.
 
 ## Ikut bangun
 
