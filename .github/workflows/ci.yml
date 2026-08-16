@@ -31,6 +31,16 @@ jobs:
       - name: Build
         run: npm run build
 
+      # Keep the production bundle available to preview/deploy tooling without
+      # rebuilding it somewhere else. A short retention is enough for PR review.
+      - name: Upload preview build
+        uses: actions/upload-artifact@v4
+        with:
+          name: senja-dist
+          path: dist
+          if-no-files-found: error
+          retention-days: 7
+
       # The art is generated at boot, so a broken generator does not fail the
       # build — it fails at runtime in front of a player. Boot the atlas in a
       # headless browser so that class of bug gets caught here instead.
