@@ -13,7 +13,7 @@ import { TILE } from '../../shared/constants';
 import type { Facing, PlayerAction } from '../../shared/protocol';
 import { C } from '../art/palette';
 import { LINE_H, textWidth, wrapText } from '../art/font';
-import { isWalkable, type WorldMap } from '../world/map';
+import { EAST_OUTPOST, SOUTH_OUTPOST, isWalkable, type WorldMap } from '../world/map';
 import { walkableI, type Interior } from '../world/interior';
 import type { Draw } from '../render/draw';
 import type { Actor } from './player';
@@ -305,6 +305,46 @@ export function villagerDefs(v: {
       id: 'lastri', name: 'Lastri', hue: 9, idle: 'idle',
       route: [[vx - 15, vy + 8], [vx - 9, vy + 8], [vx - 9, vy + 3]],
       bias: { warmth: 0.85, bluntness: 0.25, talkative: 0.55, superstition: 0.4 },
+    },
+
+    // ---------------------------------------------------------- Pos Timur
+    {
+      id: 'dara', name: 'Dara', hue: 7, idle: 'idle',
+      route: [
+        [EAST_OUTPOST.cx - 8, EAST_OUTPOST.cy + 5],
+        [EAST_OUTPOST.cx + 7, EAST_OUTPOST.cy + 5],
+        [EAST_OUTPOST.cx + 7, EAST_OUTPOST.cy + 8],
+        [EAST_OUTPOST.cx - 8, EAST_OUTPOST.cy + 8],
+      ],
+      bias: { warmth: 0.8, humor: 0.7, talkative: 0.65, superstition: 0.25 },
+    },
+    {
+      id: 'darto', name: 'Pak Darto', hue: 1, idle: 'idle',
+      route: [
+        [EAST_OUTPOST.cx + 2, EAST_OUTPOST.cy + 7],
+        [EAST_OUTPOST.cx + 8, EAST_OUTPOST.cy + 7],
+      ],
+      bias: { warmth: 0.55, bluntness: 0.7, talkative: 0.35, greed: 0.25 },
+    },
+
+    // -------------------------------------------------------- Kampung Selatan
+    {
+      id: 'maya', name: 'Maya', hue: 4, idle: 'idle',
+      route: [
+        [SOUTH_OUTPOST.cx - 8, SOUTH_OUTPOST.cy + 5],
+        [SOUTH_OUTPOST.cx + 7, SOUTH_OUTPOST.cy + 5],
+        [SOUTH_OUTPOST.cx + 7, SOUTH_OUTPOST.cy + 8],
+        [SOUTH_OUTPOST.cx - 8, SOUTH_OUTPOST.cy + 8],
+      ],
+      bias: { warmth: 0.85, humor: 0.45, talkative: 0.7, superstition: 0.55 },
+    },
+    {
+      id: 'raka', name: 'Raka', hue: 10, idle: 'idle',
+      route: [
+        [SOUTH_OUTPOST.cx - 8, SOUTH_OUTPOST.cy + 7],
+        [SOUTH_OUTPOST.cx - 3, SOUTH_OUTPOST.cy + 7],
+      ],
+      bias: { warmth: 0.5, bluntness: 0.55, talkative: 0.4, greed: 0.2 },
     },
 
     // ---------------------------------------------------------- Benteng Lama
