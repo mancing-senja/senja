@@ -8,6 +8,7 @@
 import { CROP_STAGES, TILE } from '../../shared/constants';
 import type { PlotState } from '../../shared/protocol';
 import { C } from '../art/palette';
+import '../art/crops-extra';
 import { CROP_LOOKS } from '../art/props';
 import { textWidth } from '../art/font';
 import { Blend } from '../engine/batch';
@@ -27,6 +28,8 @@ export const CROP_INFO: Record<string, { label: string; seed: number; sell: numb
   labu: { label: 'Labu', seed: 16, sell: 44 },
   terong: { label: 'Terong', seed: 13, sell: 34 },
   jagung: { label: 'Jagung', seed: 8, sell: 22 },
+  cabai: { label: 'Cabai', seed: 7, sell: 19 },
+  kacangpanjang: { label: 'Kacang Panjang', seed: 12, sell: 32 },
 };
 
 export interface Prompt {
@@ -52,7 +55,9 @@ export interface LogEntry {
 
 export class Farm {
   coins = 30;
-  seeds: Record<string, number> = { tomat: 3, labu: 0, terong: 0, jagung: 2 };
+  seeds: Record<string, number> = {
+    tomat: 3, labu: 0, terong: 0, jagung: 2, cabai: 0, kacangpanjang: 0,
+  };
   basket: Catch[] = [];
   harvested: Record<string, number> = {};
   selected = 0;
