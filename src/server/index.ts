@@ -188,10 +188,52 @@ const httpServer = createServer((req, res) => {
   res.end('client belum di-build. jalankan: npm run build');
 });
 
-const wss = new WebSocketServer({ server: httpServer, path: '/room' });
+/** Ceilings for a server that is reachable from the open internet.
+ *
+ *  None of these matter when the only players are friends on a link. All of
+ *  them matter the moment the URL is public, because the failure mode is not
+ *  a bad game — it is the machine falling over and taking everybody's evening
+ *  with it.
+ *
+ *  Every message this protocol sends is a small JSON object; the largest is a
+ *  chat line. Two kilobytes is generous. The `ws` default is 100 MiB, which
+ *  means one stranger can hand the server a hundred megabytes to buffer. */
+const MAX_PAYLOAD = 2048;
+
+/** Rooms are created by whoever types a code, so the count is attacker-chosen
+ *  unless it is capped. Each room carries a plot array and a board, and an
+ *  empty one is never collected while the process lives. */
+const MAX_ROOMS = 64;
+
+/** Total sockets, not per room. MAX_PLAYERS_PER_ROOM caps a room; without
+ *  this, one client can open a thousand sockets and join none of them. */
+const MAX_CLIENTS = 200;
+
+const wss = new WebSocketServer({
+  server: httpServer,
+  path: '/room',
+  maxPayload: MAX_PAYLOAD,
+});
 httpServer.listen(PORT);
 
+// The listening socket can fail too, and the same rule applies: an
+// unhandled 'error' here ends the process.
+wss.on('error', (err) => {
+  console.error('[senja] wss error:', err.message);
+});
+
 wss.on('connection', (ws) => {
+  // Refused politely rather than dropped: a client that knows it was turned
+  // away can say so, where a silent close looks like a broken server and
+  // sends the player to reload over and over.
+  // `wss.clients` is the library's own live set, so this needs no
+  // bookkeeping of its own to go stale.
+  if (wss.clients.size > MAX_CLIENTS) {
+    ws.send(JSON.stringify({ t: 'full' }));
+    ws.close();
+    return;
+  }
+
   const client: Client = {
     ws,
     id: `p${nextId++}`,
@@ -206,6 +248,21 @@ wss.on('connection', (ws) => {
     },
   };
   client.state.id = client.id;
+
+  // Every socket needs this, and finding out why cost a crash.
+  //
+  // `ws` reports a protocol violation — an oversized frame, a malformed one —
+  // by emitting `error` on the socket. With no listener that is an unhandled
+  // 'error' event, and an unhandled 'error' event ends the process. So adding
+  // maxPayload without adding this turned a memory-exhaustion vector into an
+  // instant kill switch: one 50 kB message from any stranger took the whole
+  // server down and everyone in every room with it. Strictly worse than the
+  // hole it was closing.
+  ws.on('error', () => {
+    // Nothing to log per-socket: a public endpoint gets probed constantly and
+    // the interesting failures are the ones that survive to `handle`. The
+    // socket is already closing; the room cleanup runs in 'close'.
+  });
 
   ws.on('message', (raw) => {
     const msg = safeParse<ClientMsg>(String(raw));
@@ -239,6 +296,10 @@ function handle(c: Client, msg: ClientMsg): void {
     const code = clean(msg.room, 12).toLowerCase() || 'kolam';
     let r = rooms.get(code);
     if (!r) {
+      if (rooms.size >= MAX_ROOMS) {
+        send(c, { t: 'full' });
+        return;
+      }
       r = makeRoom(code);
       rooms.set(code, r);
     }
