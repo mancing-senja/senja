@@ -16,6 +16,9 @@ import type { Renderable } from '../render/scene';
 import type { WorldMap } from '../world/map';
 import type { Catch } from './fishing';
 import type { LocalPlayer } from './player';
+import {
+  BAIT_CASTS, BAIT_COST, addBait, nextRod, tackleState, upgradeRod,
+} from './shop';
 
 export const CROPS = Object.keys(CROP_LOOKS);
 
@@ -35,7 +38,7 @@ export interface Prompt {
 export type FarmAction =
   | { kind: 'plot'; i: number; op: 'till' | 'plant' | 'water' | 'harvest'; crop?: string }
   | { kind: 'sell' }
-  | { kind: 'buy'; crop: string };
+  | { kind: 'buy'; crop?: string; shop?: 'rod' | 'bait' };
 
 const REACH = 22;
 
@@ -53,6 +56,8 @@ export class Farm {
   basket: Catch[] = [];
   harvested: Record<string, number> = {};
   selected = 0;
+  private shopSelected: 'rod' | 'bait' = 'rod';
+  private promptMode: 'crop' | 'shop' = 'crop';
 
   /** Set each frame by `findPrompt`. */
   prompt: Prompt | null = null;
@@ -63,6 +68,10 @@ export class Farm {
   }
 
   cycleCrop(): void {
+    if (this.promptMode === 'shop') {
+      this.shopSelected = this.shopSelected === 'rod' ? 'bait' : 'rod';
+      return;
+    }
     this.selected = (this.selected + 1) % CROPS.length;
   }
 
@@ -101,6 +110,7 @@ export class Farm {
   findPrompt(p: LocalPlayer, map: WorldMap, plots: PlotState[]): FarmAction | null {
     this.prompt = null;
     this.pendingAction = null;
+    this.promptMode = 'crop';
 
     // --- shop counter: the crate outside the cabin
     const crate = map.props.find((pr) => pr.kind === 'crate');
@@ -110,6 +120,41 @@ export class Farm {
         this.pendingAction = { kind: 'sell' };
       } else {
         this.prompt = { text: 'keranjang kosong', x: crate.x, y: crate.y - 20 };
+      }
+      return this.pendingAction;
+    }
+
+    // --- village stall: optional fishing conveniences, never requirements
+    const stall = map.props.find((pr) => pr.kind === 'stall');
+    if (stall && near(p, stall.x, stall.y, 30)) {
+      this.promptMode = 'shop';
+      const gear = tackleState();
+
+      if (this.shopSelected === 'rod') {
+        const next = nextRod();
+        if (next) {
+          this.prompt = {
+            text: `[E] ${next.label} ${next.cost} koin  [Q] umpan`,
+            x: stall.x, y: stall.y - 30,
+          };
+          this.pendingAction = { kind: 'buy', shop: 'rod' };
+        } else {
+          this.prompt = {
+            text: 'joran sudah paling enak  [Q] umpan',
+            x: stall.x, y: stall.y - 30,
+          };
+        }
+      } else if (gear.baitCasts >= 60) {
+        this.prompt = {
+          text: `umpan penuh (${gear.baitCasts})  [Q] joran`,
+          x: stall.x, y: stall.y - 30,
+        };
+      } else {
+        this.prompt = {
+          text: `[E] umpan ${BAIT_CASTS}x ${BAIT_COST} koin · sisa ${gear.baitCasts}  [Q] joran`,
+          x: stall.x, y: stall.y - 30,
+        };
+        this.pendingAction = { kind: 'buy', shop: 'bait' };
       }
       return this.pendingAction;
     }
@@ -177,8 +222,22 @@ export class Farm {
         return true;
       }
       case 'buy': {
-        const info = CROP_INFO[a.crop];
-        if (!info || this.coins < info.seed) return false;
+        if (a.shop === 'rod') {
+          const next = nextRod();
+          if (!next || this.coins < next.cost) return false;
+          this.coins -= next.cost;
+          upgradeRod();
+          return true;
+        }
+        if (a.shop === 'bait') {
+          if (tackleState().baitCasts >= 60 || this.coins < BAIT_COST) return false;
+          this.coins -= BAIT_COST;
+          addBait();
+          return true;
+        }
+
+        const info = a.crop ? CROP_INFO[a.crop] : undefined;
+        if (!info || !a.crop || this.coins < info.seed) return false;
         this.coins -= info.seed;
         this.seeds[a.crop] = (this.seeds[a.crop] ?? 0) + 1;
         return true;
