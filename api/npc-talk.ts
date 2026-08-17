@@ -22,7 +22,9 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   } catch (err) {
     const status = err instanceof NpcAiError ? err.status : 500;
     const message = err instanceof Error ? err.message : 'NPC AI gagal';
-    if (status >= 500) console.warn('[senja] npc-talk:', err);
+    // Temporary diagnostics while testing NaraRouter reliability. Provider
+    // messages contain status/type/request ids but never the API key.
+    if (status >= 400 && status !== 429) console.warn('[senja] npc-talk:', err);
     sendJson(res, status, { error: message });
   }
 }
