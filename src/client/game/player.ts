@@ -12,6 +12,9 @@ import { walkableI, type Interior } from '../world/interior';
 import type { Draw } from '../render/draw';
 import { textWidth } from '../art/font';
 import type { Lighting } from '../world/lighting';
+import {
+  aiThoughtFor, observeThoughtNpc, observeThoughtPlayer, type ThoughtActorSnapshot,
+} from './ai-thoughts';
 
 /** Collision box at the feet, not the whole sprite — walking behind a tree
  *  should be possible, walking through its trunk should not. */
@@ -338,6 +341,13 @@ export function drawActor(
   }
 
   const label = actorNameLabel(a);
+  if (label.mine) {
+    observeThoughtPlayer(a.x, a.y);
+  } else {
+    const thoughtNpc = thoughtSnapshot(a);
+    if (thoughtNpc) observeThoughtNpc(thoughtNpc);
+  }
+
   const showLabel = (showName || label.mine) && Boolean(label.text);
   if (showLabel) {
     const w = textWidth(label.text);
@@ -350,9 +360,47 @@ export function drawActor(
   drawActorBubble(d, a, y - (showLabel ? 20 : 10), alpha);
 }
 
+function thoughtSnapshot(a: Actor): ThoughtActorSnapshot | null {
+  if (a.bubbleKind !== 'thought') return null;
+  const raw = a as Actor & {
+    mind?: { id?: string; register?: string };
+    scheduleState?: { phase?: string; rainAdjusted?: boolean };
+    activity?: string;
+    goal?: string;
+    destination?: string;
+  };
+  const id = raw.mind?.id;
+  const register = raw.mind?.register;
+  const phase = raw.scheduleState?.phase;
+  if (!id || (register !== 'cozy' && register !== 'medieval' && register !== 'cyber' && register !== 'fantasy')) return null;
+  if (phase !== 'pagi' && phase !== 'siang' && phase !== 'senja' && phase !== 'malam') return null;
+  if (!raw.activity || !raw.goal || !raw.destination) return null;
+  return {
+    id,
+    name: a.name,
+    register,
+    phase,
+    rainAdjusted: raw.scheduleState?.rainAdjusted === true,
+    activity: raw.activity,
+    goal: raw.goal,
+    destination: raw.destination,
+    x: a.x,
+    y: a.y,
+  };
+}
+
 function drawActorBubble(d: Draw, a: Actor, anchorY: number, alpha: number): void {
-  const text = cleanBubbleText(a.bubbleText);
-  const t = Number(a.bubbleT ?? 0);
+  const localText = cleanBubbleText(a.bubbleText);
+  const localT = Number(a.bubbleT ?? 0);
+  const meta = thoughtSnapshot(a);
+  const ai = meta ? aiThoughtFor(meta.id) : null;
+  // A concrete reaction such as a fresh catch is more immediate than the
+  // cached intent thought. Ordinary deterministic intent is replaced by AI
+  // as soon as the lazy request completes.
+  const keepLocal = a.bubbleKind !== 'thought' || /\bdapat\b/i.test(localText);
+  const text = cleanBubbleText(!keepLocal && ai ? ai.text : localText);
+  const t = !keepLocal && ai ? ai.seconds : localT;
+  const kind = !keepLocal && ai ? 'thought' : a.bubbleKind;
   if (!text || t <= 0) return;
 
   const lines = wrapBubble(text);
@@ -366,10 +414,10 @@ function drawActorBubble(d: Draw, a: Actor, anchorY: number, alpha: number): voi
   d.rect(x - 4, y - 3, w + 8, h + 6, C.InkDeep, 0.88 * fade);
   d.rect(x - 3, y - 2, w + 6, h + 4, C.White, 0.12 * fade);
   for (let i = 0; i < lines.length; i++) {
-    d.text(lines[i], x, y + i * 8, a.bubbleKind === 'thought' ? C.Pale : C.White, fade);
+    d.text(lines[i], x, y + i * 8, kind === 'thought' ? C.Pale : C.White, fade);
   }
 
-  if (a.bubbleKind === 'thought') {
+  if (kind === 'thought') {
     d.rect(a.x - 2, anchorY - 2, 3, 3, C.InkDeep, 0.82 * fade);
     d.rect(a.x + 2, anchorY + 2, 2, 2, C.InkDeep, 0.72 * fade);
   } else {
