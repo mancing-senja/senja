@@ -5,13 +5,16 @@
  * villager can stop, face the player, wait on an AI turn and offer choices
  * without tangling asynchronous network state into movement.
  *
- * v2 adds a deterministic daily routine on top of those waypoints. The room
- * clock and weather decide what an NPC is doing; AI only receives that state
- * as context, so model latency never controls simulation or movement. */
+ * v2 adds deterministic daily routines. v3A makes those intentions visible
+ * as thought bubbles and lets selected fishing villagers actually cast and
+ * reel. Autonomous behaviour never calls the AI provider; Agnes remains
+ * reserved for player-triggered conversations. */
 
 import { TILE } from '../../shared/constants';
 import type { Facing, PlayerAction } from '../../shared/protocol';
-import { EAST_OUTPOST, SOUTH_OUTPOST, isWalkable, type WorldMap } from '../world/map';
+import {
+  EAST_OUTPOST, SOUTH_OUTPOST, isWalkable, isWater, tileAt, type WorldMap,
+} from '../world/map';
 import { walkableI, type Interior } from '../world/interior';
 import type { Draw } from '../render/draw';
 import type { Actor } from './player';
@@ -21,7 +24,7 @@ import type { Register } from './registers';
 import { NpcConversation } from './npc-conversation';
 import { hydrateMinds } from './mind-sync';
 import {
-  resolveNpcSchedule, scheduleTalkPlace, type NpcScheduleState,
+  currentNpcWorld, resolveNpcSchedule, scheduleTalkPlace, type NpcScheduleState,
 } from './npc-schedule';
 
 export interface NpcDef {
@@ -40,6 +43,39 @@ export interface NpcDef {
 }
 
 const SPEED = 20;
+const THOUGHT_HOLD = 5.2;
+
+type FishStage = 'ready' | 'cast' | 'wait' | 'reel';
+interface NpcFish { label: string; min: number; max: number }
+
+/** These are roles that already stand beside real water in the authored map.
+ * Keeping the first autonomous pass to them avoids NPCs casting through hills
+ * just because their biography happens to mention fishing. */
+const FISH_PHASES: Record<string, NpcScheduleState['phase'][]> = {
+  tarno: ['pagi', 'siang', 'senja'],
+  ika: ['pagi', 'senja'],
+  noor: ['senja', 'malam'],
+  siul: ['senja', 'malam'],
+};
+
+const FISH_POOLS: Record<string, NpcFish[]> = {
+  tarno: [
+    { label: 'Wader', min: 7, max: 14 }, { label: 'Nila', min: 14, max: 29 },
+    { label: 'Patin', min: 27, max: 57 }, { label: 'Gabus', min: 24, max: 48 },
+  ],
+  ika: [
+    { label: 'Tawes', min: 15, max: 31 }, { label: 'Hampala', min: 21, max: 43 },
+    { label: 'Bawal', min: 19, max: 37 }, { label: 'Belut Senja', min: 32, max: 66 },
+  ],
+  noor: [
+    { label: 'Krom Sirip', min: 17, max: 36 }, { label: 'Ikan Statik', min: 13, max: 29 },
+    { label: 'Nikel Mas', min: 21, max: 42 }, { label: 'Ikan Kabel', min: 28, max: 55 },
+  ],
+  siul: [
+    { label: 'Sisik Embun', min: 11, max: 23 }, { label: 'Ikan Rembulan', min: 22, max: 44 },
+    { label: 'Ikan Lentera', min: 15, max: 29 }, { label: 'Ikan Bisik', min: 11, max: 21 },
+  ],
+};
 
 export class Npc implements Actor {
   x: number;
@@ -49,6 +85,10 @@ export class Npc implements Actor {
   animT = 0;
   idleSeed = Math.random() * 10;
   bobber: { x: number; y: number } | null = null;
+  autoFishingLine = true;
+  bubbleText = '';
+  bubbleT = 0;
+  bubbleKind: 'chat' | 'thought' = 'thought';
   name: string;
   hue: number;
 
@@ -57,6 +97,12 @@ export class Npc implements Actor {
   private rng: Rng;
   private conversation: NpcConversation;
   private scheduleState: NpcScheduleState;
+  private pendingThought = '';
+  private thoughtDelay = 0;
+  private fishStage: FishStage = 'ready';
+  private fishT = 0;
+  private fishSeq = 0;
+  private recentActivity = '';
 
   readonly mind: Mind;
 
@@ -73,20 +119,17 @@ export class Npc implements Actor {
 
     this.mind = makeMind(def.id, def.name, seed, def.register ?? 'cozy');
     if (def.bias) Object.assign(this.mind.personality, def.bias);
-    // Registers this live Mind too. A profile may arrive after NPC objects
-    // were created, and indoor residents may be created after the profile.
     hydrateMinds([this.mind]);
     this.conversation = new NpcConversation(this.name, this.hue, this.mind);
+    this.queueIntentThought(true);
   }
 
   get standing(): boolean {
     return this.scheduleState.route.length <= 1;
   }
 
-  /** Exposed for future HUD/debug surfaces without coupling them to the
-   * schedule resolver. */
   get activity(): string {
-    return this.scheduleState.activity;
+    return this.isFishingIntent() ? 'memancing' : this.scheduleState.activity;
   }
 
   get goal(): string {
@@ -97,24 +140,18 @@ export class Npc implements Actor {
     return this.scheduleState.destination;
   }
 
-  /** Kept as a number because the main loop already uses it to decide whether
-   * a villager currently owns the interaction key. Infinity means waiting on
-   * the model or on a player choice. */
   get sayT(): number {
     return this.conversation.sayT;
   }
 
-  /** Drives the nodding pose while a conversation is active. */
   get talking(): boolean {
     return this.conversation.talking;
   }
 
   update(dt: number, map: WorldMap): void {
-    this.step(dt, (tx, ty) => isWalkable(map, tx, ty));
+    this.step(dt, (tx, ty) => isWalkable(map, tx, ty), map);
   }
 
-  /** Same routine on a room's tiles. Residents pace around a table using
-   * the identical schedule/waypoint logic — only collision changes. */
   updateIn(dt: number, it: Interior): void {
     this.step(dt, (tx, ty) => walkableI(it, tx, ty));
   }
@@ -124,23 +161,37 @@ export class Npc implements Actor {
     if (next.key !== this.scheduleState.key) {
       this.scheduleState = next;
       this.leg = 0;
-      // A phase change should become visible soon, but never snap an NPC.
       this.waitT = Math.min(this.waitT, 0.6);
+      this.stopFishing();
+      this.queueIntentThought();
     } else {
       this.scheduleState = next;
     }
   }
 
-  private step(dt: number, walk: (tx: number, ty: number) => boolean): void {
+  private step(
+    dt: number,
+    walk: (tx: number, ty: number) => boolean,
+    map?: WorldMap,
+  ): void {
+    this.tickBubble(dt);
     this.refreshSchedule();
 
-    // Talking wins over the route. This is what makes the NPC actually stop
-    // and attend to the player instead of continuing to pace mid-sentence.
     if (this.conversation.update(dt)) {
+      this.bubbleT = 0;
+      this.bubbleText = '';
       this.action = 'idle';
       this.animT = 0;
       return;
     }
+
+    this.tickPendingThought(dt);
+
+    if (map && this.isFishingIntent()) {
+      this.stepFishing(dt, map);
+      return;
+    }
+    this.stopFishing();
 
     const route = this.scheduleState.route.length ? this.scheduleState.route : this.def.route;
     if (route.length <= 1) {
@@ -186,22 +237,154 @@ export class Npc implements Actor {
     }
   }
 
-  /** Starts a conversation. The current job/goal is folded into the compact
-   * place context sent to the model, keeping v2 compatible with the existing
-   * /api/npc-talk contract and whichever SENJA_AI_MODEL is selected in Vercel. */
+  private tickBubble(dt: number): void {
+    if (this.bubbleT <= 0) return;
+    this.bubbleT = Math.max(0, this.bubbleT - dt);
+    if (this.bubbleT === 0) this.bubbleText = '';
+  }
+
+  private tickPendingThought(dt: number): void {
+    if (!this.pendingThought) return;
+    this.thoughtDelay -= dt;
+    if (this.thoughtDelay > 0) return;
+    const text = this.pendingThought;
+    this.pendingThought = '';
+    this.showThought(text);
+  }
+
+  /** Intent text is deliberately derived from game state rather than Agnes. */
+  private queueIntentThought(initial = false): void {
+    const s = this.scheduleState;
+    this.pendingThought = s.rainAdjusted
+      ? `Hujan begini... ${s.goal}.`
+      : this.isFishingIntent()
+        ? 'Kayaknya enak mancing sebentar.'
+        : `Hmm... aku mau ${s.goal}.`;
+    this.thoughtDelay = this.rng.range(initial ? 1.2 : 0.7, initial ? 6 : 4.5);
+  }
+
+  private showThought(text: string, hold = THOUGHT_HOLD): void {
+    this.bubbleText = text.replace(/\s+/g, ' ').trim().slice(0, 120);
+    this.bubbleKind = 'thought';
+    this.bubbleT = hold;
+  }
+
+  private isFishingIntent(): boolean {
+    const phases = FISH_PHASES[this.def.id];
+    return Boolean(phases?.includes(this.scheduleState.phase) && !this.scheduleState.rainAdjusted);
+  }
+
+  private stepFishing(dt: number, map: WorldMap): void {
+    this.animT = 0;
+    this.fishT = Math.max(0, this.fishT - dt);
+
+    if (this.fishStage === 'ready') {
+      this.action = 'wait';
+      if (this.fishT > 0) return;
+      const target = this.findWaterTarget(map);
+      if (!target) {
+        this.action = this.scheduleState.idle;
+        this.fishT = 3;
+        return;
+      }
+      this.faceToward(target.x, target.y);
+      this.bobber = target;
+      this.action = 'cast';
+      this.fishStage = 'cast';
+      this.fishT = 0.65;
+      return;
+    }
+
+    if (this.fishStage === 'cast') {
+      this.action = 'cast';
+      if (this.fishT > 0) return;
+      this.fishStage = 'wait';
+      this.action = 'wait';
+      this.fishT = this.rng.range(5, 10.5);
+      return;
+    }
+
+    if (this.fishStage === 'wait') {
+      this.action = 'wait';
+      if (this.fishT > 0) return;
+      const fish = this.rollCatch();
+      this.recentActivity = `baru dapat ${fish.label} ${fish.cm} cm`;
+      this.showThought(`Nah, dapat ${fish.label} ${fish.cm} cm.`, 5.5);
+      this.fishStage = 'reel';
+      this.action = 'reel';
+      this.fishT = 0.9;
+      return;
+    }
+
+    this.action = 'reel';
+    if (this.fishT > 0) return;
+    this.bobber = null;
+    this.fishStage = 'ready';
+    this.action = 'wait';
+    this.fishT = this.rng.range(3.5, 7.5);
+  }
+
+  private stopFishing(): void {
+    this.bobber = null;
+    this.fishStage = 'ready';
+    this.fishT = 0;
+  }
+
+  private findWaterTarget(map: WorldMap): { x: number; y: number } | null {
+    const ox = Math.floor(this.x / TILE);
+    const oy = Math.floor(this.y / TILE);
+    let found = false;
+    let foundX = 0;
+    let foundY = 0;
+    let bestD = Number.POSITIVE_INFINITY;
+    for (let r = 2; r <= 5; r++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+          const tx = ox + dx;
+          const ty = oy + dy;
+          if (!isWater(tileAt(map, tx, ty))) continue;
+          const x = tx * TILE + 8;
+          const y = ty * TILE + 8;
+          const d = Math.hypot(x - this.x, y - this.y);
+          if (d < bestD) {
+            found = true;
+            foundX = x;
+            foundY = y;
+            bestD = d;
+          }
+        }
+      }
+      if (found) break;
+    }
+    return found ? { x: foundX, y: foundY } : null;
+  }
+
+  private rollCatch(): { label: string; cm: number } {
+    const world = currentNpcWorld();
+    const pool = FISH_POOLS[this.def.id] ?? [{ label: 'Wader', min: 7, max: 13 }];
+    const h = stableHash(`${this.def.id}:${world.day}:${this.scheduleState.phase}:${this.fishSeq++}`);
+    const fish = pool[h % pool.length];
+    const span = Math.max(1, fish.max - fish.min + 1);
+    const cm = fish.min + ((h >>> 8) % span);
+    return { label: fish.label, cm };
+  }
+
+  /** The latest autonomous action rides on the next conversation request. */
   talk(ctx: TalkCtx): void {
     this.scheduleState = resolveNpcSchedule(
       this.def.id, this.def.name, this.def.route, this.def.idle,
       { day: ctx.day, time: ctx.time, rain: ctx.rain },
     );
-    this.conversation.start({
-      ...ctx,
-      place: scheduleTalkPlace(ctx.place, this.scheduleState),
-    });
+    this.stopFishing();
+    this.pendingThought = '';
+    this.bubbleT = 0;
+    this.bubbleText = '';
+    let place = scheduleTalkPlace(ctx.place, this.scheduleState);
+    if (this.recentActivity) place = `${place} | ${this.recentActivity}`.slice(0, 63);
+    this.conversation.start({ ...ctx, place });
   }
 
-  /** Faces whoever is talking to them. Fixed-route villagers are allowed to
-   * turn too; standing still should not mean staring past the player. */
   faceToward(x: number, y: number): void {
     const dx = x - this.x;
     const dy = y - this.y;
@@ -212,6 +395,15 @@ export class Npc implements Actor {
   drawPanel(d: Draw, playerX: number, playerY: number): void {
     this.conversation.draw(d, this.x, this.y, playerX, playerY);
   }
+}
+
+function stableHash(text: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
 }
 
 /** The cast. Routes are in tile coordinates. Each has a personality bias so
@@ -276,8 +468,6 @@ export function villagerDefs(v: {
       route: [[vx - 15, vy + 8], [vx - 9, vy + 8], [vx - 9, vy + 3]],
       bias: { warmth: 0.85, bluntness: 0.25, talkative: 0.55, superstition: 0.4 },
     },
-
-    // ---------------------------------------------------------- Pos Timur
     {
       id: 'dara', name: 'Dara', hue: 7, idle: 'idle',
       route: [
@@ -290,14 +480,9 @@ export function villagerDefs(v: {
     },
     {
       id: 'darto', name: 'Pak Darto', hue: 1, idle: 'idle',
-      route: [
-        [EAST_OUTPOST.cx + 2, EAST_OUTPOST.cy + 7],
-        [EAST_OUTPOST.cx + 8, EAST_OUTPOST.cy + 7],
-      ],
+      route: [[EAST_OUTPOST.cx + 2, EAST_OUTPOST.cy + 7], [EAST_OUTPOST.cx + 8, EAST_OUTPOST.cy + 7]],
       bias: { warmth: 0.55, bluntness: 0.7, talkative: 0.35, greed: 0.25 },
     },
-
-    // -------------------------------------------------------- Kampung Selatan
     {
       id: 'maya', name: 'Maya', hue: 4, idle: 'idle',
       route: [
@@ -310,14 +495,9 @@ export function villagerDefs(v: {
     },
     {
       id: 'raka', name: 'Raka', hue: 10, idle: 'idle',
-      route: [
-        [SOUTH_OUTPOST.cx - 8, SOUTH_OUTPOST.cy + 7],
-        [SOUTH_OUTPOST.cx - 3, SOUTH_OUTPOST.cy + 7],
-      ],
+      route: [[SOUTH_OUTPOST.cx - 8, SOUTH_OUTPOST.cy + 7], [SOUTH_OUTPOST.cx - 3, SOUTH_OUTPOST.cy + 7]],
       bias: { warmth: 0.5, bluntness: 0.55, talkative: 0.4, greed: 0.2 },
     },
-
-    // ---------------------------------------------------------- Benteng Lama
     {
       id: 'gerald', name: 'Gerald', hue: 7, idle: 'idle', register: 'medieval',
       route: [[v.keepX - 8, v.keepY + 6], [v.keepX + 8, v.keepY + 6]],
@@ -333,8 +513,6 @@ export function villagerDefs(v: {
       route: [[v.keepX - 2, v.keepY - 11]],
       bias: { warmth: 0.3, bluntness: 0.85, talkative: 0.2, superstition: 0.7 },
     },
-
-    // --------------------------------------------------------- Dermaga Neon
     {
       id: 'vex', name: 'Vex', hue: 11, idle: 'idle', register: 'cyber',
       route: [[v.quayX - 6, v.quayY + 4], [v.quayX + 6, v.quayY + 4], [v.quayX + 6, v.quayY + 8]],
@@ -350,8 +528,6 @@ export function villagerDefs(v: {
       route: [[v.quayX + 9, v.quayY + 6], [v.quayX + 14, v.quayY + 6]],
       bias: { greed: 0.9, bluntness: 0.6, talkative: 0.7, warmth: 0.35 },
     },
-
-    // -------------------------------------------------------- Rimbun Cahaya
     {
       id: 'ambu', name: 'Ambu', hue: 8, idle: 'idle', register: 'fantasy',
       route: [[v.groveX - 14, v.groveY - 8], [v.groveX - 14, v.groveY + 6]],
@@ -370,7 +546,6 @@ export function villagerDefs(v: {
   ];
 }
 
-/** The nearest villager within reach, for the talk prompt. */
 export function nearestNpc(npcs: Npc[], x: number, y: number, r = 26): Npc | null {
   let best: Npc | null = null;
   let bestD = r;

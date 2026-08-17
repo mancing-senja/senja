@@ -49,6 +49,30 @@ Agnes Thinking mode for NPC dialogue because this path values low latency and
 stable structured JSON over deep reasoning. The request uses a moderate
 temperature and a small output budget appropriate for one NPC turn.
 
+## Request budget
+
+Autonomous NPC simulation must not consume model requests. Daily schedules,
+intent/thought bubbles, movement, fishing decisions, catch rolls, and similar
+background behaviour are deterministic game logic. Agnes is called only when a
+player starts or continues an NPC conversation.
+
+This is deliberate quota protection. Senja currently has 23 outdoor villagers
+and one in-game day lasts 20 real minutes. If every outdoor NPC made only one
+model call in each of the four day phases, that would already be 1,380 calls in
+five real hours. That leaves almost no headroom under a planning assumption of
+1,500 requests per five hours, before player conversations or transient retry
+attempts are counted.
+
+The 1,500/5h figure is a conservative planning assumption, not a hardcoded
+provider entitlement. Agnes' published model docs say availability/rate limits
+follow the entitlement attached to the active account/API key, so production
+capacity should be checked against the Agnes dashboard before wider traffic.
+
+A normal successful NPC turn costs one provider request. Senja can retry a
+transient timeout/5xx once, so a failing turn may consume two provider attempts.
+For future public traffic, add a server-side rolling request meter/circuit
+breaker before increasing autonomous AI usage.
+
 ## Failure behavior
 
 Provider errors never make the game unplayable. The server retries transient
