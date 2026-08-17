@@ -119,8 +119,6 @@ export class Npc implements Actor {
 
     this.mind = makeMind(def.id, def.name, seed, def.register ?? 'cozy');
     if (def.bias) Object.assign(this.mind.personality, def.bias);
-    // Registers this live Mind too. A profile may arrive after NPC objects
-    // were created, and indoor residents may be created after the profile.
     hydrateMinds([this.mind]);
     this.conversation = new NpcConversation(this.name, this.hue, this.mind);
     this.queueIntentThought(true);
@@ -142,14 +140,10 @@ export class Npc implements Actor {
     return this.scheduleState.destination;
   }
 
-  /** Kept as a number because the main loop already uses it to decide whether
-   * a villager currently owns the interaction key. Infinity means waiting on
-   * the model or on a player choice. */
   get sayT(): number {
     return this.conversation.sayT;
   }
 
-  /** Drives the nodding pose while a conversation is active. */
   get talking(): boolean {
     return this.conversation.talking;
   }
@@ -158,8 +152,6 @@ export class Npc implements Actor {
     this.step(dt, (tx, ty) => isWalkable(map, tx, ty), map);
   }
 
-  /** Indoor residents still have visible intentions, but autonomous fishing
-   * is outdoor-only because interior rooms have no world-water targets. */
   updateIn(dt: number, it: Interior): void {
     this.step(dt, (tx, ty) => walkableI(it, tx, ty));
   }
@@ -185,8 +177,6 @@ export class Npc implements Actor {
     this.tickBubble(dt);
     this.refreshSchedule();
 
-    // Talking wins over every autonomous intention. No thought bubble or
-    // fishing line competes with the actual conversation UI.
     if (this.conversation.update(dt)) {
       this.bubbleT = 0;
       this.bubbleText = '';
@@ -262,9 +252,7 @@ export class Npc implements Actor {
     this.showThought(text);
   }
 
-  /** Intent text is deliberately derived from game state rather than Agnes.
-   * With 23 outdoor villagers, even one inference per phase would consume
-   * nearly an assumed 1,500-request/5h free allowance by itself. */
+  /** Intent text is deliberately derived from game state rather than Agnes. */
   private queueIntentThought(initial = false): void {
     const s = this.scheduleState;
     this.pendingThought = s.rainAdjusted
@@ -272,7 +260,6 @@ export class Npc implements Actor {
       : this.isFishingIntent()
         ? 'Kayaknya enak mancing sebentar.'
         : `Hmm... aku mau ${s.goal}.`;
-    // Stagger a phase change so twenty villagers do not pop bubbles together.
     this.thoughtDelay = this.rng.range(initial ? 1.2 : 0.7, initial ? 6 : 4.5);
   }
 
@@ -343,12 +330,13 @@ export class Npc implements Actor {
     this.fishT = 0;
   }
 
-  /** Search nearby real water tiles instead of assuming a facing direction.
-   * This keeps a dock, bay, neon quay and spirit pool using the same logic. */
   private findWaterTarget(map: WorldMap): { x: number; y: number } | null {
     const ox = Math.floor(this.x / TILE);
     const oy = Math.floor(this.y / TILE);
-    let best: { x: number; y: number; d: number } | null = null;
+    let found = false;
+    let foundX = 0;
+    let foundY = 0;
+    let bestD = Number.POSITIVE_INFINITY;
     for (let r = 2; r <= 5; r++) {
       for (let dy = -r; dy <= r; dy++) {
         for (let dx = -r; dx <= r; dx++) {
@@ -359,12 +347,17 @@ export class Npc implements Actor {
           const x = tx * TILE + 8;
           const y = ty * TILE + 8;
           const d = Math.hypot(x - this.x, y - this.y);
-          if (!best || d < best.d) best = { x, y, d };
+          if (d < bestD) {
+            found = true;
+            foundX = x;
+            foundY = y;
+            bestD = d;
+          }
         }
       }
-      if (best) break;
+      if (found) break;
     }
-    return best ? { x: best.x, y: best.y } : null;
+    return found ? { x: foundX, y: foundY } : null;
   }
 
   private rollCatch(): { label: string; cm: number } {
@@ -377,9 +370,7 @@ export class Npc implements Actor {
     return { label: fish.label, cm };
   }
 
-  /** Starts a conversation. The current job/goal plus the latest autonomous
-   * activity is folded into the existing context. This adds zero extra Agnes
-   * requests: the information rides on the conversation request already made. */
+  /** The latest autonomous action rides on the next conversation request. */
   talk(ctx: TalkCtx): void {
     this.scheduleState = resolveNpcSchedule(
       this.def.id, this.def.name, this.def.route, this.def.idle,
@@ -394,8 +385,6 @@ export class Npc implements Actor {
     this.conversation.start({ ...ctx, place });
   }
 
-  /** Faces whoever is talking to them. Fixed-route villagers are allowed to
-   * turn too; standing still should not mean staring past the player. */
   faceToward(x: number, y: number): void {
     const dx = x - this.x;
     const dy = y - this.y;
@@ -479,8 +468,6 @@ export function villagerDefs(v: {
       route: [[vx - 15, vy + 8], [vx - 9, vy + 8], [vx - 9, vy + 3]],
       bias: { warmth: 0.85, bluntness: 0.25, talkative: 0.55, superstition: 0.4 },
     },
-
-    // ---------------------------------------------------------- Pos Timur
     {
       id: 'dara', name: 'Dara', hue: 7, idle: 'idle',
       route: [
@@ -493,14 +480,9 @@ export function villagerDefs(v: {
     },
     {
       id: 'darto', name: 'Pak Darto', hue: 1, idle: 'idle',
-      route: [
-        [EAST_OUTPOST.cx + 2, EAST_OUTPOST.cy + 7],
-        [EAST_OUTPOST.cx + 8, EAST_OUTPOST.cy + 7],
-      ],
+      route: [[EAST_OUTPOST.cx + 2, EAST_OUTPOST.cy + 7], [EAST_OUTPOST.cx + 8, EAST_OUTPOST.cy + 7]],
       bias: { warmth: 0.55, bluntness: 0.7, talkative: 0.35, greed: 0.25 },
     },
-
-    // -------------------------------------------------------- Kampung Selatan
     {
       id: 'maya', name: 'Maya', hue: 4, idle: 'idle',
       route: [
@@ -513,14 +495,9 @@ export function villagerDefs(v: {
     },
     {
       id: 'raka', name: 'Raka', hue: 10, idle: 'idle',
-      route: [
-        [SOUTH_OUTPOST.cx - 8, SOUTH_OUTPOST.cy + 7],
-        [SOUTH_OUTPOST.cx - 3, SOUTH_OUTPOST.cy + 7],
-      ],
+      route: [[SOUTH_OUTPOST.cx - 8, SOUTH_OUTPOST.cy + 7], [SOUTH_OUTPOST.cx - 3, SOUTH_OUTPOST.cy + 7]],
       bias: { warmth: 0.5, bluntness: 0.55, talkative: 0.4, greed: 0.2 },
     },
-
-    // ---------------------------------------------------------- Benteng Lama
     {
       id: 'gerald', name: 'Gerald', hue: 7, idle: 'idle', register: 'medieval',
       route: [[v.keepX - 8, v.keepY + 6], [v.keepX + 8, v.keepY + 6]],
@@ -536,8 +513,6 @@ export function villagerDefs(v: {
       route: [[v.keepX - 2, v.keepY - 11]],
       bias: { warmth: 0.3, bluntness: 0.85, talkative: 0.2, superstition: 0.7 },
     },
-
-    // --------------------------------------------------------- Dermaga Neon
     {
       id: 'vex', name: 'Vex', hue: 11, idle: 'idle', register: 'cyber',
       route: [[v.quayX - 6, v.quayY + 4], [v.quayX + 6, v.quayY + 4], [v.quayX + 6, v.quayY + 8]],
@@ -553,8 +528,6 @@ export function villagerDefs(v: {
       route: [[v.quayX + 9, v.quayY + 6], [v.quayX + 14, v.quayY + 6]],
       bias: { greed: 0.9, bluntness: 0.6, talkative: 0.7, warmth: 0.35 },
     },
-
-    // -------------------------------------------------------- Rimbun Cahaya
     {
       id: 'ambu', name: 'Ambu', hue: 8, idle: 'idle', register: 'fantasy',
       route: [[v.groveX - 14, v.groveY - 8], [v.groveX - 14, v.groveY + 6]],
@@ -573,7 +546,6 @@ export function villagerDefs(v: {
   ];
 }
 
-/** The nearest villager within reach, for the talk prompt. */
 export function nearestNpc(npcs: Npc[], x: number, y: number, r = 26): Npc | null {
   let best: Npc | null = null;
   let bestD = r;
