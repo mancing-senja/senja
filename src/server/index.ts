@@ -59,6 +59,7 @@ interface Room {
 const store = new Store();
 const rooms = new Map<string, Room>();
 let nextId = 1;
+let shuttingDown = false;
 
 function makeRoom(code: string): Room {
   const plots: PlotState[] = [];
@@ -237,6 +238,8 @@ wss.on('connection', (ws) => {
 });
 
 async function handle(c: Client, msg: ClientMsg): Promise<void> {
+  if (shuttingDown) return;
+
   if (msg.t === 'join') {
     const code = clean(msg.room, 12).toLowerCase() || 'kolam';
     let r = rooms.get(code);
@@ -483,13 +486,25 @@ setInterval(() => {
   }
 }, 20_000);
 
+async function shutdown(sig: 'SIGINT' | 'SIGTERM'): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+
+  // Stop accepting fresh work, then give every Supabase save that already
+  // left this process a chance to commit before the process disappears.
+  httpServer.close();
+  wss.close();
+  await store.flush();
+  console.log(`[senja] keluar (${sig})`);
+  process.exit(0);
+}
+
 for (const sig of ['SIGINT', 'SIGTERM'] as const) {
-  process.on(sig, () => {
-    // Supabase writes are committed as they happen; flush remains a no-op
-    // compatibility seam for the old file-backed store.
-    void store.flush();
-    console.log('[senja] keluar');
-    process.exit(0);
+  process.once(sig, () => {
+    void shutdown(sig).catch((err) => {
+      console.warn('[senja] gagal flush profil saat shutdown:', err);
+      process.exit(1);
+    });
   });
 }
 
