@@ -42,6 +42,9 @@ export function observeThoughtPlayer(x: number, y: number): void {
 }
 
 export function observeThoughtNpc(npc: ThoughtActorSnapshot): void {
+  // Vite's local preview/dev server does not host Vercel Functions. Skipping
+  // provider calls there keeps CI/smoke tests offline and avoids a fake 404.
+  if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') return;
   if (!Number.isFinite(playerX) || !Number.isFinite(playerY)) return;
   if (Math.hypot(npc.x - playerX, npc.y - playerY) > NEAR_RADIUS) return;
 
