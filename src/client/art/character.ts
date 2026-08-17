@@ -561,12 +561,22 @@ export interface CharFrame {
 }
 
 export function buildCharacterFrames(): CharFrame[] {
+  return framesForLooks(LOOKS);
+}
+
+/** Frames for an arbitrary set of looks, numbered from `first`.
+ *
+ *  Split out from `buildCharacterFrames` so a custom appearance can be baked
+ *  without being a preset. The presets keep indices 0..LOOKS.length-1 and
+ *  custom characters take slots above that, which is what lets an existing
+ *  saved `hue` keep meaning the same person after this landed. */
+export function framesForLooks(looks: readonly Look[], first = 0): CharFrame[] {
   const out: CharFrame[] = [];
   const dirs: Dir[] = ['front', 'back', 'side'];
-  for (let i = 0; i < LOOKS.length; i++) {
+  for (let i = 0; i < looks.length; i++) {
     for (const dir of dirs) {
       for (const pose of POSES) {
-        out.push({ dir, pose, look: i, canvas: poseCanvas(dir, pose, LOOKS[i]) });
+        out.push({ dir, pose, look: first + i, canvas: poseCanvas(dir, pose, looks[i]) });
       }
     }
   }
