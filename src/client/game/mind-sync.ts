@@ -1,7 +1,11 @@
 import type { NpcMemoryData, NpcMindState } from '../../shared/npc-ai';
 import type { Mind } from './dialogue';
 
-const KEY = 'senja.minds.v1';
+/** v1 is still written by the old dialogue helpers in main.ts. Keep the new
+ * profile cache separate so those legacy saves cannot erase DB memories for
+ * indoor residents that have not been instantiated this session. */
+const KEY = 'senja.minds.profile.v2';
+const LEGACY_KEY = 'senja.minds.v1';
 const MEMORY_SLOTS = 6;
 const liveMinds = new Set<Mind>();
 
@@ -33,9 +37,10 @@ function validMemory(value: unknown): value is NpcMemoryData {
 
 function readCache(): MindRecord {
   try {
-    const parsed = JSON.parse(localStorage.getItem(KEY) ?? '{}') as unknown;
+    const current = localStorage.getItem(KEY);
+    const parsed = JSON.parse(current ?? localStorage.getItem(LEGACY_KEY) ?? '{}') as unknown;
     // Backward compatibility: the original local save was an array of slim
-    // mind records. Preserve it while moving to the profile-shaped object.
+    // mind records. The first profile write converts it to the v2 object.
     if (Array.isArray(parsed)) {
       const out: MindRecord = {};
       for (const item of parsed) {
