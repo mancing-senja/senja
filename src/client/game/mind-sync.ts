@@ -1,9 +1,9 @@
 import type { NpcMemoryData, NpcMindState } from '../../shared/npc-ai';
 import type { Mind } from './dialogue';
 
-/** v1 is still written by the old dialogue helpers in main.ts. Keep the new
- * profile cache separate so those legacy saves cannot erase DB memories for
- * indoor residents that have not been instantiated this session. */
+/** v1 is still written/read by the old dialogue helpers in main.ts. Keep the
+ * new profile cache separate, but mirror merged data back into v1 so a lazily
+ * created indoor resident cannot be overwritten by stale legacy memory. */
 const KEY = 'senja.minds.profile.v2';
 const LEGACY_KEY = 'senja.minds.v1';
 const MEMORY_SLOTS = 6;
@@ -68,6 +68,10 @@ function readCache(): MindRecord {
 function writeCache(record: MindRecord): void {
   try {
     localStorage.setItem(KEY, JSON.stringify(record));
+    // Existing loadMinds() expects this array shape. Keeping it current makes
+    // the migration invisible to the old call sites until they are removed.
+    const legacy = Object.entries(record).map(([id, state]) => ({ id, ...state }));
+    localStorage.setItem(LEGACY_KEY, JSON.stringify(legacy));
   } catch {
     // NPC memory is an enhancement. A browser with storage disabled still
     // gets conversations for the current session.
