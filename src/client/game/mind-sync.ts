@@ -3,6 +3,7 @@ import type { Mind } from './dialogue';
 
 const KEY = 'senja.minds.v1';
 const MEMORY_SLOTS = 6;
+const liveMinds = new Set<Mind>();
 
 type MindRecord = Record<string, NpcMindState>;
 
@@ -100,28 +101,29 @@ function apply(mind: Mind, state: NpcMindState): void {
   mind.lastDay = Math.max(mind.lastDay, state.lastDay);
 }
 
-/** Hydrate newly constructed villagers from whatever the browser already
- * knows. This includes memories downloaded from Supabase before an indoor
- * resident was first instantiated. */
+/** Register newly constructed villagers and hydrate them from whatever the
+ * browser already knows. The registry lets Net merge a later Supabase profile
+ * without the main loop having to know which NPC objects exist. */
 export function hydrateMinds(minds: Mind[]): void {
   const cached = readCache();
   for (const mind of minds) {
+    liveMinds.add(mind);
     const state = cached[mind.id];
     if (state) apply(mind, state);
   }
 }
 
-/** Merge the profile copy from Supabase into both live minds and the local
+/** Merge the profile copy from Supabase into every live mind and the local
  * cache. Neither side blindly replaces the other, so an offline interaction
  * immediately before reconnect is not lost. */
-export function mergeMinds(minds: Mind[], remote: Record<string, NpcMindState> | undefined): void {
+export function mergeProfileMinds(remote: Record<string, NpcMindState> | undefined): void {
   const cached = readCache();
   for (const [id, value] of Object.entries(remote ?? {})) {
     if (!validId(id)) continue;
     const state = cleanState(value);
     if (state) cached[id] = mergeState(cached[id], state);
   }
-  for (const mind of minds) {
+  for (const mind of liveMinds) {
     cached[mind.id] = mergeState(cached[mind.id], stateOf(mind));
     apply(mind, cached[mind.id]);
   }
@@ -130,17 +132,20 @@ export function mergeMinds(minds: Mind[], remote: Record<string, NpcMindState> |
 
 /** Save current live minds without erasing cached residents that have not
  * been instantiated in this session yet. */
-export function cacheMinds(minds: Mind[]): void {
+export function cacheMinds(minds: Iterable<Mind> = liveMinds): void {
   const cached = readCache();
-  for (const mind of minds) cached[mind.id] = mergeState(cached[mind.id], stateOf(mind));
+  for (const mind of minds) {
+    liveMinds.add(mind);
+    cached[mind.id] = mergeState(cached[mind.id], stateOf(mind));
+  }
   writeCache(cached);
 }
 
 /** Profile payload for Supabase. Includes cached unseen residents so a save
  * from outdoors cannot silently delete memories made indoors last session. */
-export function exportMinds(minds: Mind[]): Record<string, NpcMindState> {
+export function exportProfileMinds(): Record<string, NpcMindState> {
   const cached = readCache();
-  for (const mind of minds) cached[mind.id] = mergeState(cached[mind.id], stateOf(mind));
+  for (const mind of liveMinds) cached[mind.id] = mergeState(cached[mind.id], stateOf(mind));
   writeCache(cached);
   return cached;
 }
