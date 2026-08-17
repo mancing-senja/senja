@@ -12,11 +12,33 @@ import { walkableI, type Interior } from '../world/interior';
 import type { Draw } from '../render/draw';
 import { textWidth } from '../art/font';
 import type { Lighting } from '../world/lighting';
+import {
+  aiThoughtFor, observeThoughtNpc, observeThoughtPlayer, type ThoughtActorSnapshot,
+} from './ai-thoughts';
 
 /** Collision box at the feet, not the whole sprite — walking behind a tree
  *  should be possible, walking through its trunk should not. */
 const FOOT_W = 8;
 const FOOT_H = 5;
+const BUBBLE_MAX_W = 108;
+const BUBBLE_MAX_LINES = 3;
+
+/** Display names stay friendly and are allowed to collide. Only while two
+ * players with the same name share a room do remote name tags gain a tiny
+ * connection suffix, so nobody has to permanently become "Dimas42" just
+ * because another Dimas happens to be fishing tonight. */
+const duplicatePlayerNames = new Set<string>();
+window.addEventListener('senja:players', (e) => {
+  const players = (e as CustomEvent<Array<{ name: string }>>).detail;
+  duplicatePlayerNames.clear();
+  if (!Array.isArray(players)) return;
+  const counts = new Map<string, number>();
+  for (const p of players) {
+    const key = String(p?.name ?? '').trim().toLowerCase();
+    if (key) counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  for (const [name, count] of counts) if (count > 1) duplicatePlayerNames.add(name);
+});
 
 export interface Actor {
   x: number;
@@ -33,6 +55,12 @@ export interface Actor {
   bobber: { x: number; y: number } | null;
   /** True while this actor has a line on screen. Only villagers set it. */
   talking?: boolean;
+  /** Short-lived world-space text. Chat and NPC intent share one renderer. */
+  bubbleText?: string;
+  bubbleT?: number;
+  bubbleKind?: 'chat' | 'thought';
+  /** NPCs can opt into line rendering without changing the main render loop. */
+  autoFishingLine?: boolean;
 }
 
 export class LocalPlayer implements Actor {
@@ -43,6 +71,9 @@ export class LocalPlayer implements Actor {
   animT = 0;
   idleSeed = Math.random() * 10;
   bobber: { x: number; y: number } | null = null;
+  bubbleText = '';
+  bubbleT = 0;
+  bubbleKind: 'chat' | 'thought' = 'chat';
   coins = 0;
   caught = 0;
   /** Set by the fishing system to lock movement during a cast. */
@@ -51,9 +82,19 @@ export class LocalPlayer implements Actor {
   constructor(public name: string, public hue: number, map: WorldMap) {
     this.x = map.spawnX;
     this.y = map.spawnY;
+    // Net.chat emits immediately, so the sender sees their words over their
+    // own head even offline and before the room server echoes them to the log.
+    window.addEventListener('senja:local-chat', (e) => {
+      const text = cleanBubbleText((e as CustomEvent<string>).detail);
+      if (!text) return;
+      this.bubbleText = text;
+      this.bubbleKind = 'chat';
+      this.bubbleT = bubbleDuration(text);
+    });
   }
 
   update(dt: number, input: Input, map: WorldMap): void {
+    this.tickBubble(dt);
     if (this.locked) {
       this.animT = 0;
       return;
@@ -82,6 +123,7 @@ export class LocalPlayer implements Actor {
   /** Same controller, different collision source. Interiors are their own
    *  small map, so they cannot share `canStand`. */
   updateIndoors(dt: number, input: Input, it: Interior): void {
+    this.tickBubble(dt);
     const a = input.axis();
     if (a.x === 0 && a.y === 0) {
       this.action = 'idle';
@@ -103,6 +145,12 @@ export class LocalPlayer implements Actor {
         this.y = ny;
       }
     }
+  }
+
+  private tickBubble(dt: number): void {
+    if (this.bubbleT <= 0) return;
+    this.bubbleT = Math.max(0, this.bubbleT - dt);
+    if (this.bubbleT === 0) this.bubbleText = '';
   }
 
   /** Axis-separated movement so sliding along a wall feels smooth rather
@@ -248,6 +296,19 @@ function dirFor(f: Facing): { dir: 'front' | 'back' | 'side'; flip: boolean } {
   return { dir: 'side', flip: f === 'left' };
 }
 
+/** A name is a social label, not an account identifier. The local player is
+ * explicitly marked, and duplicate remote names get a temporary room number
+ * derived from their connection id. The suffix disappears again when the
+ * collision does, and is never written to the saved profile. */
+function actorNameLabel(a: Actor): { text: string; mine: boolean } {
+  if (a instanceof LocalPlayer) return { text: `${a.name} (kamu)`, mine: true };
+  if (a instanceof RemotePlayer && duplicatePlayerNames.has(a.name.trim().toLowerCase())) {
+    const short = a.id.replace(/^p/, '') || a.id.slice(-2);
+    return { text: `${a.name} · ${short}`, mine: false };
+  }
+  return { text: a.name, mine: false };
+}
+
 export function drawActor(
   d: Draw, a: Actor, L: Lighting, clock: number, alpha = 1, showName = true,
 ): void {
@@ -256,6 +317,8 @@ export function drawActor(
   const key = charKey(a.hue, dir, pose);
   const x = Math.round(a.x - CH_W / 2);
   const y = Math.round(a.y - CH_H);
+
+  if (a.autoFishingLine && a.bobber) drawFishingLine(d, a, clock);
 
   // Contact shadow plus a cast shadow leaning away from the sun. The
   // contact patch is what stops the character floating; the cast shadow is
@@ -277,13 +340,128 @@ export function drawActor(
     });
   }
 
-  if (showName && a.name) {
-    const w = textWidth(a.name);
+  const label = actorNameLabel(a);
+  if (label.mine) {
+    observeThoughtPlayer(a.x, a.y);
+  } else {
+    const thoughtNpc = thoughtSnapshot(a);
+    if (thoughtNpc) observeThoughtNpc(thoughtNpc);
+  }
+
+  const showLabel = (showName || label.mine) && Boolean(label.text);
+  if (showLabel) {
+    const w = textWidth(label.text);
     const nx = Math.round(a.x - w / 2);
     const ny = y - 10;
     d.rect(nx - 2, ny - 1, w + 4, 9, C.InkDeep, 0.45 * alpha);
-    d.text(a.name, nx, ny, C.White, alpha);
+    d.text(label.text, nx, ny, label.mine ? C.Lantern : C.White, alpha);
   }
+
+  drawActorBubble(d, a, y - (showLabel ? 20 : 10), alpha);
+}
+
+function thoughtSnapshot(a: Actor): ThoughtActorSnapshot | null {
+  if (a.bubbleKind !== 'thought') return null;
+  const raw = a as Actor & {
+    mind?: { id?: string; register?: string };
+    scheduleState?: { phase?: string; rainAdjusted?: boolean };
+    activity?: string;
+    goal?: string;
+    destination?: string;
+  };
+  const id = raw.mind?.id;
+  const register = raw.mind?.register;
+  const phase = raw.scheduleState?.phase;
+  if (!id || (register !== 'cozy' && register !== 'medieval' && register !== 'cyber' && register !== 'fantasy')) return null;
+  if (phase !== 'pagi' && phase !== 'siang' && phase !== 'senja' && phase !== 'malam') return null;
+  if (!raw.activity || !raw.goal || !raw.destination) return null;
+  return {
+    id,
+    name: a.name,
+    register,
+    phase,
+    rainAdjusted: raw.scheduleState?.rainAdjusted === true,
+    activity: raw.activity,
+    goal: raw.goal,
+    destination: raw.destination,
+    x: a.x,
+    y: a.y,
+  };
+}
+
+function drawActorBubble(d: Draw, a: Actor, anchorY: number, alpha: number): void {
+  const localText = cleanBubbleText(a.bubbleText);
+  const localT = Number(a.bubbleT ?? 0);
+  const meta = thoughtSnapshot(a);
+  const ai = meta ? aiThoughtFor(meta.id) : null;
+
+  // Intent thoughts — AI or deterministic fallback — all pass through the
+  // shared crowd queue. That means walking into five villagers produces one
+  // readable inner voice at a time instead of five simultaneous bubbles.
+  // Concrete reactions such as a fresh catch stay immediate because they
+  // describe something that just visibly happened rather than idle intent.
+  const concreteReaction = a.bubbleKind === 'thought' && /\bdapat\b/i.test(localText);
+  const queuedIntent = Boolean(meta && a.bubbleKind === 'thought' && !concreteReaction);
+  if (queuedIntent && !ai) return;
+
+  const text = cleanBubbleText(queuedIntent ? ai?.text : localText);
+  const t = queuedIntent ? Number(ai?.seconds ?? 0) : localT;
+  const kind = queuedIntent ? 'thought' : a.bubbleKind;
+  if (!text || t <= 0) return;
+
+  const lines = wrapBubble(text);
+  if (!lines.length) return;
+  const w = Math.max(...lines.map(textWidth));
+  const h = lines.length * 8;
+  const x = Math.round(a.x - w / 2);
+  const y = Math.round(anchorY - h - 4);
+  const fade = Math.min(1, t / 0.35) * alpha;
+
+  d.rect(x - 4, y - 3, w + 8, h + 6, C.InkDeep, 0.88 * fade);
+  d.rect(x - 3, y - 2, w + 6, h + 4, C.White, 0.12 * fade);
+  for (let i = 0; i < lines.length; i++) {
+    d.text(lines[i], x, y + i * 8, kind === 'thought' ? C.Pale : C.White, fade);
+  }
+
+  if (kind === 'thought') {
+    d.rect(a.x - 2, anchorY - 2, 3, 3, C.InkDeep, 0.82 * fade);
+    d.rect(a.x + 2, anchorY + 2, 2, 2, C.InkDeep, 0.72 * fade);
+  } else {
+    d.rect(a.x - 2, anchorY - 3, 4, 4, C.InkDeep, 0.85 * fade);
+  }
+}
+
+function wrapBubble(raw: string): string[] {
+  const words = raw.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let line = '';
+  for (const word of words) {
+    const next = line ? `${line} ${word}` : word;
+    if (!line || textWidth(next) <= BUBBLE_MAX_W) {
+      line = next;
+      continue;
+    }
+    lines.push(line);
+    line = word;
+    if (lines.length >= BUBBLE_MAX_LINES) break;
+  }
+  if (lines.length < BUBBLE_MAX_LINES && line) lines.push(line);
+  if (lines.length === BUBBLE_MAX_LINES && words.join(' ') !== lines.join(' ')) {
+    let last = lines[BUBBLE_MAX_LINES - 1];
+    while (last.length > 1 && textWidth(`${last}...`) > BUBBLE_MAX_W) last = last.slice(0, -1);
+    lines[BUBBLE_MAX_LINES - 1] = `${last.trimEnd()}...`;
+  }
+  return lines;
+}
+
+function cleanBubbleText(value: unknown): string {
+  return typeof value === 'string'
+    ? value.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120)
+    : '';
+}
+
+function bubbleDuration(text: string): number {
+  return Math.max(3.2, Math.min(6.5, 2.5 + text.length / 24));
 }
 
 /** Rod and line, drawn from the hand to the bobber. Pure geometry — no

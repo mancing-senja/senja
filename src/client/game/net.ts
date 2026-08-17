@@ -17,6 +17,7 @@ import {
   type ServerMsg,
 } from '../../shared/protocol';
 import { RemotePlayer } from './player';
+import { exportProfileMinds, mergeProfileMinds } from './mind-sync';
 
 export type NetStatus = 'offline' | 'connecting' | 'online' | 'full';
 
@@ -24,6 +25,21 @@ export interface RoomPlayerSummary {
   name: string;
   hue: number;
   mine: boolean;
+}
+
+/** Tiny read-only bridge for deterministic NPC schedules. The room server
+ * already owns time/weather; routines consume that same snapshot so two
+ * players do not see the village living in different hours. */
+export interface NpcWorldSnapshot {
+  online: boolean;
+  time: number;
+  rain: number;
+}
+
+const npcWorld: NpcWorldSnapshot = { online: false, time: -1, rain: 0 };
+
+export function npcWorldSnapshot(): NpcWorldSnapshot {
+  return { ...npcWorld };
 }
 
 /** This player's save key.
@@ -78,10 +94,6 @@ export class Net {
   }
 
   get url(): string {
-    // Always same-origin, on a path the dev server (and any production
-    // reverse proxy) forwards to the room server. Guessing a second port
-    // used to work on localhost and broke the moment anyone shared a
-    // tunnelled link with a friend.
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     return `${proto}//${location.host}/room`;
   }
@@ -114,6 +126,7 @@ export class Net {
     ws.onclose = () => {
       this.ws = null;
       if (this.status !== 'full') this.status = 'offline';
+      npcWorld.online = false;
       this.players.clear();
       this.publishPlayers();
       this.scheduleRetry();
@@ -134,6 +147,9 @@ export class Net {
       case 'profile':
         if (msg.profile.name) this.name = msg.profile.name;
         if (Number.isFinite(msg.profile.look)) this.hue = msg.profile.look;
+        // Relationship memory is part of the player profile, but the main
+        // loop should not have to know which villagers currently exist.
+        mergeProfileMinds(msg.profile.minds);
         this.onProfile?.(msg.profile);
         break;
 
@@ -143,6 +159,9 @@ export class Net {
         this.room = msg.room;
         this.serverTime = msg.state.time;
         this.serverRain = msg.state.rain;
+        npcWorld.online = true;
+        npcWorld.time = msg.state.time;
+        npcWorld.rain = msg.state.rain;
         this.plots = msg.state.plots;
         this.onPlots?.(this.plots);
         for (const p of msg.players) this.addPlayer(p, false);
@@ -163,6 +182,9 @@ export class Net {
       case 'snapshot': {
         this.serverTime = msg.time;
         this.serverRain = msg.rain;
+        npcWorld.online = true;
+        npcWorld.time = msg.time;
+        npcWorld.rain = msg.rain;
         const seen = new Set<string>();
         let changed = false;
         for (const s of msg.players) {
@@ -203,6 +225,7 @@ export class Net {
 
       case 'full':
         this.status = 'full';
+        npcWorld.online = false;
         break;
 
       case 'ping':
@@ -257,12 +280,20 @@ export class Net {
 
   send(msg: ClientMsg): void {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      // Existing save call sites stay untouched. NPC memory is appended at
+      // the network boundary, which also covers the pagehide save path.
+      if (msg.t === 'save') msg.profile.minds = exportProfileMinds();
       this.ws.send(JSON.stringify(msg));
     }
   }
 
   chat(text: string): void {
-    this.send({ t: 'chat', text });
+    const clean = String(text ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120);
+    if (!clean) return;
+    // Show the sender's own line immediately in world-space. The room feed
+    // remains the durable multiplayer log; this event is presentation only.
+    window.dispatchEvent(new CustomEvent<string>('senja:local-chat', { detail: clean }));
+    this.send({ t: 'chat', text: clean });
   }
 
   /** Shareable link for whoever you want to fish with. */
@@ -276,23 +307,17 @@ const ROOM_KEY = 'senja.room';
 function readRoomFromUrl(): string {
   const h = location.hash.replace('#', '').trim().toLowerCase();
   if (h) {
-    // An explicit hash is an invite or a deliberate room switch. It wins
-    // over the remembered room and becomes the room we return to next time.
     const room = h.slice(0, 12);
     localStorage.setItem(ROOM_KEY, room);
     return room;
   }
 
-  // Opening the bare game URL should feel like continuing a session, not
-  // silently dropping the player into a fresh multiplayer world every time.
   const remembered = localStorage.getItem(ROOM_KEY)?.trim().toLowerCase().slice(0, 12);
   if (remembered) {
     location.hash = remembered;
     return remembered;
   }
 
-  // First visit only: mint a room, remember it, and make the invite URL
-  // visible so sharing is unambiguous.
   const code = randomCode();
   localStorage.setItem(ROOM_KEY, code);
   location.hash = code;

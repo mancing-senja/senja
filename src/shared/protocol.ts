@@ -1,6 +1,8 @@
 /** Wire protocol. JSON over WebSocket — the message volume here is tiny
  *  (8 players, 15 Hz) so binary packing would be premature. */
 
+import type { NpcMindState } from './npc-ai';
+
 export type Facing = 'down' | 'up' | 'left' | 'right';
 
 export type PlayerAction =
@@ -85,6 +87,9 @@ export interface ProfileData {
   day: number;
   log: Record<string, { count: number; best: number; bestGrade: number }>;
   lore: string[];
+  /** NPC relationship state follows the player rather than the browser.
+   * Optional keeps older servers/clients wire-compatible during deploys. */
+  minds?: Record<string, NpcMindState>;
 }
 
 export type ClientMsg =

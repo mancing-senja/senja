@@ -115,7 +115,7 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
   const player = new LocalPlayer(name, face === null ? hue : LOOK_COUNT, map);
   const fishing = new Fishing();
   const farm = new Farm();
-  /** The character creator. Opens on `C`, and unprompted the first time
+  /** The character creator. Opens on `G`, and unprompted the first time
    *  somebody arrives with no saved appearance — a game that hands you a
    *  random stranger and never mentions you can change it is a game where
    *  nobody knows they can. */
@@ -564,14 +564,19 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
       }
       return;
     }
-    // `K` for karakter, not `C`.
+    // `G` for ganti karakter — the third key this has been on.
     //
-    // `C` was already the one-key room invite, advertised in the HUD as
-    // "c undang" — and binding the creator to it meant pressing invite opened
-    // the character screen instead of copying the link. Nothing of that
-    // feature was edited; the collision was enough to break it, which is the
-    // cheaper way to break somebody's work and the harder one to notice.
-    if (input.pressed('k') && !ui.chatOpen) creator.show();
+    // `C` was already the one-key room invite ("c undang" in the HUD), so
+    // binding the creator there meant pressing invite opened the character
+    // screen. Moving to `K` collided with the world map that landed next.
+    // Neither feature was edited either time; the collision alone was enough
+    // to break them, which is the cheapest way to break somebody's work and
+    // the hardest to notice.
+    //
+    // Free letters when this was written: f g i l n o u v x y z. `g` is the
+    // only one with a mnemonic in Indonesian, and it is listed in the help
+    // screen so the next person adding a binding can see it is taken.
+    if (input.pressed('g') && !ui.chatOpen) creator.show();
 
     if (indoors) player.updateIndoors(dt, input, indoors);
     else player.update(dt, input, map);
