@@ -394,13 +394,19 @@ function drawActorBubble(d: Draw, a: Actor, anchorY: number, alpha: number): voi
   const localT = Number(a.bubbleT ?? 0);
   const meta = thoughtSnapshot(a);
   const ai = meta ? aiThoughtFor(meta.id) : null;
-  // A concrete reaction such as a fresh catch is more immediate than the
-  // cached intent thought. Ordinary deterministic intent is replaced by AI
-  // as soon as the lazy request completes.
-  const keepLocal = a.bubbleKind !== 'thought' || /\bdapat\b/i.test(localText);
-  const text = cleanBubbleText(!keepLocal && ai ? ai.text : localText);
-  const t = !keepLocal && ai ? ai.seconds : localT;
-  const kind = !keepLocal && ai ? 'thought' : a.bubbleKind;
+
+  // Intent thoughts — AI or deterministic fallback — all pass through the
+  // shared crowd queue. That means walking into five villagers produces one
+  // readable inner voice at a time instead of five simultaneous bubbles.
+  // Concrete reactions such as a fresh catch stay immediate because they
+  // describe something that just visibly happened rather than idle intent.
+  const concreteReaction = a.bubbleKind === 'thought' && /\bdapat\b/i.test(localText);
+  const queuedIntent = Boolean(meta && a.bubbleKind === 'thought' && !concreteReaction);
+  if (queuedIntent && !ai) return;
+
+  const text = cleanBubbleText(queuedIntent ? ai?.text : localText);
+  const t = queuedIntent ? Number(ai?.seconds ?? 0) : localT;
+  const kind = queuedIntent ? 'thought' : a.bubbleKind;
   if (!text || t <= 0) return;
 
   const lines = wrapBubble(text);
