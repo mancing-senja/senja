@@ -79,6 +79,9 @@ async function rpc(name: string, body: Record<string, unknown>): Promise<unknown
 }
 
 export class Store {
+  /** Writes that have left this process but have not finished committing yet. */
+  private pendingWrites = new Set<Promise<unknown>>();
+
   async get(token: string): Promise<Profile> {
     if (!validToken(token) || PERSISTENCE_DISABLED) return emptyProfile();
     const data = await rpc('senja_get_profile', { p_token: token });
@@ -88,17 +91,27 @@ export class Store {
 
   async merge(token: string, patch: Partial<Profile>): Promise<Profile> {
     if (!validToken(token) || PERSISTENCE_DISABLED) return emptyProfile();
-    const data = await rpc('senja_merge_profile', {
+    const request = rpc('senja_merge_profile', {
       p_token: token,
       p_patch: sanitizePatch(patch),
     });
-    seenTokens.add(token);
-    return asProfile(data);
+    this.pendingWrites.add(request);
+    try {
+      const data = await request;
+      seenTokens.add(token);
+      return asProfile(data);
+    } finally {
+      this.pendingWrites.delete(request);
+    }
   }
 
-  /** Kept as a compatibility seam for the previous file-backed store. */
+  /** Wait until every profile write already accepted by this process settles. */
   async flush(): Promise<void> {
-    // Supabase writes are committed by merge(); there is no local buffer.
+    // Loop rather than snapshot once: a save can arrive while an earlier
+    // batch is settling (for example during a graceful shutdown).
+    while (this.pendingWrites.size > 0) {
+      await Promise.allSettled([...this.pendingWrites]);
+    }
   }
 
   get size(): number {
