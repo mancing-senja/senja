@@ -288,7 +288,12 @@ export class Net {
   }
 
   chat(text: string): void {
-    this.send({ t: 'chat', text });
+    const clean = String(text ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120);
+    if (!clean) return;
+    // Show the sender's own line immediately in world-space. The room feed
+    // remains the durable multiplayer log; this event is presentation only.
+    window.dispatchEvent(new CustomEvent<string>('senja:local-chat', { detail: clean }));
+    this.send({ t: 'chat', text: clean });
   }
 
   /** Shareable link for whoever you want to fish with. */
