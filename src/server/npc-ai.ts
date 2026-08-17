@@ -309,7 +309,10 @@ function registerGuide(register: NpcTalkRequest['npc']['register']): string {
 function memoryText(m: NpcMemoryData): string {
   const subject = m.subject ? ` ${m.subject}` : '';
   const value = Number.isFinite(m.value) ? ` (${m.value})` : '';
-  return `${m.kind}${subject}${value}, hari ${m.day + 1}`;
+  const day = `hari ${m.day + 1}`;
+  if (m.kind === 'activity') return `aktivitas yang NPC ini alami sendiri:${subject}${value}, ${day}`;
+  if (m.kind === 'gossip') return `kabar yang NPC ini dengar dari NPC lain:${subject}${value}, ${day}`;
+  return `${m.kind}${subject}${value}, ${day}`;
 }
 
 function validMemory(value: unknown): value is NpcMemoryData {
@@ -317,7 +320,8 @@ function validMemory(value: unknown): value is NpcMemoryData {
   const m = value as Partial<NpcMemoryData>;
   return (
     (m.kind === 'meet' || m.kind === 'record' || m.kind === 'rare'
-      || m.kind === 'promise' || m.kind === 'gift' || m.kind === 'absence')
+      || m.kind === 'promise' || m.kind === 'gift' || m.kind === 'absence'
+      || m.kind === 'activity' || m.kind === 'gossip')
     && Number.isFinite(m.day) && Number.isFinite(m.weight)
   );
 }

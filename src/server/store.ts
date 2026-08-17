@@ -191,7 +191,8 @@ function cleanMemory(value: unknown): NpcMemoryData | null {
   const raw = value as Record<string, unknown>;
   const kind = raw.kind;
   if (kind !== 'meet' && kind !== 'record' && kind !== 'rare'
-    && kind !== 'promise' && kind !== 'gift' && kind !== 'absence') return null;
+    && kind !== 'promise' && kind !== 'gift' && kind !== 'absence'
+    && kind !== 'activity' && kind !== 'gossip') return null;
   const subject = typeof raw.subject === 'string'
     ? raw.subject.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 80)
     : undefined;
