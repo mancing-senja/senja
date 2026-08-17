@@ -18,6 +18,23 @@ import type { Lighting } from '../world/lighting';
 const FOOT_W = 8;
 const FOOT_H = 5;
 
+/** Display names stay friendly and are allowed to collide. Only while two
+ * players with the same name share a room do remote name tags gain a tiny
+ * connection suffix, so nobody has to permanently become "Dimas42" just
+ * because another Dimas happens to be fishing tonight. */
+const duplicatePlayerNames = new Set<string>();
+window.addEventListener('senja:players', (e) => {
+  const players = (e as CustomEvent<Array<{ name: string }>>).detail;
+  duplicatePlayerNames.clear();
+  if (!Array.isArray(players)) return;
+  const counts = new Map<string, number>();
+  for (const p of players) {
+    const key = String(p?.name ?? '').trim().toLowerCase();
+    if (key) counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  for (const [name, count] of counts) if (count > 1) duplicatePlayerNames.add(name);
+});
+
 export interface Actor {
   x: number;
   y: number;
@@ -248,6 +265,19 @@ function dirFor(f: Facing): { dir: 'front' | 'back' | 'side'; flip: boolean } {
   return { dir: 'side', flip: f === 'left' };
 }
 
+/** A name is a social label, not an account identifier. The local player is
+ * explicitly marked, and duplicate remote names get a temporary room number
+ * derived from their connection id. The suffix disappears again when the
+ * collision does, and is never written to the saved profile. */
+function actorNameLabel(a: Actor): { text: string; mine: boolean } {
+  if (a instanceof LocalPlayer) return { text: `${a.name} (kamu)`, mine: true };
+  if (a instanceof RemotePlayer && duplicatePlayerNames.has(a.name.trim().toLowerCase())) {
+    const short = a.id.replace(/^p/, '') || a.id.slice(-2);
+    return { text: `${a.name} · ${short}`, mine: false };
+  }
+  return { text: a.name, mine: false };
+}
+
 export function drawActor(
   d: Draw, a: Actor, L: Lighting, clock: number, alpha = 1, showName = true,
 ): void {
@@ -277,12 +307,13 @@ export function drawActor(
     });
   }
 
-  if (showName && a.name) {
-    const w = textWidth(a.name);
+  const label = actorNameLabel(a);
+  if ((showName || label.mine) && label.text) {
+    const w = textWidth(label.text);
     const nx = Math.round(a.x - w / 2);
     const ny = y - 10;
     d.rect(nx - 2, ny - 1, w + 4, 9, C.InkDeep, 0.45 * alpha);
-    d.text(a.name, nx, ny, C.White, alpha);
+    d.text(label.text, nx, ny, label.mine ? C.Lantern : C.White, alpha);
   }
 }
 
