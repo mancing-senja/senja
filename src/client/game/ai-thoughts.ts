@@ -41,6 +41,14 @@ export function observeThoughtPlayer(x: number, y: number): void {
   playerY = y;
 }
 
+/** The renderer already observes the local actor every frame for lazy AI.
+ * Reuse that neutral position snapshot for the hand-drawn world map instead
+ * of threading player coordinates through every HUD call site. */
+export function observedPlayerPosition(): { x: number; y: number } | null {
+  if (!Number.isFinite(playerX) || !Number.isFinite(playerY)) return null;
+  return { x: playerX, y: playerY };
+}
+
 export function observeThoughtNpc(npc: ThoughtActorSnapshot): void {
   // Vite's local preview/dev server does not host Vercel Functions. Skipping
   // provider calls there keeps CI/smoke tests offline and avoids a fake 404.
