@@ -217,7 +217,7 @@ wss.on('connection', (ws) => {
     lastSave: 0,
     state: {
       id: '', name: '', hue: 0, x: 0, y: 0, facing: 'down', action: 'idle',
-      bobber: null, coins: 0, caught: 0,
+      bobber: null, coins: 0, caught: 0, boat: false,
     },
   };
   client.state.id = client.id;
@@ -369,6 +369,10 @@ async function handle(c: Client, msg: ClientMsg): Promise<void> {
       r.boardDirty = true;
       break;
     }
+
+    case 'boat':
+      c.state.boat = msg.active;
+      break;
 
     case 'sell': {
       // The client tracks its own coins; the server only mirrors the number

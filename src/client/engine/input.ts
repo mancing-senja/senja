@@ -95,5 +95,5 @@ function norm(k: string): string {
 const GAME_KEYS = new Set([
   'w', 'a', 's', 'd',
   'arrowup', 'arrowdown', 'arrowleft', 'arrowright',
-  ' ', 'e', 'q', 'tab', 'enter',
+  ' ', 'e', 'q', 'tab', 'enter', 'b',
 ]);

@@ -36,7 +36,7 @@ import {
 import { DEFAULT_SPOT, spotAt } from './world/spots';
 import { districtAt } from './world/districts';
 import {
-  LocalPlayer, drawActor, drawActorReflection, drawFishingLine, poseOf,
+  LocalPlayer, drawActor, drawActorReflection, drawFishingLine, poseOf, canStand,
 } from './game/player';
 import { Fishing, phaseLabel, speciesById } from './game/fishing';
 import { Farm } from './game/farm';
@@ -743,6 +743,19 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
       }
     }
     if (input.pressed('q')) farm.cycleCrop();
+
+    if (input.pressed('b')) {
+      const nextBoat = !player.boat;
+      if (canStand(map, player.x, player.y, nextBoat)) {
+        player.boat = nextBoat;
+        net.send({ t: 'boat', active: player.boat });
+        ui.say(player.boat ? 'naik perahu' : 'turun perahu');
+        audio.blip(500, 0.1, 0.2);
+      } else {
+        ui.say(player.boat ? 'pinggirin dulu' : 'harus di air/dermaga');
+        audio.blip(200, 0.09, 0.12);
+      }
+    }
 
     // Announce arriving at a named spot. Checked against the player rather
     // than the bobber so it fires while walking, not while fishing.

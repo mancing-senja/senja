@@ -7,7 +7,7 @@ import { CH_H, CH_W, type Pose, charKey } from '../art/character';
 import { C } from '../art/palette';
 import { Blend } from '../engine/batch';
 import type { Input } from '../engine/input';
-import { isWalkable, type WorldMap } from '../world/map';
+import { isWalkable, isWater, tileAt, Tile, type WorldMap } from '../world/map';
 import { walkableI, type Interior } from '../world/interior';
 import type { Draw } from '../render/draw';
 import { textWidth } from '../art/font';
@@ -61,6 +61,7 @@ export interface Actor {
   bubbleKind?: 'chat' | 'thought';
   /** NPCs can opt into line rendering without changing the main render loop. */
   autoFishingLine?: boolean;
+  boat?: boolean;
 }
 
 export class LocalPlayer implements Actor {
@@ -78,6 +79,7 @@ export class LocalPlayer implements Actor {
   caught = 0;
   /** Set by the fishing system to lock movement during a cast. */
   locked = false;
+  boat = false;
 
   constructor(public name: string, public hue: number, map: WorldMap) {
     this.x = map.spawnX;
@@ -115,7 +117,7 @@ export class LocalPlayer implements Actor {
     if (Math.abs(a.x) > 0.01) this.facing = a.x > 0 ? 'right' : 'left';
     else if (a.y !== 0) this.facing = a.y > 0 ? 'down' : 'up';
 
-    const step = PLAYER_SPEED * dt;
+    const step = (this.boat ? PLAYER_SPEED * 1.5 : PLAYER_SPEED) * dt;
     this.moveAxis(map, a.x * step, 0);
     this.moveAxis(map, 0, a.y * step);
   }
@@ -159,7 +161,7 @@ export class LocalPlayer implements Actor {
     if (dx === 0 && dy === 0) return;
     const nx = this.x + dx;
     const ny = this.y + dy;
-    if (canStand(map, nx, ny)) {
+    if (canStand(map, nx, ny, this.boat)) {
       this.x = nx;
       this.y = ny;
       return;
@@ -168,7 +170,7 @@ export class LocalPlayer implements Actor {
     for (const f of [0.5, 0.25]) {
       const px = this.x + dx * f;
       const py = this.y + dy * f;
-      if (canStand(map, px, py)) {
+      if (canStand(map, px, py, this.boat)) {
         this.x = px;
         this.y = py;
         return;
@@ -190,14 +192,19 @@ export function canStandIn(it: Interior, x: number, y: number): boolean {
   return true;
 }
 
-export function canStand(map: WorldMap, x: number, y: number): boolean {
+export function canStand(map: WorldMap, x: number, y: number, boat = false): boolean {
   const l = Math.floor((x - FOOT_W / 2) / TILE);
   const r = Math.floor((x + FOOT_W / 2 - 1) / TILE);
   const t = Math.floor((y - FOOT_H) / TILE);
   const b = Math.floor((y - 1) / TILE);
   for (let ty = t; ty <= b; ty++) {
     for (let tx = l; tx <= r; tx++) {
-      if (!isWalkable(map, tx, ty)) return false;
+      const tile = tileAt(map, tx, ty);
+      if (boat) {
+        if (!isWater(tile) && tile !== Tile.Dock) return false;
+      } else {
+        if (!isWalkable(map, tx, ty)) return false;
+      }
     }
   }
   return true;
@@ -217,6 +224,7 @@ export class RemotePlayer implements Actor {
   bobber: { x: number; y: number } | null = null;
   coins = 0;
   caught = 0;
+  boat = false;
   /** Fades in on join and out on leave. */
   fade = 0;
   leaving = false;
@@ -236,6 +244,7 @@ export class RemotePlayer implements Actor {
     this.bobber = s.bobber;
     this.coins = s.coins;
     this.caught = s.caught;
+    this.boat = s.boat ?? false;
   }
 
   update(dt: number): void {
@@ -327,7 +336,14 @@ export function drawActor(
   d.castShadow(a.x, a.y - 1, 11, 6, L.sunX, L.sunY, shadowA * 0.75);
   d.sprite('shadow', a.x - 8, a.y - 5, { tint: [0, 0, 0], flat: true, alpha: shadowA });
 
-  d.sprite(key, x, y, { flipX: flip, alpha });
+  if (a.boat) {
+    const by = a.y - 2 + Math.sin(clock * 2 + a.x) * 1;
+    d.rect(x - 6, by - 6, CH_W + 12, 10, C.Wood, alpha);
+    d.rect(x - 5, by - 5, CH_W + 10, 8, C.WoodDk, alpha);
+    d.rect(x - 3, by - 1, CH_W + 6, 2, C.Wood, alpha);
+  }
+
+  d.sprite(key, x, y + (a.boat ? -4 + Math.sin(clock * 2 + a.x) * 1 : 0), { flipX: flip, alpha });
 
   // Warm rim on the sunlit side at dawn and dusk.
   if (L.rim > 0.3) {

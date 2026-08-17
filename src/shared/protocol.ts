@@ -26,6 +26,7 @@ export interface PlayerState {
   bobber: { x: number; y: number } | null;
   coins: number;
   caught: number;
+  boat?: boolean;
 }
 
 export interface PlotState {
@@ -102,6 +103,7 @@ export type ClientMsg =
   | { t: 'sell' }
   | { t: 'plot'; i: number; op: 'till' | 'plant' | 'water' | 'harvest'; crop?: string }
   | { t: 'chat'; text: string }
+  | { t: 'boat'; active: boolean }
   | { t: 'pong' };
 
 // ---------------------------------------------------------------- server → client
