@@ -9,7 +9,9 @@ export interface NpcPersonalityData {
   talkative: number;
 }
 
-export type NpcMemoryKind = 'meet' | 'record' | 'rare' | 'promise' | 'gift' | 'absence';
+export type NpcMemoryKind =
+  | 'meet' | 'record' | 'rare' | 'promise' | 'gift' | 'absence'
+  | 'activity' | 'gossip';
 
 export interface NpcMemoryData {
   kind: NpcMemoryKind;

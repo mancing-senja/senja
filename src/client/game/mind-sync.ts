@@ -29,7 +29,8 @@ function validMemory(value: unknown): value is NpcMemoryData {
   const m = value as Partial<NpcMemoryData>;
   return (
     (m.kind === 'meet' || m.kind === 'record' || m.kind === 'rare'
-      || m.kind === 'promise' || m.kind === 'gift' || m.kind === 'absence')
+      || m.kind === 'promise' || m.kind === 'gift' || m.kind === 'absence'
+      || m.kind === 'activity' || m.kind === 'gossip')
     && Number.isFinite(m.day)
     && Number.isFinite(m.weight)
   );
@@ -80,7 +81,10 @@ function writeCache(record: MindRecord): void {
 
 function stateOf(mind: Mind): NpcMindState {
   return {
-    memories: mind.memories.slice(-MEMORY_SLOTS),
+    // Runtime v4 memories add activity/gossip kinds that the legacy Mind type
+    // intentionally does not know about yet. The shared persistent type is
+    // the wider source of truth at this boundary.
+    memories: mind.memories.slice(-MEMORY_SLOTS) as unknown as NpcMemoryData[],
     met: Math.max(0, Math.floor(mind.met)),
     lastDay: Number.isFinite(mind.lastDay) ? Math.floor(mind.lastDay) : -1,
   };
@@ -105,7 +109,9 @@ function mergeState(a: NpcMindState | undefined, b: NpcMindState): NpcMindState 
 }
 
 function apply(mind: Mind, state: NpcMindState): void {
-  mind.memories = state.memories.map((m) => ({ ...m }));
+  // See stateOf(): dialogue's legacy MemoryKind is narrower than the profile
+  // format. Runtime consumers understand the extra v4 kinds.
+  mind.memories = state.memories.map((m) => ({ ...m })) as unknown as Mind['memories'];
   mind.met = Math.max(mind.met, state.met);
   mind.lastDay = Math.max(mind.lastDay, state.lastDay);
 }
