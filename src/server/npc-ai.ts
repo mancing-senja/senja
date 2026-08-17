@@ -2,10 +2,10 @@ import type {
   NpcMemoryData, NpcTalkRequest, NpcTalkResponse,
 } from '../shared/npc-ai.js';
 
-const DEFAULT_AI_BASE_URL = 'https://router.bynara.id/v1';
-const DEFAULT_AI_MODEL = 'deepseek-v4-flash-free';
+const DEFAULT_AI_BASE_URL = 'https://apihub.agnes-ai.com/v1';
+const DEFAULT_AI_MODEL = 'agnes-2.5-flash';
 const MIN_GAP_MS = 650;
-const AI_ATTEMPT_TIMEOUT_MS = 6_500;
+const AI_ATTEMPT_TIMEOUT_MS = 8_000;
 const AI_MAX_ATTEMPTS = 2;
 const AI_RETRY_BASE_MS = 350;
 const recentByClient = new Map<string, number>();
@@ -25,17 +25,17 @@ interface AiConfig {
 
 /** Generate one short, structured turn through any OpenAI-compatible backend.
  *
- * Production defaults to NaraRouter, but the provider is deliberately
+ * Production defaults to Agnes AI, but the provider is deliberately
  * configured through environment variables rather than baked into the NPC
- * system. Switching router/model later must not require touching dialogue,
+ * system. Switching provider/model later must not require touching dialogue,
  * memory, cooldown, or browser code.
  *
  * Required secret:
- *   SENJA_AI_API_KEY (BYNARA_API_KEY is accepted as a convenience alias)
+ *   SENJA_AI_API_KEY (AGNES_API_KEY is accepted as a convenience alias)
  * Optional:
- *   SENJA_AI_BASE_URL  default https://router.bynara.id/v1
+ *   SENJA_AI_BASE_URL  default https://apihub.agnes-ai.com/v1
  *   SENJA_AI_CHAT_URL  exact endpoint override
- *   SENJA_AI_MODEL     default deepseek-v4-flash-free
+ *   SENJA_AI_MODEL     default agnes-2.5-flash
  *   SENJA_AI_PROVIDER  label used only in server errors/logs
  */
 export async function generateNpcTurn(raw: unknown, clientKey: string): Promise<NpcTalkResponse> {
@@ -45,9 +45,10 @@ export async function generateNpcTurn(raw: unknown, clientKey: string): Promise<
   const requestBody = JSON.stringify({
     model: config.model,
     stream: false,
-    // NPC dialogue values responsiveness over deep chain-of-thought. Nara
-    // documents this as safe to send to non-reasoning models as well.
-    reasoning_effort: 'low',
+    // NPC dialogue values latency and reliable structured output over deep
+    // reasoning. Agnes 2.5 Flash does not need Thinking mode for this task.
+    temperature: 0.65,
+    max_tokens: 512,
     messages: [
       { role: 'system', content: systemPrompt(req) },
       { role: 'user', content: turnPrompt(req) },
@@ -105,6 +106,8 @@ export async function generateNpcTurn(raw: unknown, clientKey: string): Promise<
 
 function aiConfig(): AiConfig {
   const apiKey = cleanSecret(process.env.SENJA_AI_API_KEY)
+    || cleanSecret(process.env.AGNES_API_KEY)
+    // Legacy alias kept only so an old local setup does not break abruptly.
     || cleanSecret(process.env.BYNARA_API_KEY);
   if (!apiKey) {
     throw new NpcAiError(
@@ -116,7 +119,7 @@ function aiConfig(): AiConfig {
   const base = cleanUrl(process.env.SENJA_AI_BASE_URL) || DEFAULT_AI_BASE_URL;
   const exact = cleanUrl(process.env.SENJA_AI_CHAT_URL);
   const model = cleanEnv(process.env.SENJA_AI_MODEL, 120) || DEFAULT_AI_MODEL;
-  const provider = cleanEnv(process.env.SENJA_AI_PROVIDER, 40) || 'NaraRouter';
+  const provider = cleanEnv(process.env.SENJA_AI_PROVIDER, 40) || 'Agnes AI';
   return {
     apiKey,
     model,
