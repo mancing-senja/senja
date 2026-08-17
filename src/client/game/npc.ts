@@ -7,8 +7,9 @@
  *
  * v2 adds deterministic daily routines. v3A makes those intentions visible
  * as thought bubbles and lets selected fishing villagers actually cast and
- * reel. Autonomous behaviour never calls the AI provider; Agnes remains
- * reserved for player-triggered conversations. */
+ * reel. v5 lets recent first-hand experience bend a small part of the next
+ * routine. Movement decisions remain deterministic game logic; Agnes is still
+ * reserved for language generation rather than steering actors frame-by-frame. */
 
 import { TILE } from '../../shared/constants';
 import type { Facing, PlayerAction } from '../../shared/protocol';
@@ -47,6 +48,10 @@ const THOUGHT_HOLD = 5.2;
 
 type FishStage = 'ready' | 'cast' | 'wait' | 'reel';
 interface NpcFish { label: string; min: number; max: number }
+interface MemoryFishingRule {
+  phases: NpcScheduleState['phase'][];
+  minCm: number;
+}
 
 /** These are roles that already stand beside real water in the authored map.
  * Keeping the first autonomous pass to them avoids NPCs casting through hills
@@ -56,6 +61,17 @@ const FISH_PHASES: Record<string, NpcScheduleState['phase'][]> = {
   ika: ['pagi', 'senja'],
   noor: ['senja', 'malam'],
   siul: ['senja', 'malam'],
+};
+
+/** v5 memory feedback. A notably good recent catch can make a fisher extend
+ * their next session into one adjacent phase they normally skip. The memory
+ * must be first-hand and at most one in-game day old, so success nudges a
+ * routine instead of permanently rewriting the character. */
+const MEMORY_FISHING_RULES: Record<string, MemoryFishingRule> = {
+  tarno: { phases: ['malam'], minCm: 45 },
+  ika: { phases: ['siang'], minCm: 32 },
+  noor: { phases: ['siang'], minCm: 35 },
+  siul: { phases: ['pagi'], minCm: 30 },
 };
 
 const FISH_POOLS: Record<string, NpcFish[]> = {
@@ -103,6 +119,8 @@ export class Npc implements Actor {
   private fishT = 0;
   private fishSeq = 0;
   private recentActivity = '';
+  private emergentContext = '';
+  private emergentContextDay = -1;
 
   readonly mind: Mind;
 
@@ -252,14 +270,18 @@ export class Npc implements Actor {
     this.showThought(text);
   }
 
-  /** Intent text is deliberately derived from game state rather than Agnes. */
+  /** Intent text is derived from game state. The renderer may replace ordinary
+   * intent with its lazy Agnes phrasing, but the decision itself already exists
+   * before any language request is made. */
   private queueIntentThought(initial = false): void {
     const s = this.scheduleState;
     this.pendingThought = s.rainAdjusted
       ? `Hujan begini... ${s.goal}.`
-      : this.isFishingIntent()
-        ? 'Kayaknya enak mancing sebentar.'
-        : `Hmm... aku mau ${s.goal}.`;
+      : this.isMemoryDrivenFishing()
+        ? 'Tadi hasilnya bagus. Aku mau coba mancing lagi.'
+        : this.isFishingIntent()
+          ? 'Kayaknya enak mancing sebentar.'
+          : `Hmm... aku mau ${s.goal}.`;
     this.thoughtDelay = this.rng.range(initial ? 1.2 : 0.7, initial ? 6 : 4.5);
   }
 
@@ -270,8 +292,25 @@ export class Npc implements Actor {
   }
 
   private isFishingIntent(): boolean {
+    if (this.scheduleState.rainAdjusted) return false;
     const phases = FISH_PHASES[this.def.id];
-    return Boolean(phases?.includes(this.scheduleState.phase) && !this.scheduleState.rainAdjusted);
+    return Boolean(phases?.includes(this.scheduleState.phase) || this.isMemoryDrivenFishing());
+  }
+
+  private isMemoryDrivenFishing(): boolean {
+    if (this.scheduleState.rainAdjusted) return false;
+    const rule = MEMORY_FISHING_RULES[this.def.id];
+    if (!rule?.phases.includes(this.scheduleState.phase)) return false;
+    const day = currentNpcWorld().day;
+    const memories = this.mind.memories as unknown as Array<{
+      kind?: string; day?: number; subject?: string;
+    }>;
+    return memories.some((m) => {
+      if (m.kind !== 'activity' || !Number.isFinite(m.day) || Number(m.day) < day - 1) return false;
+      if (!/saat memancing/i.test(m.subject ?? '')) return false;
+      const cm = Number((m.subject ?? '').match(/\b(\d{1,3})\s*cm\b/i)?.[1] ?? 0);
+      return cm >= rule.minCm;
+    });
   }
 
   private stepFishing(dt: number, map: WorldMap): void {
@@ -370,6 +409,15 @@ export class Npc implements Actor {
     return { label: fish.label, cm };
   }
 
+  /** v5 modules can leave a short factual note about a decision that actually
+   * happened. It is not a persistent memory by itself; it only enriches the
+   * next player-triggered conversation for roughly one in-game day. */
+  noteEmergentContext(text: string, day = currentNpcWorld().day): void {
+    this.emergentContext = text.replace(/[\u0000-\u001f\u007f]/g, ' ')
+      .replace(/\s+/g, ' ').trim().slice(0, 80);
+    this.emergentContextDay = day;
+  }
+
   /** The latest autonomous action rides on the next conversation request. */
   talk(ctx: TalkCtx): void {
     this.scheduleState = resolveNpcSchedule(
@@ -380,8 +428,18 @@ export class Npc implements Actor {
     this.pendingThought = '';
     this.bubbleT = 0;
     this.bubbleText = '';
+
+    const extras: string[] = [];
+    if (this.recentActivity) extras.push(this.recentActivity);
+    if (this.emergentContext && this.emergentContextDay >= ctx.day - 1) {
+      extras.push(this.emergentContext);
+    }
+
     let place = scheduleTalkPlace(ctx.place, this.scheduleState);
-    if (this.recentActivity) place = `${place} | ${this.recentActivity}`.slice(0, 63);
+    if (extras.length) {
+      const suffix = ` | ${extras.join(' | ')}`.slice(0, 43);
+      place = `${place.slice(0, Math.max(0, 63 - suffix.length))}${suffix}`.slice(0, 63);
+    }
     this.conversation.start({ ...ctx, place });
   }
 
