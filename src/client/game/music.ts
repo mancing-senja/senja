@@ -111,6 +111,13 @@ const PALETTES: Record<Mood, Palette> = {
 const LOOKAHEAD_MS = 120;
 const SCHEDULE_AHEAD = 0.45;
 
+function getTimeMods(label: string): { bpm: number, density: number } {
+  if (label === 'pagi' || label === 'subuh') return { bpm: 1.15, density: 1.25 };
+  if (label === 'sore' || label === 'senja') return { bpm: 0.9, density: 0.85 };
+  if (label === 'malam' || label === 'magrib' || label === 'dini hari') return { bpm: 0.8, density: 0.65 };
+  return { bpm: 1.0, density: 1.0 };
+}
+
 export class Music {
   private ctx: AudioContext | null = null;
   private bus: GainNode | null = null;
@@ -126,6 +133,10 @@ export class Music {
   private target: Mood = 'pastoral';
   /** Cross-fade weight while a district hands over to another. */
   private blend = 1;
+
+  private targetTimeLabel = 'siang';
+  private currentBpmMod = 1.0;
+  private currentDensityMod = 1.0;
 
   /** 0..1 — dimmed during a bite so the fish gets the stage. */
   private duck = 1;
@@ -180,6 +191,10 @@ export class Music {
     this.night = n;
   }
 
+  setTimeOfDay(label: string): void {
+    this.targetTimeLabel = label;
+  }
+
   /** Pulls the music down for a moment — used when a fish bites, so the
    *  hook lands in a gap rather than under a chord. */
   duckFor(seconds: number): void {
@@ -213,16 +228,23 @@ export class Music {
       this.filter.frequency.setTargetAtTime(target, ctx.currentTime, 0.4);
     }
 
+    const targetMods = getTimeMods(this.targetTimeLabel);
+    this.currentBpmMod += (targetMods.bpm - this.currentBpmMod) * 0.02;
+    this.currentDensityMod += (targetMods.density - this.currentDensityMod) * 0.02;
+
     while (this.nextNoteTime < ctx.currentTime + SCHEDULE_AHEAD) {
       this.scheduleStep(this.step, this.nextNoteTime);
       const p = PALETTES[this.mood];
-      this.nextNoteTime += (60 / p.bpm) / 2; // eighth notes
+      const activeBpm = p.bpm * this.currentBpmMod;
+      this.nextNoteTime += (60 / activeBpm) / 2; // eighth notes
       this.step++;
     }
   }
 
   private scheduleStep(step: number, when: number): void {
     const p = PALETTES[this.mood];
+    const activeBpm = p.bpm * this.currentBpmMod;
+    const activeDensity = Math.min(1, p.density * this.currentDensityMod);
     const bar = Math.floor(step / 8) % p.progression.length;
     const chord = p.progression[bar];
     const inBar = step % 8;
@@ -231,7 +253,7 @@ export class Music {
 
     // --- pad: re-struck at the top of each bar, held across it
     if (inBar === 0) {
-      const dur = (60 / p.bpm) * 4;
+      const dur = (60 / activeBpm) * 4;
       for (const semi of chord) {
         this.voice(p.padType, p.root * ratio(semi), when, dur, p.padGain * g, 0.9, 0.6);
       }
@@ -240,17 +262,17 @@ export class Music {
     // --- bass: root on 1, fifth on 5
     if (inBar === 0 || inBar === 4) {
       const semi = inBar === 0 ? chord[0] : chord[Math.min(1, chord.length - 1)];
-      this.voice(p.bassType, p.root * 0.5 * ratio(semi), when, (60 / p.bpm) * 1.6, p.bassGain * g, 0.02, 0.35);
+      this.voice(p.bassType, p.root * 0.5 * ratio(semi), when, (60 / activeBpm) * 1.6, p.bassGain * g, 0.02, 0.35);
     }
 
     // --- melody: chosen fresh each time, weighted toward chord tones so it
     // always sits inside the harmony even though it is never the same twice
-    if (Math.random() < p.density) {
+    if (Math.random() < activeDensity) {
       const useChordTone = Math.random() < 0.55;
       const semi = useChordTone
         ? chord[Math.floor(Math.random() * chord.length)] + (Math.random() < 0.4 ? 12 : 0)
         : p.scale[Math.floor(Math.random() * p.scale.length)];
-      const dur = (60 / p.bpm) * (Math.random() < 0.3 ? 1.0 : 0.5);
+      const dur = (60 / activeBpm) * (Math.random() < 0.3 ? 1.0 : 0.5);
       this.voice(p.leadType, p.root * 2 * ratio(semi), when, dur, p.leadGain * g, 0.01, 0.5);
     }
 

@@ -115,6 +115,11 @@ export class Audio {
     this.music.setMood(m);
   }
 
+  /** Updates the music arrangement modifiers based on time of day. */
+  setTimeOfDay(label: string): void {
+    this.music.setTimeOfDay(label);
+  }
+
   /** Ambience follows the clock: crickets at night, birds by day, and the
    *  water gets a touch louder in the rain. */
   update(dt: number, night: number, rain: number): void {

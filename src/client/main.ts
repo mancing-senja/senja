@@ -758,6 +758,7 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
     }
     // The band changes with the district, cross-fading over a few bars.
     audio.setMood(dz.weight > 0.5 && dz.district ? dz.district.genre : 'pastoral');
+    audio.setTimeOfDay(L.label);
 
     const here = indoors ? DEFAULT_SPOT : spotAt(map.spots, player.x, player.y);
     if (here.id !== lastSpot) {
