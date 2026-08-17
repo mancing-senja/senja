@@ -3,8 +3,11 @@ import type {
 } from '../shared/npc-ai.js';
 
 const DEFAULT_AI_BASE_URL = 'https://router.bynara.id/v1';
-const DEFAULT_AI_MODEL = 'auto/bynara';
+const DEFAULT_AI_MODEL = 'deepseek-v4-flash-free';
 const MIN_GAP_MS = 650;
+const AI_ATTEMPT_TIMEOUT_MS = 6_500;
+const AI_MAX_ATTEMPTS = 2;
+const AI_RETRY_BASE_MS = 350;
 const recentByClient = new Map<string, number>();
 
 export class NpcAiError extends Error {
@@ -32,48 +35,72 @@ interface AiConfig {
  * Optional:
  *   SENJA_AI_BASE_URL  default https://router.bynara.id/v1
  *   SENJA_AI_CHAT_URL  exact endpoint override
- *   SENJA_AI_MODEL     default auto/bynara
+ *   SENJA_AI_MODEL     default deepseek-v4-flash-free
  *   SENJA_AI_PROVIDER  label used only in server errors/logs
  */
 export async function generateNpcTurn(raw: unknown, clientKey: string): Promise<NpcTalkResponse> {
   throttle(clientKey);
   const req = cleanRequest(raw);
   const config = aiConfig();
-
-  const response = await fetch(config.url, {
-    method: 'POST',
-    headers: {
-      authorization: `Bearer ${config.apiKey}`,
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: config.model,
-      stream: false,
-      // NPC dialogue values responsiveness over deep chain-of-thought. Nara
-      // documents this as safe to send to non-reasoning models as well.
-      reasoning_effort: 'low',
-      messages: [
-        { role: 'system', content: systemPrompt(req) },
-        { role: 'user', content: turnPrompt(req) },
-      ],
-    }),
-    signal: AbortSignal.timeout(12_000),
+  const requestBody = JSON.stringify({
+    model: config.model,
+    stream: false,
+    // NPC dialogue values responsiveness over deep chain-of-thought. Nara
+    // documents this as safe to send to non-reasoning models as well.
+    reasoning_effort: 'low',
+    messages: [
+      { role: 'system', content: systemPrompt(req) },
+      { role: 'user', content: turnPrompt(req) },
+    ],
   });
 
-  if (!response.ok) {
-    const detail = (await response.text()).slice(0, 240);
-    throw new NpcAiError(
-      502,
-      `${config.provider} gagal (${response.status})${detail ? `: ${detail}` : ''}`,
-    );
+  for (let attempt = 1; attempt <= AI_MAX_ATTEMPTS; attempt += 1) {
+    let response: Response;
+    try {
+      response = await fetch(config.url, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${config.apiKey}`,
+          'content-type': 'application/json',
+        },
+        body: requestBody,
+        signal: AbortSignal.timeout(AI_ATTEMPT_TIMEOUT_MS),
+      });
+    } catch (err) {
+      if (isTimeoutError(err)) {
+        if (attempt < AI_MAX_ATTEMPTS) {
+          await sleep(AI_RETRY_BASE_MS * attempt);
+          continue;
+        }
+        throw new NpcAiError(
+          504,
+          `${config.provider} timeout setelah ${AI_MAX_ATTEMPTS} percobaan`,
+        );
+      }
+      throw err;
+    }
+
+    if (!response.ok) {
+      const detail = (await response.text()).slice(0, 240);
+      if (isTransientProviderStatus(response.status) && attempt < AI_MAX_ATTEMPTS) {
+        await sleep(AI_RETRY_BASE_MS * attempt);
+        continue;
+      }
+      throw new NpcAiError(
+        response.status >= 400 && response.status <= 599 ? response.status : 502,
+        `${config.provider} gagal (${response.status})${detail ? `: ${detail}` : ''}`,
+      );
+    }
+
+    const payload = await response.json() as {
+      choices?: Array<{ message?: { content?: string | null } }>;
+    };
+    const content = payload.choices?.[0]?.message?.content;
+    if (!content) throw new NpcAiError(502, `${config.provider} tidak mengembalikan dialog`);
+    return cleanResponse(parseJson(content), req.history.length);
   }
 
-  const payload = await response.json() as {
-    choices?: Array<{ message?: { content?: string | null } }>;
-  };
-  const content = payload.choices?.[0]?.message?.content;
-  if (!content) throw new NpcAiError(502, `${config.provider} tidak mengembalikan dialog`);
-  return cleanResponse(parseJson(content), req.history.length);
+  throw new NpcAiError(503, `${config.provider} sementara tidak tersedia`);
 }
 
 function aiConfig(): AiConfig {
@@ -253,6 +280,18 @@ function throttle(key: string): void {
   if (recentByClient.size > 2000) {
     for (const [k, t] of recentByClient) if (now - t > 60_000) recentByClient.delete(k);
   }
+}
+
+function isTransientProviderStatus(status: number): boolean {
+  return status === 500 || status === 502 || status === 503 || status === 504;
+}
+
+function isTimeoutError(err: unknown): boolean {
+  return err instanceof DOMException && err.name === 'TimeoutError';
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function registerGuide(register: NpcTalkRequest['npc']['register']): string {
