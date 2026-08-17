@@ -75,6 +75,8 @@ function playerFace(): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** Which of the twelve character looks this player wears. Stored, so you
+ *  are the same person every time you come back. */
 function playerLook(): number {
   const saved = localStorage.getItem('senja.look');
   if (saved !== null) return Number(saved) % LOOK_COUNT;
