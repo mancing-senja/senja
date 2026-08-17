@@ -337,13 +337,38 @@ export function drawActor(
   d.sprite('shadow', a.x - 8, a.y - 5, { tint: [0, 0, 0], flat: true, alpha: shadowA });
 
   if (a.boat) {
-    const by = a.y - 2 + Math.sin(clock * 2 + a.x) * 1;
-    d.rect(x - 6, by - 6, CH_W + 12, 10, C.Wood, alpha);
-    d.rect(x - 5, by - 5, CH_W + 10, 8, C.WoodDk, alpha);
-    d.rect(x - 3, by - 1, CH_W + 6, 2, C.Wood, alpha);
+    const by = a.y - 1 + Math.sin(clock * 2 + a.x) * 1;
+    // Water ripple / wake
+    d.rect(x - 16, by + 2, 32, 6, C.WaterLt, alpha * 0.4);
+
+    // Outer dark rim
+    d.rect(x - 14, by - 10, 28, 16, C.WoodDk, alpha);
+    d.rect(x - 16, by - 8, 32, 12, C.WoodDk, alpha);
+
+    // Inner floor
+    d.rect(x - 12, by - 8, 24, 12, C.Wood, alpha);
+    d.rect(x - 14, by - 6, 28, 8, C.Wood, alpha);
+
+    // Wood planks detail
+    d.rect(x - 12, by - 4, 24, 1, C.WoodDk, alpha * 0.5);
+    d.rect(x - 10, by, 20, 1, C.WoodDk, alpha * 0.5);
+
+    // Light wooden rim (top edge)
+    d.rect(x - 12, by - 11, 24, 2, C.WoodLt, alpha);
+    d.rect(x - 14, by - 10, 2, 4, C.WoodLt, alpha);
+    d.rect(x + 12, by - 10, 2, 4, C.WoodLt, alpha);
+    d.rect(x - 16, by - 6, 2, 8, C.WoodLt, alpha);
+    d.rect(x + 14, by - 6, 2, 8, C.WoodLt, alpha);
+    d.rect(x - 14, by + 2, 2, 4, C.WoodLt, alpha);
+    d.rect(x + 12, by + 2, 2, 4, C.WoodLt, alpha);
+    d.rect(x - 12, by + 5, 24, 2, C.WoodLt, alpha);
+
+    // A little lantern on the edge
+    d.rect(x - 12, by - 12, 4, 5, C.Lantern, alpha);
+    d.rect(x - 11, by - 11, 2, 3, C.SunGlow, alpha);
   }
 
-  d.sprite(key, x, y + (a.boat ? -4 + Math.sin(clock * 2 + a.x) * 1 : 0), { flipX: flip, alpha });
+  d.sprite(key, x, y + (a.boat ? -3 + Math.sin(clock * 2 + a.x) * 1 : 0), { flipX: flip, alpha });
 
   // Warm rim on the sunlit side at dawn and dusk.
   if (L.rim > 0.3) {
