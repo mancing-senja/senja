@@ -19,6 +19,7 @@ import { lookColour } from '../art/character';
 import type { LoreFragment } from './lore';
 import type { Farm } from './farm';
 import type { NetStatus, RoomPlayerSummary } from './net';
+import { drawWorldMapPanel } from './world-map-panel';
 
 interface FeedLine {
   item: FeedItem;
@@ -82,6 +83,7 @@ export class Ui {
   private roomPlayers: RoomPlayerSummary[] = [];
   showHelp = false;
   showPlayers = false;
+  showMap = false;
 
   constructor(private input: Input, private onSend: (text: string) => void) {
     window.addEventListener('keydown', (e) => this.onKey(e));
@@ -93,6 +95,28 @@ export class Ui {
 
   private onKey(e: KeyboardEvent): void {
     if (!this.chatOpen) {
+      if (e.key === 'k' || e.key === 'K') {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        this.showMap = !this.showMap;
+        this.input.capture(this.showMap);
+        if (this.showMap) {
+          this.showPlayers = false;
+          this.showHelp = false;
+          this.showLog = false;
+          this.inspecting = false;
+          this.showBoard = false;
+          this.reading = null;
+        }
+        return;
+      }
+      // The map is modal. Swallow gameplay shortcuts while it is open so
+      // reading the map cannot make the character walk/fish behind it.
+      if (this.showMap) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        return;
+      }
       if (e.key === 'p' || e.key === 'P') {
         e.preventDefault();
         this.showPlayers = !this.showPlayers;
@@ -209,7 +233,7 @@ export class Ui {
     }
     // Not while a fish is on. The reel bar sits exactly here, and nobody
     // fighting a Mitos needs telling which key walks.
-    if (this.helpT > 0 && !this.chatOpen && !this.talking && !this.reeling) {
+    if (this.helpT > 0 && !this.chatOpen && !this.talking && !this.reeling && !this.showMap) {
       this.drawHelpHint(d);
     }
     if (this.showHelp) this.drawHelpPanel(d);
@@ -217,6 +241,7 @@ export class Ui {
     if (this.showLog && this.inspecting) this.drawInspect(d, ctx);
     if (this.showBoard) this.drawBoardPanel(d, ctx);
     if (this.reading) this.drawLorePanel(d);
+    if (this.showMap) drawWorldMapPanel(d);
   }
 
   showLog = false;
@@ -612,14 +637,14 @@ export class Ui {
   private drawHelpHint(d: Draw): void {
     const a = Math.min(1, this.helpT / 2);
     d.textCentered(
-      'wasd jalan · spasi mancing · e pegang · j catatan · h bantuan',
+      'wasd jalan · spasi mancing · e aksi · k peta · h bantuan',
       view.w / 2, view.h - 26, C.Pale, C.InkDeep, a * 0.9,
     );
   }
 
   private drawHelpPanel(d: Draw): void {
     const w = 200;
-    const h = 122;
+    const h = 132;
     const x = Math.round(view.w / 2 - w / 2);
     const y = Math.round(view.h / 2 - h / 2);
     d.panel(x, y, w, h, 1, C.Amber);
@@ -630,6 +655,7 @@ export class Ui {
       ['e', 'cangkul, tanam, siram, panen, jual'],
       ['q', 'ganti bibit'],
       ['enter', 'ngobrol'],
+      ['k', 'peta dunia'],
       ['j', 'catatan tangkapan'],
       ['b', 'papan komunitas'],
       ['p', 'lihat pemain online'],
