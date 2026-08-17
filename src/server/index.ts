@@ -210,11 +210,13 @@ wss.on('connection', (ws) => {
   ws.on('message', (raw) => {
     const msg = safeParse<ClientMsg>(String(raw));
     if (!msg || typeof msg.t !== 'string') return;
-    handle(client, msg);
+    void handle(client, msg).catch((err) => {
+      console.warn('[senja] gagal menangani pesan:', err);
+    });
   });
 
   ws.on('close', () => {
-    store.flush();
+    void store.flush();
     const r = client.room;
     if (!r) return;
     r.clients.delete(client);
@@ -234,7 +236,7 @@ wss.on('connection', (ws) => {
   });
 });
 
-function handle(c: Client, msg: ClientMsg): void {
+async function handle(c: Client, msg: ClientMsg): Promise<void> {
   if (msg.t === 'join') {
     const code = clean(msg.room, 12).toLowerCase() || 'kolam';
     let r = rooms.get(code);
@@ -257,7 +259,7 @@ function handle(c: Client, msg: ClientMsg): void {
     if (validToken(msg.token)) {
       const token: string = msg.token;
       c.token = token;
-      const p = store.get(token);
+      const p = await store.get(token);
       if (p.name) c.state.name = p.name;
       if (Number.isFinite(p.look)) c.state.hue = p.look % 12;
       c.state.coins = p.coins;
@@ -293,7 +295,9 @@ function handle(c: Client, msg: ClientMsg): void {
     const now = Date.now();
     if (now - c.lastSave < SAVE_MIN_MS) return;
     c.lastSave = now;
-    store.merge(c.token, msg.profile ?? {});
+    void store.merge(c.token, msg.profile ?? {}).catch((err) => {
+      console.warn('[senja] gagal simpan profil:', err);
+    });
     return;
   }
 
@@ -481,13 +485,13 @@ setInterval(() => {
 
 for (const sig of ['SIGINT', 'SIGTERM'] as const) {
   process.on(sig, () => {
-    // The save timer runs every twenty seconds; without this, stopping the
-    // server throws away everything since the last tick.
-    store.flush();
-    console.log('[senja] profil tersimpan, keluar');
+    // Supabase writes are committed as they happen; flush remains a no-op
+    // compatibility seam for the old file-backed store.
+    void store.flush();
+    console.log('[senja] keluar');
     process.exit(0);
   });
 }
 
 console.log(`[senja] server siap di http://localhost:${PORT} (socket di /room)`);
-console.log(`[senja] ${store.size} profil tersimpan`);
+console.log('[senja] profil pemain disimpan di Supabase');
