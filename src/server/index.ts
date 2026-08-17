@@ -59,6 +59,7 @@ interface Room {
 const store = new Store();
 const rooms = new Map<string, Room>();
 let nextId = 1;
+let shuttingDown = false;
 
 function makeRoom(code: string): Room {
   const plots: PlotState[] = [];
@@ -267,11 +268,13 @@ wss.on('connection', (ws) => {
   ws.on('message', (raw) => {
     const msg = safeParse<ClientMsg>(String(raw));
     if (!msg || typeof msg.t !== 'string') return;
-    handle(client, msg);
+    void handle(client, msg).catch((err) => {
+      console.warn('[senja] gagal menangani pesan:', err);
+    });
   });
 
   ws.on('close', () => {
-    store.flush();
+    void store.flush();
     const r = client.room;
     if (!r) return;
     r.clients.delete(client);
@@ -291,7 +294,9 @@ wss.on('connection', (ws) => {
   });
 });
 
-function handle(c: Client, msg: ClientMsg): void {
+async function handle(c: Client, msg: ClientMsg): Promise<void> {
+  if (shuttingDown) return;
+
   if (msg.t === 'join') {
     const code = clean(msg.room, 12).toLowerCase() || 'kolam';
     let r = rooms.get(code);
@@ -318,7 +323,7 @@ function handle(c: Client, msg: ClientMsg): void {
     if (validToken(msg.token)) {
       const token: string = msg.token;
       c.token = token;
-      const p = store.get(token);
+      const p = await store.get(token);
       if (p.name) c.state.name = p.name;
       if (Number.isFinite(p.look)) c.state.hue = p.look % 12;
       c.state.coins = p.coins;
@@ -354,7 +359,9 @@ function handle(c: Client, msg: ClientMsg): void {
     const now = Date.now();
     if (now - c.lastSave < SAVE_MIN_MS) return;
     c.lastSave = now;
-    store.merge(c.token, msg.profile ?? {});
+    void store.merge(c.token, msg.profile ?? {}).catch((err) => {
+      console.warn('[senja] gagal simpan profil:', err);
+    });
     return;
   }
 
@@ -540,15 +547,27 @@ setInterval(() => {
   }
 }, 20_000);
 
+async function shutdown(sig: 'SIGINT' | 'SIGTERM'): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+
+  // Stop accepting fresh work, then give every Supabase save that already
+  // left this process a chance to commit before the process disappears.
+  httpServer.close();
+  wss.close();
+  await store.flush();
+  console.log(`[senja] keluar (${sig})`);
+  process.exit(0);
+}
+
 for (const sig of ['SIGINT', 'SIGTERM'] as const) {
-  process.on(sig, () => {
-    // The save timer runs every twenty seconds; without this, stopping the
-    // server throws away everything since the last tick.
-    store.flush();
-    console.log('[senja] profil tersimpan, keluar');
-    process.exit(0);
+  process.once(sig, () => {
+    void shutdown(sig).catch((err) => {
+      console.warn('[senja] gagal flush profil saat shutdown:', err);
+      process.exit(1);
+    });
   });
 }
 
 console.log(`[senja] server siap di http://localhost:${PORT} (socket di /room)`);
-console.log(`[senja] ${store.size} profil tersimpan`);
+console.log('[senja] profil pemain disimpan di Supabase');

@@ -20,6 +20,12 @@ import { RemotePlayer } from './player';
 
 export type NetStatus = 'offline' | 'connecting' | 'online' | 'full';
 
+export interface RoomPlayerSummary {
+  name: string;
+  hue: number;
+  mine: boolean;
+}
+
 /** This player's save key.
  *
  *  Minted once, in the browser, and never shown to anybody. It is not an
@@ -109,6 +115,7 @@ export class Net {
       this.ws = null;
       if (this.status !== 'full') this.status = 'offline';
       this.players.clear();
+      this.publishPlayers();
       this.scheduleRetry();
     };
 
@@ -125,6 +132,8 @@ export class Net {
   private handle(msg: ServerMsg): void {
     switch (msg.t) {
       case 'profile':
+        if (msg.profile.name) this.name = msg.profile.name;
+        if (Number.isFinite(msg.profile.look)) this.hue = msg.profile.look;
         this.onProfile?.(msg.profile);
         break;
 
@@ -136,7 +145,8 @@ export class Net {
         this.serverRain = msg.state.rain;
         this.plots = msg.state.plots;
         this.onPlots?.(this.plots);
-        for (const p of msg.players) this.addPlayer(p);
+        for (const p of msg.players) this.addPlayer(p, false);
+        this.publishPlayers();
         break;
 
       case 'joined':
@@ -146,6 +156,7 @@ export class Net {
       case 'left': {
         const rp = this.players.get(msg.id);
         if (rp) rp.leaving = true;
+        this.publishPlayers();
         break;
       }
 
@@ -153,14 +164,25 @@ export class Net {
         this.serverTime = msg.time;
         this.serverRain = msg.rain;
         const seen = new Set<string>();
+        let changed = false;
         for (const s of msg.players) {
           if (s.id === this.youId) continue;
           seen.add(s.id);
           const rp = this.players.get(s.id);
-          if (rp) rp.applySnapshot(s);
-          else this.addPlayer(s);
+          if (rp) {
+            rp.applySnapshot(s);
+          } else {
+            this.addPlayer(s, false);
+            changed = true;
+          }
         }
-        for (const [id, rp] of this.players) if (!seen.has(id)) rp.leaving = true;
+        for (const [id, rp] of this.players) {
+          if (!seen.has(id) && !rp.leaving) {
+            rp.leaving = true;
+            changed = true;
+          }
+        }
+        if (changed) this.publishPlayers();
         break;
       }
 
@@ -189,9 +211,24 @@ export class Net {
     }
   }
 
-  private addPlayer(s: PlayerState): void {
+  private addPlayer(s: PlayerState, publish = true): void {
     if (s.id === this.youId) return;
     this.players.set(s.id, new RemotePlayer(s.id, s.name, s.hue, s));
+    if (publish) this.publishPlayers();
+  }
+
+  /** Keep the pixel HUD decoupled from the socket implementation. The HUD
+   * only needs a tiny roster, so a browser event is enough and avoids
+   * threading networking objects through the render context every frame. */
+  private publishPlayers(): void {
+    const detail: RoomPlayerSummary[] = [];
+    if (this.status === 'online') {
+      detail.push({ name: this.name, hue: this.hue, mine: true });
+      for (const rp of this.players.values()) {
+        if (!rp.leaving) detail.push({ name: rp.name, hue: rp.hue, mine: false });
+      }
+    }
+    window.dispatchEvent(new CustomEvent<RoomPlayerSummary[]>('senja:players', { detail }));
   }
 
   update(dt: number, x: number, y: number, facing: PlayerState['facing'], action: PlayerState['action']): void {
@@ -200,10 +237,15 @@ export class Net {
       if (this.retryIn <= 0 && !this.ws) this.connect();
     }
 
+    let rosterChanged = false;
     for (const [id, rp] of this.players) {
       rp.update(dt);
-      if (rp.leaving && rp.fade <= 0) this.players.delete(id);
+      if (rp.leaving && rp.fade <= 0) {
+        this.players.delete(id);
+        rosterChanged = true;
+      }
     }
+    if (rosterChanged) this.publishPlayers();
 
     if (this.status !== 'online') return;
     this.sendAcc += dt;
@@ -229,12 +271,30 @@ export class Net {
   }
 }
 
+const ROOM_KEY = 'senja.room';
+
 function readRoomFromUrl(): string {
   const h = location.hash.replace('#', '').trim().toLowerCase();
-  if (h) return h.slice(0, 12);
-  // A stable default keeps "just open it and play" working, but a fresh
-  // random room is written into the URL so sharing is unambiguous.
+  if (h) {
+    // An explicit hash is an invite or a deliberate room switch. It wins
+    // over the remembered room and becomes the room we return to next time.
+    const room = h.slice(0, 12);
+    localStorage.setItem(ROOM_KEY, room);
+    return room;
+  }
+
+  // Opening the bare game URL should feel like continuing a session, not
+  // silently dropping the player into a fresh multiplayer world every time.
+  const remembered = localStorage.getItem(ROOM_KEY)?.trim().toLowerCase().slice(0, 12);
+  if (remembered) {
+    location.hash = remembered;
+    return remembered;
+  }
+
+  // First visit only: mint a room, remember it, and make the invite URL
+  // visible so sharing is unambiguous.
   const code = randomCode();
+  localStorage.setItem(ROOM_KEY, code);
   location.hash = code;
   return code;
 }

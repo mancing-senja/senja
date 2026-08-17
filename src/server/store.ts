@@ -1,30 +1,14 @@
-/** Player profiles, kept on the server.
+/** Player profiles, persisted in Supabase.
  *
- *  Everything a player had used to live in localStorage, which means it was
- *  never really theirs: it belonged to one browser on one machine. Clear the
- *  site data and a month of fishing is gone; open the game on a laptop and
- *  you are a stranger with no coins.
+ * The client still owns an opaque random token; Senja does not collect an
+ * email address or password. The database hashes that token before storing
+ * it, so even the profile key itself is not kept in plaintext.
  *
- *  **There are no accounts and no passwords here, on purpose.** The client
- *  mints a random token on first run and sends it on connect; the server
- *  keys a profile off it. That gives progress that survives a cache clear
- *  and follows you to another device if you carry the token across, without
- *  this project storing a single credential. Rushing a password system into
- *  a game is how you end up leaking one, and a fishing game does not need
- *  to know who anybody is.
- *
- *  The store is a JSON file written atomically. That is honestly sized for
- *  what this is — a small cozy game with friends in a room. It holds
- *  everything in memory and rewrites the file on a timer, which is fine for
- *  hundreds of players and would be the wrong shape for thousands. When
- *  that day comes the interface below is the seam to swap. */
+ * The public Supabase key is intentionally safe to ship. Direct table access
+ * is blocked by RLS; the only exposed operations are the two narrowly scoped
+ * RPCs used below. Environment variables can override both values when the
+ * project or key is rotated. */
 
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-
-/** Everything worth carrying between sessions. Deliberately small: the
- *  world itself is regenerated from a seed, so only the player's own record
- *  has to travel. */
 export interface Profile {
   name: string;
   look: number;
@@ -39,11 +23,19 @@ export interface Profile {
   seen: number;
 }
 
-const DATA = process.env.SENJA_DATA ?? join(process.cwd(), 'data', 'players.json');
-/** How often the file is rewritten, at most. Saving on every catch would
- *  hammer the disk for no benefit; a lost minute is an acceptable trade for
- *  a game where the interesting state is the journal. */
-const FLUSH_MS = 20_000;
+const SUPABASE_URL = process.env.SENJA_SUPABASE_URL
+  ?? 'https://fkboibzrpduyrucyadfo.supabase.co';
+const SUPABASE_KEY = process.env.SENJA_SUPABASE_KEY
+  ?? 'sb_publishable_JMzH_SKy7I4ZFvTa3dweEw_FTg24rC4';
+/** CI smoke tests exercise networking but must never write test profiles to
+ * the production Supabase project. */
+const PERSISTENCE_DISABLED = process.env.SENJA_DISABLE_PERSISTENCE === '1';
+
+const seenTokens = new Set<string>();
+
+export function validToken(t: unknown): t is string {
+  return typeof t === 'string' && /^[A-Za-z0-9_-]{16,64}$/.test(t);
+}
 
 function emptyProfile(): Profile {
   return {
@@ -52,108 +44,116 @@ function emptyProfile(): Profile {
   };
 }
 
-/** Tokens are opaque to us, but they arrive over the wire, so they are
- *  checked before being used as an object key. */
-export function validToken(t: unknown): t is string {
-  return typeof t === 'string' && /^[A-Za-z0-9_-]{16,64}$/.test(t);
+function asProfile(value: unknown): Profile {
+  if (!value || typeof value !== 'object') return emptyProfile();
+  const raw = value as Record<string, unknown>;
+  return {
+    name: typeof raw.name === 'string' ? raw.name.slice(0, 24) : '',
+    look: num(raw.look),
+    coins: num(raw.coins),
+    caught: num(raw.caught),
+    day: num(raw.day),
+    log: cleanLog(raw.log),
+    lore: cleanLore(raw.lore),
+    seen: num(raw.seen) || Date.now(),
+  };
+}
+
+async function rpc(name: string, body: Record<string, unknown>): Promise<unknown> {
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${name}`, {
+    method: 'POST',
+    headers: {
+      apikey: SUPABASE_KEY,
+      authorization: `Bearer ${SUPABASE_KEY}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(8_000),
+  });
+
+  if (!response.ok) {
+    const detail = (await response.text()).slice(0, 300);
+    throw new Error(`Supabase ${name} gagal (${response.status}): ${detail}`);
+  }
+  return response.json();
 }
 
 export class Store {
-  private data = new Map<string, Profile>();
-  private dirty = false;
-  private timer: NodeJS.Timeout | null = null;
+  /** Writes that have left this process but have not finished committing yet. */
+  private pendingWrites = new Set<Promise<unknown>>();
 
-  constructor(private file = DATA) {
-    this.load();
-    this.timer = setInterval(() => this.flush(), FLUSH_MS);
-    // Never hold the process open just to run the save timer.
-    this.timer.unref?.();
+  async get(token: string): Promise<Profile> {
+    if (!validToken(token) || PERSISTENCE_DISABLED) return emptyProfile();
+    const data = await rpc('senja_get_profile', { p_token: token });
+    seenTokens.add(token);
+    return asProfile(data);
   }
 
-  private load(): void {
+  async merge(token: string, patch: Partial<Profile>): Promise<Profile> {
+    if (!validToken(token) || PERSISTENCE_DISABLED) return emptyProfile();
+    const request = rpc('senja_merge_profile', {
+      p_token: token,
+      p_patch: sanitizePatch(patch),
+    });
+    this.pendingWrites.add(request);
     try {
-      const raw = readFileSync(this.file, 'utf8');
-      const obj = JSON.parse(raw) as Record<string, Profile>;
-      for (const [k, v] of Object.entries(obj)) {
-        if (validToken(k) && v && typeof v === 'object') this.data.set(k, v);
-      }
-      console.log(`[senja] ${this.data.size} profil dimuat dari ${this.file}`);
-    } catch {
-      // No file yet, or an unreadable one. Starting empty is correct for
-      // both — this must never stop the server coming up.
-      console.log(`[senja] belum ada data pemain di ${this.file}, mulai kosong`);
+      const data = await request;
+      seenTokens.add(token);
+      return asProfile(data);
+    } finally {
+      this.pendingWrites.delete(request);
     }
   }
 
-  get(token: string): Profile {
-    let p = this.data.get(token);
-    if (!p) {
-      p = emptyProfile();
-      this.data.set(token, p);
-      this.dirty = true;
-    }
-    p.seen = Date.now();
-    return p;
-  }
-
-  /** Merges a client's report into the stored profile.
-   *
-   *  Counters only ever move forward. The client is not trusted to be
-   *  authoritative — a stale tab or an out-of-order message must not be
-   *  able to roll somebody's journal backwards. */
-  merge(token: string, patch: Partial<Profile>): Profile {
-    const p = this.get(token);
-    if (typeof patch.name === 'string') p.name = patch.name.slice(0, 24);
-    if (Number.isFinite(patch.look)) p.look = Math.max(0, Math.min(63, patch.look as number));
-    if (Number.isFinite(patch.coins)) p.coins = Math.max(p.coins, patch.coins as number);
-    if (Number.isFinite(patch.caught)) p.caught = Math.max(p.caught, patch.caught as number);
-    if (Number.isFinite(patch.day)) p.day = Math.max(p.day, patch.day as number);
-
-    if (patch.log && typeof patch.log === 'object') {
-      for (const [id, e] of Object.entries(patch.log)) {
-        if (!/^[a-z_]{1,32}$/.test(id) || !e || typeof e !== 'object') continue;
-        const cur = p.log[id] ?? { count: 0, best: 0, bestGrade: 0 };
-        p.log[id] = {
-          count: Math.max(cur.count, num(e.count)),
-          best: Math.max(cur.best, num(e.best)),
-          bestGrade: Math.max(cur.bestGrade, num(e.bestGrade)),
-        };
-      }
-    }
-    if (Array.isArray(patch.lore)) {
-      const set = new Set(p.lore);
-      for (const id of patch.lore) {
-        if (typeof id === 'string' && /^[a-z0-9_-]{1,32}$/.test(id)) set.add(id);
-      }
-      p.lore = [...set].slice(0, 256);
-    }
-
-    this.dirty = true;
-    return p;
-  }
-
-  /** Atomic: write a sibling file, then rename over the real one. A crash
-   *  mid-write leaves the previous save intact instead of a truncated one. */
-  flush(): void {
-    if (!this.dirty) return;
-    this.dirty = false;
-    try {
-      mkdirSync(dirname(this.file), { recursive: true });
-      const obj: Record<string, Profile> = {};
-      for (const [k, v] of this.data) obj[k] = v;
-      const tmp = `${this.file}.tmp`;
-      writeFileSync(tmp, JSON.stringify(obj), 'utf8');
-      renameSync(tmp, this.file);
-    } catch (err) {
-      // Keep the dirty flag set so the next tick tries again.
-      this.dirty = true;
-      console.warn('[senja] gagal simpan profil:', err);
+  /** Wait until every profile write already accepted by this process settles. */
+  async flush(): Promise<void> {
+    // Loop rather than snapshot once: a save can arrive while an earlier
+    // batch is settling (for example during a graceful shutdown).
+    while (this.pendingWrites.size > 0) {
+      await Promise.allSettled([...this.pendingWrites]);
     }
   }
 
   get size(): number {
-    return this.data.size;
+    return seenTokens.size;
   }
+}
+
+function sanitizePatch(patch: Partial<Profile>): Partial<Profile> {
+  const out: Partial<Profile> = {};
+  if (typeof patch.name === 'string') out.name = patch.name.slice(0, 24);
+  if (Number.isFinite(patch.look)) out.look = num(patch.look);
+  if (Number.isFinite(patch.coins)) out.coins = num(patch.coins);
+  if (Number.isFinite(patch.caught)) out.caught = num(patch.caught);
+  if (Number.isFinite(patch.day)) out.day = num(patch.day);
+  if (patch.log && typeof patch.log === 'object') out.log = cleanLog(patch.log);
+  if (Array.isArray(patch.lore)) out.lore = cleanLore(patch.lore);
+  return out;
+}
+
+function cleanLog(value: unknown): Profile['log'] {
+  const result: Profile['log'] = {};
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return result;
+  for (const [id, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (!/^[a-z_]{1,32}$/.test(id) || !raw || typeof raw !== 'object') continue;
+    const e = raw as Record<string, unknown>;
+    result[id] = {
+      count: num(e.count),
+      best: num(e.best),
+      bestGrade: num(e.bestGrade),
+    };
+  }
+  return result;
+}
+
+function cleanLore(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const unique = new Set<string>();
+  for (const id of value) {
+    if (typeof id === 'string' && /^[a-z0-9_-]{1,32}$/.test(id)) unique.add(id);
+    if (unique.size >= 256) break;
+  }
+  return [...unique];
 }
 
 function num(v: unknown): number {

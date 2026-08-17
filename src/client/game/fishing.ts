@@ -27,6 +27,7 @@ import {
 import {
   STYLES, applyGrade, newFight, styleFor, type FightState, type FightStyle,
 } from './fight';
+import { baitWeight, consumeBaitCast, rodStats } from './shop';
 
 export interface Species {
   id: string;
@@ -533,7 +534,7 @@ function nightness(time: number): number {
  *  that is what makes walking to the swamp at night worth doing. */
 function rollSpecies(
   time: number, depth01: number, spot: Spot, district: District | null,
-  season: Season,
+  season: Season, baited: boolean,
 ): Species {
   const p = phaseIndex(time);
   const weights = SPECIES.map((s) => {
@@ -555,6 +556,9 @@ function rollSpecies(
     // the game for a week without anyone noticing.
     const deep = Math.min(1, s.maxCm / 90);
     w *= deep * season.deepBias + (1 - deep) * season.shallowBias;
+    // Bait is deliberately last. It can tilt a roll that already makes sense
+    // here, but it never overrides a spot or district that suppresses a fish.
+    if (baited) w *= baitWeight(s.value);
     return w;
   });
   const total = weights.reduce((a, b) => a + b, 0);
@@ -600,6 +604,7 @@ export class Fishing {
   private spot: Spot = DEFAULT_SPOT;
   private district: District | null = null;
   private pending: Species | null = null;
+  private baitedCast = false;
   /** Set by the frame. Shifts what is biting without touching any species'
    *  own numbers. */
   season!: Season;
@@ -640,6 +645,7 @@ export class Fishing {
     this.state = 'idle';
     this.t = 0;
     this.pending = null;
+    this.baitedCast = false;
     p.locked = false;
     p.action = 'idle';
   }
@@ -700,8 +706,9 @@ export class Fishing {
           this.state = 'wait';
           p.action = 'wait';
           this.t = 0;
-          // Long enough that you look at the lake, short enough to stay a game.
-          this.biteAt = 2.4 + Math.random() * 7.5;
+          // Better rods are a comfort upgrade, not a different game. Even
+          // the top tier still leaves enough quiet to look at the lake.
+          this.biteAt = (2.4 + Math.random() * 7.5) * rodStats().waitMul;
         }
         break;
       }
@@ -715,7 +722,7 @@ export class Fishing {
         }
         if (this.t >= this.biteAt) {
           this.pending = rollSpecies(
-            time, this.depth01, this.spot, this.district, this.season,
+            time, this.depth01, this.spot, this.district, this.season, this.baitedCast,
           );
           // Deep water, a good spot and the small hours all improve the
           // odds, so chasing a rare fish means going somewhere for it
@@ -847,6 +854,7 @@ export class Fishing {
     this.bobY = hand.y;
     this.flightT = 0;
     this.flightDur = 0.22 + dist / 400;
+    this.baitedCast = consumeBaitCast();
     this.state = 'cast';
     p.action = 'cast';
 
@@ -918,9 +926,12 @@ export class Fishing {
     const grade = this.pendingGrade;
     // Small fish are common; a high grade drags the roll toward the top of
     // the species' range rather than past it, so a Mitos wader is still a
-    // wader and the size numbers stay believable.
+    // wader and the size numbers stay believable. The rod adds only a small
+    // second nudge toward that same ceiling.
     const roll = Math.random() * Math.random();
-    const k = Math.min(1, (1 - roll) + grade.sizeBias * roll);
+    const baseK = Math.min(1, (1 - roll) + grade.sizeBias * roll);
+    const rod = rodStats();
+    const k = Math.min(1, baseK + (1 - baseK) * rod.sizeBias);
     const cm = Math.round(fish.minCm + (fish.maxCm - fish.minCm) * k);
     const sizeK = (cm - fish.minCm) / Math.max(1, fish.maxCm - fish.minCm);
     const perfect = this.slack < 0.35;
@@ -954,6 +965,7 @@ export class Fishing {
     this.state = 'idle';
     this.t = 0;
     this.pending = null;
+    this.baitedCast = false;
     p.locked = false;
     p.action = 'idle';
   }
@@ -990,6 +1002,9 @@ export class Fishing {
       const where = this.district ? `${this.district.label} · ${this.spot.label}` : this.spot.label;
       if (this.spot.id !== 'kolam' || this.district) {
         d.textCentered(where, cx, view.h - 20, C.Amber, C.InkDeep, 0.6);
+      }
+      if (this.baitedCast) {
+        d.textCentered('umpan wangi', cx, view.h - 10, C.Grass, C.InkDeep, 0.65);
       }
     }
 

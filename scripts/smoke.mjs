@@ -22,7 +22,13 @@ const URL = `http://localhost:${PORT}/`;
 const room = spawn(
   'npx',
   ['tsx', 'src/server/index.ts'],
-  { stdio: 'inherit', shell: process.platform === 'win32' },
+  {
+    stdio: 'inherit',
+    shell: process.platform === 'win32',
+    // Exercise the full room protocol without creating anonymous CI rows in
+    // the production Supabase project.
+    env: { ...process.env, SENJA_DISABLE_PERSISTENCE: '1' },
+  },
 );
 
 const preview = spawn(
