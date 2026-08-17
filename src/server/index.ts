@@ -50,8 +50,8 @@ interface Room {
   nextWeather: number;
   feedSeq: number;
   plotsDirty: boolean;
-  /** The community board, keyed by player name so it survives reconnects
-   *  within the room's lifetime. */
+  /** The community board, keyed by stable player identity rather than
+   *  display name. Two friends can both be named Dimas without sharing a row. */
   board: Map<string, BoardEntry>;
   boardDirty: boolean;
 }
@@ -81,13 +81,19 @@ function makeRoom(code: string): Room {
   };
 }
 
+/** Stable identity inside a room. A real browser profile keeps the same token
+ *  across reconnects; a tokenless client falls back to its one connection. */
+function playerKey(c: Client): string {
+  return c.token ? `profile:${c.token}` : `connection:${c.id}`;
+}
+
 /** Ranked for display: most species first, then biggest fish, then count.
  *  Rewarding variety over raw volume keeps the board from being a list of
  *  whoever has been idling the longest. */
 function boardEntries(r: Room): BoardEntry[] {
-  const online = new Set([...r.clients].map((c) => c.state.name));
-  return [...r.board.values()]
-    .map((e) => ({ ...e, online: online.has(e.name) }))
+  const online = new Set([...r.clients].map(playerKey));
+  return [...r.board.entries()]
+    .map(([key, e]) => ({ ...e, online: online.has(key) }))
     .sort((a, b) => b.species - a.species || b.bestCm - a.bestCm || b.caught - a.caught)
     .slice(0, 12);
 }
@@ -221,6 +227,7 @@ wss.on('connection', (ws) => {
     const r = client.room;
     if (!r) return;
     r.clients.delete(client);
+    r.boardDirty = true;
     broadcast(r, { t: 'left', id: client.id });
     feed(r, 'leave', client.state.name, 'pamit dulu');
     if (r.clients.size === 0) {
@@ -334,10 +341,14 @@ async function handle(c: Client, msg: ClientMsg): Promise<void> {
       c.state.caught++;
       feed(r, 'catch', c.state.name, `dapat ${species} ${Math.round(size)} cm`);
 
-      const prev = r.board.get(c.state.name) ?? {
+      const key = playerKey(c);
+      const prev = r.board.get(key) ?? {
         name: c.state.name, hue: c.state.hue, caught: 0,
         bestSpecies: '', bestCm: 0, species: 0, t: 0, online: true,
       };
+      // Name and look are presentation. The stable map key stays the same if
+      // either changes, so renaming a profile never creates a second player.
+      prev.name = c.state.name;
       prev.hue = c.state.hue;
       prev.caught++;
       prev.t = Date.now();
@@ -346,7 +357,7 @@ async function handle(c: Client, msg: ClientMsg): Promise<void> {
         prev.bestCm = Math.round(size);
         prev.bestSpecies = species;
       }
-      r.board.set(c.state.name, prev);
+      r.board.set(key, prev);
       r.boardDirty = true;
       break;
     }
