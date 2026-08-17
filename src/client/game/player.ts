@@ -339,7 +339,7 @@ export function drawActor(
   if (a.boat) {
     const by = a.y - 1 + Math.sin(clock * 2 + a.x) * 1;
     // Water ripple / wake behind the boat
-    d.rect(x - 16, by + 2, 32, 6, C.WaterLt, alpha * 0.4);
+    d.rect(x - 16, by + 2, 32, 6, C.WaterBr, alpha * 0.4);
     
     // Draw the new pixel-art rowboat sprite
     // The sprite is 64x48. To center it on the player's feet (x, a.y), 
