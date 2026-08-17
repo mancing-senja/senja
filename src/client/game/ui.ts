@@ -668,6 +668,7 @@ export class Ui {
       ['k', 'peta dunia'],
       ['j', 'catatan tangkapan'],
       ['b', 'papan komunitas'],
+      ['v', 'naik / turun perahu'],
       ['p', 'lihat pemain online'],
       ['c', 'salin link room'],
       ['g', 'ganti karakter'],

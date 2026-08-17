@@ -744,7 +744,7 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
     }
     if (input.pressed('q')) farm.cycleCrop();
 
-    if (input.pressed('b')) {
+    if (input.pressed('v')) {
       const nextBoat = !player.boat;
       if (canStand(map, player.x, player.y, nextBoat)) {
         player.boat = nextBoat;
