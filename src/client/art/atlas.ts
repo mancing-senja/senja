@@ -37,6 +37,7 @@ import {
   CROP_LOOKS, FISH_LOOKS, makeBarrel, makeBobber, makeBucket,
   makeCabin, makeCrate, makeCrop, makeDockPost, makeDockTile, makeDots, makeFence,
   makeFish, makeGlow, makeLantern, makeNoticeBoard, makeRipple,
+  makeRowboat,
   makeShadow, makeSign, makeStall, makeWell,
 } from './props';
 
@@ -352,6 +353,7 @@ export function buildAtlas(
     for (let s = 0; s <= 4; s++) add(`crop_${name}_${s}`, makeCrop(look, s));
   }
   add('bobber', makeBobber());
+  add('rowboat', makeRowboat());
   for (let i = 0; i < 4; i++) add(`ripple${i}`, makeRipple(i));
   add('glow16', makeGlow(16));
   add('glow32', makeGlow(32));

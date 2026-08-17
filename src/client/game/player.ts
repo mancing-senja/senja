@@ -338,34 +338,13 @@ export function drawActor(
 
   if (a.boat) {
     const by = a.y - 1 + Math.sin(clock * 2 + a.x) * 1;
-    // Water ripple / wake
+    // Water ripple / wake behind the boat
     d.rect(x - 16, by + 2, 32, 6, C.WaterLt, alpha * 0.4);
-
-    // Outer dark rim
-    d.rect(x - 14, by - 10, 28, 16, C.WoodDk, alpha);
-    d.rect(x - 16, by - 8, 32, 12, C.WoodDk, alpha);
-
-    // Inner floor
-    d.rect(x - 12, by - 8, 24, 12, C.Wood, alpha);
-    d.rect(x - 14, by - 6, 28, 8, C.Wood, alpha);
-
-    // Wood planks detail
-    d.rect(x - 12, by - 4, 24, 1, C.WoodDk, alpha * 0.5);
-    d.rect(x - 10, by, 20, 1, C.WoodDk, alpha * 0.5);
-
-    // Light wooden rim (top edge)
-    d.rect(x - 12, by - 11, 24, 2, C.WoodLt, alpha);
-    d.rect(x - 14, by - 10, 2, 4, C.WoodLt, alpha);
-    d.rect(x + 12, by - 10, 2, 4, C.WoodLt, alpha);
-    d.rect(x - 16, by - 6, 2, 8, C.WoodLt, alpha);
-    d.rect(x + 14, by - 6, 2, 8, C.WoodLt, alpha);
-    d.rect(x - 14, by + 2, 2, 4, C.WoodLt, alpha);
-    d.rect(x + 12, by + 2, 2, 4, C.WoodLt, alpha);
-    d.rect(x - 12, by + 5, 24, 2, C.WoodLt, alpha);
-
-    // A little lantern on the edge
-    d.rect(x - 12, by - 12, 4, 5, C.Lantern, alpha);
-    d.rect(x - 11, by - 11, 2, 3, C.SunGlow, alpha);
+    
+    // Draw the new pixel-art rowboat sprite
+    // The sprite is 64x48. To center it on the player's feet (x, a.y), 
+    // we offset by -32 for x and -24 for y.
+    d.sprite('rowboat', x - 32, by - 24, { alpha });
   }
 
   d.sprite(key, x, y + (a.boat ? -3 + Math.sin(clock * 2 + a.x) * 1 : 0), { flipX: flip, alpha });
