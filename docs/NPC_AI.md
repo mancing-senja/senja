@@ -8,8 +8,11 @@ The browser never receives the provider API key.
 Senja defaults to the OpenAI-compatible NaraRouter API:
 
 - base URL: `https://router.bynara.id/v1`
-- model: `auto/bynara`
+- model: `deepseek-v4-flash-free`
 - endpoint: `/chat/completions`
+
+The Vercel deployment pins `SENJA_AI_MODEL=deepseek-v4-flash-free` in
+`vercel.json`, so production does not use NaraRouter's automatic model routing.
 
 Set this secret in the deployment environment:
 
@@ -24,7 +27,7 @@ SENJA_AI_API_KEY=<provider secret>
 ```text
 SENJA_AI_PROVIDER=NaraRouter
 SENJA_AI_BASE_URL=https://router.bynara.id/v1
-SENJA_AI_MODEL=auto/bynara
+SENJA_AI_MODEL=deepseek-v4-flash-free
 ```
 
 For another OpenAI-compatible router, change `SENJA_AI_BASE_URL`,
