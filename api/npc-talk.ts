@@ -44,8 +44,8 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
 }
 
 /** Mirrors @vercel/oidc's production lookup without adding a runtime package
- * solely for one header: request context first, env remains the local-dev
- * fallback inside generateNpcTurn. */
+ * solely for one header. Request context is the production source of truth;
+ * env remains the local-development fallback inside generateNpcTurn. */
 function oidcFromRequest(req: IncomingMessage): string | undefined {
   const direct = headerString(req.headers['x-vercel-oidc-token']);
   if (direct) return direct;
