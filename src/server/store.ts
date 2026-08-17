@@ -27,6 +27,9 @@ const SUPABASE_URL = process.env.SENJA_SUPABASE_URL
   ?? 'https://fkboibzrpduyrucyadfo.supabase.co';
 const SUPABASE_KEY = process.env.SENJA_SUPABASE_KEY
   ?? 'sb_publishable_JMzH_SKy7I4ZFvTa3dweEw_FTg24rC4';
+/** CI smoke tests exercise networking but must never write test profiles to
+ * the production Supabase project. */
+const PERSISTENCE_DISABLED = process.env.SENJA_DISABLE_PERSISTENCE === '1';
 
 const seenTokens = new Set<string>();
 
@@ -77,14 +80,14 @@ async function rpc(name: string, body: Record<string, unknown>): Promise<unknown
 
 export class Store {
   async get(token: string): Promise<Profile> {
-    if (!validToken(token)) return emptyProfile();
+    if (!validToken(token) || PERSISTENCE_DISABLED) return emptyProfile();
     const data = await rpc('senja_get_profile', { p_token: token });
     seenTokens.add(token);
     return asProfile(data);
   }
 
   async merge(token: string, patch: Partial<Profile>): Promise<Profile> {
-    if (!validToken(token)) return emptyProfile();
+    if (!validToken(token) || PERSISTENCE_DISABLED) return emptyProfile();
     const data = await rpc('senja_merge_profile', {
       p_token: token,
       p_patch: sanitizePatch(patch),
