@@ -111,11 +111,11 @@ const PALETTES: Record<Mood, Palette> = {
 const LOOKAHEAD_MS = 120;
 const SCHEDULE_AHEAD = 0.45;
 
-function getTimeMods(label: string): { bpm: number, density: number } {
-  if (label === 'pagi' || label === 'subuh') return { bpm: 1.15, density: 1.25 };
-  if (label === 'sore' || label === 'senja') return { bpm: 0.9, density: 0.85 };
-  if (label === 'malam' || label === 'magrib' || label === 'dini hari') return { bpm: 0.8, density: 0.65 };
-  return { bpm: 1.0, density: 1.0 };
+function getTimeMods(label: string): { bpm: number, density: number, rootMult: number } {
+  if (label === 'pagi' || label === 'subuh') return { bpm: 1.15, density: 1.25, rootMult: 2.0 };
+  if (label === 'sore' || label === 'senja') return { bpm: 0.9, density: 0.85, rootMult: 1.0 };
+  if (label === 'malam' || label === 'magrib' || label === 'dini hari') return { bpm: 0.8, density: 0.65, rootMult: 0.5 };
+  return { bpm: 1.0, density: 1.0, rootMult: 1.0 };
 }
 
 export class Music {
@@ -137,6 +137,7 @@ export class Music {
   private targetTimeLabel = 'siang';
   private currentBpmMod = 1.0;
   private currentDensityMod = 1.0;
+  private currentRootMult = 1.0;
 
   /** 0..1 — dimmed during a bite so the fish gets the stage. */
   private duck = 1;
@@ -231,6 +232,7 @@ export class Music {
     const targetMods = getTimeMods(this.targetTimeLabel);
     this.currentBpmMod += (targetMods.bpm - this.currentBpmMod) * 0.02;
     this.currentDensityMod += (targetMods.density - this.currentDensityMod) * 0.02;
+    this.currentRootMult = targetMods.rootMult; // Snap pitch shifts to avoid microtonal glissandos
 
     while (this.nextNoteTime < ctx.currentTime + SCHEDULE_AHEAD) {
       this.scheduleStep(this.step, this.nextNoteTime);
@@ -255,14 +257,14 @@ export class Music {
     if (inBar === 0) {
       const dur = (60 / activeBpm) * 4;
       for (const semi of chord) {
-        this.voice(p.padType, p.root * ratio(semi), when, dur, p.padGain * g, 0.9, 0.6);
+        this.voice(p.padType, p.root * this.currentRootMult * ratio(semi), when, dur, p.padGain * g, 0.9, 0.6);
       }
     }
 
     // --- bass: root on 1, fifth on 5
     if (inBar === 0 || inBar === 4) {
       const semi = inBar === 0 ? chord[0] : chord[Math.min(1, chord.length - 1)];
-      this.voice(p.bassType, p.root * 0.5 * ratio(semi), when, (60 / activeBpm) * 1.6, p.bassGain * g, 0.02, 0.35);
+      this.voice(p.bassType, p.root * 0.5 * this.currentRootMult * ratio(semi), when, (60 / activeBpm) * 1.6, p.bassGain * g, 0.02, 0.35);
     }
 
     // --- melody: chosen fresh each time, weighted toward chord tones so it
@@ -273,7 +275,7 @@ export class Music {
         ? chord[Math.floor(Math.random() * chord.length)] + (Math.random() < 0.4 ? 12 : 0)
         : p.scale[Math.floor(Math.random() * p.scale.length)];
       const dur = (60 / activeBpm) * (Math.random() < 0.3 ? 1.0 : 0.5);
-      this.voice(p.leadType, p.root * 2 * ratio(semi), when, dur, p.leadGain * g, 0.01, 0.5);
+      this.voice(p.leadType, p.root * 2 * this.currentRootMult * ratio(semi), when, dur, p.leadGain * g, 0.01, 0.5);
     }
 
     // --- brushed percussion, quiet and off the beat
