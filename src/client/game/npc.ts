@@ -1,32 +1,21 @@
 /** Villagers.
  *
- *  They are not quest givers and they do not sell anything. They exist so
- *  the place looks lived in: somebody sweeping outside a house, somebody
- *  standing at the end of the pier with a rod, somebody who says the same
- *  three things about the weather every time you talk to them.
- *
- *  Movement is a loop of waypoints with pauses, driven off the same Actor
- *  shape the players use — so they animate, y-sort and cast shadows through
- *  exactly the same code path. */
+ * Movement is a loop of waypoints with pauses, driven off the same Actor
+ * shape the players use. Conversation is delegated to NpcConversation so a
+ * villager can stop, face the player, wait on an AI turn and offer choices
+ * without tangling asynchronous network state into movement. */
 
 import { TILE } from '../../shared/constants';
 import type { Facing, PlayerAction } from '../../shared/protocol';
-import { C } from '../art/palette';
-import { LINE_H, textWidth, wrapText } from '../art/font';
 import { EAST_OUTPOST, SOUTH_OUTPOST, isWalkable, type WorldMap } from '../world/map';
 import { walkableI, type Interior } from '../world/interior';
 import type { Draw } from '../render/draw';
 import type { Actor } from './player';
 import { Rng } from '../art/canvas';
-import {
-  makeMind, moodFor, speak,
-  type Mind, type Personality, type TalkCtx,
-} from './dialogue';
+import { makeMind, type Mind, type Personality, type TalkCtx } from './dialogue';
 import type { Register } from './registers';
-import {
-  PORTRAIT_H, PORTRAIT_W, portraitKey, type Mood as PortraitMood,
-} from '../art/portrait';
-import { view } from '../engine/view';
+import { NpcConversation } from './npc-conversation';
+import { hydrateMinds } from './mind-sync';
 
 export interface NpcDef {
   id: string;
@@ -39,14 +28,11 @@ export interface NpcDef {
   /** What they are doing when stopped. */
   idle: PlayerAction['kind'];
   /** A nudge to the generated personality, so the cast is not uniformly
-   *  random — this one really is the grumpy one. */
+   * random — this one really is the grumpy one. */
   bias?: Partial<Personality>;
 }
 
 const SPEED = 20;
-
-/** How long a line stays up. Long enough to read twice without hurrying. */
-const PANEL_HOLD = 6.5;
 
 export class Npc implements Actor {
   x: number;
@@ -62,10 +48,7 @@ export class Npc implements Actor {
   private leg = 0;
   private waitT: number;
   private rng: Rng;
-
-  /** Seconds left showing a speech bubble. */
-  sayT = 0;
-  private line = '';
+  private conversation: NpcConversation;
 
   readonly mind: Mind;
 
@@ -81,15 +64,26 @@ export class Npc implements Actor {
 
     this.mind = makeMind(def.id, def.name, seed, def.register ?? 'cozy');
     if (def.bias) Object.assign(this.mind.personality, def.bias);
+    // Registers this live Mind too. A profile may arrive after NPC objects
+    // were created, and indoor residents may be created after the profile.
+    hydrateMinds([this.mind]);
+    this.conversation = new NpcConversation(this.name, this.hue, this.mind);
   }
 
   get standing(): boolean {
     return this.def.route.length <= 1;
   }
 
-  /** Drives the nodding pose while a line is on screen. */
+  /** Kept as a number because the main loop already uses it to decide whether
+   * a villager currently owns the interaction key. Infinity means waiting on
+   * the model or on a player choice. */
+  get sayT(): number {
+    return this.conversation.sayT;
+  }
+
+  /** Drives the nodding pose while a conversation is active. */
   get talking(): boolean {
-    return this.sayT > 0;
+    return this.conversation.talking;
   }
 
   update(dt: number, map: WorldMap): void {
@@ -97,13 +91,19 @@ export class Npc implements Actor {
   }
 
   /** Same routine on a room's tiles. Residents pace around a table using
-   *  the identical waypoint logic — only the collision source changes. */
+   * the identical waypoint logic — only the collision source changes. */
   updateIn(dt: number, it: Interior): void {
     this.step(dt, (tx, ty) => walkableI(it, tx, ty));
   }
 
   private step(dt: number, walk: (tx: number, ty: number) => boolean): void {
-    this.sayT = Math.max(0, this.sayT - dt);
+    // Talking wins over the route. This is what makes the NPC actually stop
+    // and attend to the player instead of continuing to pace mid-sentence.
+    if (this.conversation.update(dt)) {
+      this.action = 'idle';
+      this.animT = 0;
+      return;
+    }
 
     if (this.standing) {
       this.action = this.def.idle;
@@ -113,10 +113,6 @@ export class Npc implements Actor {
 
     if (this.waitT > 0) {
       this.waitT -= dt;
-      // Pausing means doing whatever this person does when they stop, not
-      // standing to attention. Hardcoding 'idle' here quietly threw away the
-      // `idle` field on every villager with a route — which is why the
-      // farmers never actually farmed.
       this.action = this.def.idle;
       this.animT = 0;
       return;
@@ -139,8 +135,6 @@ export class Npc implements Actor {
     const nx = this.x + (dx / dist) * step;
     const ny = this.y + (dy / dist) * step;
 
-    // Villagers respect the same collision the player does. If they are
-    // wedged, skip to the next waypoint rather than vibrating against a wall.
     if (walk(Math.floor(nx / TILE), Math.floor(ny / TILE))) {
       this.x = nx;
       this.y = ny;
@@ -154,99 +148,29 @@ export class Npc implements Actor {
     }
   }
 
-  /** Called when the player presses E next to them. The line is composed on
-   *  the spot from personality, mood, memory and the state of the world —
-   *  there is no script to run out of. */
+  /** Starts a conversation. NpcConversation handles the same-day cooldown,
+   * async AI turns, choices and deterministic fallback. */
   talk(ctx: TalkCtx): void {
-    this.mind.mood = moodFor(this.mind, ctx.day);
-    this.line = speak(this.mind, ctx);
-    this.mind.met++;
-    this.mind.lastDay = ctx.day;
-    this.sayT = PANEL_HOLD;
+    this.conversation.start(ctx);
   }
 
-  /** Faces whoever is talking to them, so a conversation looks like one. */
+  /** Faces whoever is talking to them. Fixed-route villagers are allowed to
+   * turn too; standing still should not mean staring past the player. */
   faceToward(x: number, y: number): void {
-    if (this.standing) return;
     const dx = x - this.x;
     const dy = y - this.y;
     if (Math.abs(dx) > Math.abs(dy)) this.facing = dx > 0 ? 'right' : 'left';
     else this.facing = dy > 0 ? 'down' : 'up';
   }
 
-  /** The conversation panel.
-   *
-   *  This used to be a small bubble over the villager's head, which meant a
-   *  conversation looked like a label rather than like talking to somebody.
-   *  Now it is a panel pinned to the bottom of the screen with the person's
-   *  face in it — and the face changes with their mood, so you can see they
-   *  are having a bad day before you finish reading the sentence.
-   *
-   *  Drawn in screen space, so it is called after the camera is parked at
-   *  the origin rather than from the world pass. */
   drawPanel(d: Draw, playerX: number, playerY: number): void {
-    if (this.sayT <= 0) return;
-    // Walking away ends the conversation. Without this the panel of someone
-    // you left behind stays on screen while you stand somewhere else
-    // entirely, which reads as a bug even though the timer is honest.
-    if (Math.hypot(this.x - playerX, this.y - playerY) > 90) {
-      this.sayT = 0;
-      return;
-    }
-    const a = Math.min(1, Math.min(this.sayT * 3, (PANEL_HOLD - this.sayT) * 5));
-    if (a <= 0) return;
-
-    // The portrait stands in *front* of the box, not behind it.
-    //
-    // Drawn behind, the box cut the figure off at the collarbone and ate
-    // the shoulders — most of a portrait that took a lot of work to draw
-    // was simply not on screen. In front, the whole bust reads, and the
-    // box passing behind it is what sells the figure as standing there
-    // rather than as a picture pasted into a slot.
-    //
-    // This only works because the text is wrapped to stop short of the
-    // portrait's column; nothing the box draws ever ends up underneath it.
-    const w = Math.min(view.w - 20, 340);
-    const x = Math.round((view.w - w) / 2);
-    const textW = w - PORTRAIT_W - 26;
-    const lines = wrapText(this.line, textW);
-    const h = Math.max(46, lines.length * LINE_H + 20);
-    const y = view.h - h - 6;
-
-    d.panel(x, y, w, h, a, C.Amber);
-
-    // Name on a tab above the box, which is where a name plate goes and
-    // also keeps it off the first line of dialogue.
-    const nw = textWidth(this.name) + 12;
-    d.panel(x + 4, y - 12, nw, 13, a, C.Amber);
-    d.text(this.name, x + 10, y - 8, C.Lantern, a);
-
-    for (let i = 0; i < lines.length; i++) {
-      d.text(lines[i], x + 10, y + 8 + i * LINE_H, C.White, a * 0.97);
-    }
-
-    // Portrait last. Its feet sit near the bottom of the screen so the
-    // figure stands on the frame rather than floating over the middle of
-    // the box.
-    const px = x + w - PORTRAIT_W - 4;
-    const py = view.h - PORTRAIT_H - 2;
-    d.sprite(portraitKey(this.hue, this.portraitMood), px + 1, py + 2, {
-      tint: [0, 0, 0], flat: true, alpha: a * 0.35,
-    });
-    d.sprite(portraitKey(this.hue, this.portraitMood), px, py, { alpha: a });
-  }
-
-  /** Which of the three portrait expressions fits their mood right now. */
-  private get portraitMood(): PortraitMood {
-    if (this.mind.mood > 0.3) return 'warm';
-    if (this.mind.mood < -0.3) return 'cold';
-    return 'neutral';
+    this.conversation.draw(d, this.x, this.y, playerX, playerY);
   }
 }
 
 /** The cast. Routes are in tile coordinates. Each has a personality bias so
- *  the village has a grump, a gossip and a soft touch rather than ten
- *  people with randomly rolled temperaments. */
+ * the village has a grump, a gossip and a soft touch rather than ten people
+ * with randomly rolled temperaments. */
 export function villagerDefs(v: {
   vx: number; vy: number; pierX: number; pierTipY: number;
   plotX: number; plotY: number; bayX: number; bayY: number;
