@@ -22,6 +22,10 @@ SENJA_AI_API_KEY=<provider secret>
 
 `BYNARA_API_KEY` is also accepted as a convenience alias.
 
+After adding or changing provider secrets/configuration in Vercel, create a new
+production deployment so the updated environment is available to the running
+serverless functions.
+
 ## Optional configuration
 
 ```text
