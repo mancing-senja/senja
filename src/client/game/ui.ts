@@ -18,7 +18,7 @@ import { Blend } from '../engine/batch';
 import { lookColour } from '../art/character';
 import type { LoreFragment } from './lore';
 import type { Farm } from './farm';
-import type { NetStatus } from './net';
+import type { NetStatus, RoomPlayerSummary } from './net';
 
 interface FeedLine {
   item: FeedItem;
@@ -79,14 +79,25 @@ export class Ui {
   talking = false;
   private toast = '';
   private toastT = 0;
+  private roomPlayers: RoomPlayerSummary[] = [];
   showHelp = false;
+  showPlayers = false;
 
   constructor(private input: Input, private onSend: (text: string) => void) {
     window.addEventListener('keydown', (e) => this.onKey(e));
+    window.addEventListener('senja:players', (e) => {
+      const detail = (e as CustomEvent<RoomPlayerSummary[]>).detail;
+      this.roomPlayers = Array.isArray(detail) ? detail : [];
+    });
   }
 
   private onKey(e: KeyboardEvent): void {
     if (!this.chatOpen) {
+      if (e.key === 'p' || e.key === 'P') {
+        e.preventDefault();
+        this.showPlayers = !this.showPlayers;
+        return;
+      }
       if (e.key === 'c' || e.key === 'C') {
         e.preventDefault();
         void this.copyInvite();
@@ -188,6 +199,7 @@ export class Ui {
     this.drawClock(d, ctx);
     this.drawPurse(d, ctx);
     this.drawRoom(d, ctx);
+    if (this.showPlayers) this.drawPlayersPanel(d, ctx);
     this.drawFeed(d);
     if (this.placeT > 0) this.drawPlace(d);
     if (this.chatOpen) this.drawChatInput(d);
@@ -249,6 +261,46 @@ export class Ui {
     const count = `${this.loreRead}/${this.loreTotal}`;
     d.text(count, x + w - textWidth(count) - 8, y + 6, C.Mist, 0.8);
     d.textCentered('e tutup', view.w / 2, y + h - 10, C.Mist, C.InkDeep, 0.7);
+  }
+
+  /** The people actually connected right now. Kept separate from the
+   * community board because a newcomer should appear here before catching
+   * their first fish. */
+  private drawPlayersPanel(d: Draw, ctx: HudCtx): void {
+    const visible = this.roomPlayers.slice(0, 8);
+    const extra = Math.max(0, this.roomPlayers.length - visible.length);
+    let widest = textWidth(`PEMAIN · ${ctx.room}`);
+    for (const p of visible) {
+      const label = p.mine ? `${p.name} (kamu)` : p.name;
+      widest = Math.max(widest, textWidth(label) + 18);
+    }
+    const w = Math.min(150, Math.max(94, widest + 16));
+    const rows = Math.max(1, visible.length) + (extra > 0 ? 1 : 0);
+    const h = 20 + rows * 10;
+    const x = 4;
+    const y = view.h - 18 - h;
+
+    d.panel(x, y, w, h, 0.92, C.GrassLt);
+    d.text(`PEMAIN · ${ctx.room}`, x + 6, y + 5, C.GrassLt, 0.95);
+    d.rect(x + 5, y + 15, w - 10, 1, C.Slate, 0.5);
+
+    if (visible.length === 0) {
+      const empty = ctx.status === 'connecting' ? 'lagi nyambung...' : 'belum ada yang online';
+      d.text(clipTo(empty, w - 12), x + 6, y + 20, C.Mist, 0.8);
+      return;
+    }
+
+    for (let i = 0; i < visible.length; i++) {
+      const p = visible[i];
+      const ry = y + 20 + i * 10;
+      const label = p.mine ? `${p.name} (kamu)` : p.name;
+      d.rect(x + 6, ry + 1, 4, 5, lookColour(p.hue));
+      d.rect(x + 13, ry + 2, 3, 3, C.Grass);
+      d.text(clipTo(label, w - 25), x + 20, ry, p.mine ? C.Lantern : C.Pale, 0.92);
+    }
+    if (extra > 0) {
+      d.text(`+${extra} lagi`, x + 20, y + 20 + visible.length * 10, C.Mist, 0.8);
+    }
   }
 
   /** The community board: everyone in the room, ranked by how much of the
@@ -516,7 +568,7 @@ export class Ui {
   private drawRoom(d: Draw, ctx: HudCtx): void {
     const dot = ctx.status === 'online' ? C.Grass : ctx.status === 'connecting' ? C.Amber : C.Slate;
     const label = ctx.status === 'online'
-      ? `${ctx.room} · ${ctx.playerCount} · c undang`
+      ? `${ctx.room} · ${ctx.playerCount} · p pemain · c undang`
       : ctx.status === 'connecting' ? 'nyambung...' : 'sendirian';
     const w = textWidth(label) + 15;
     const x = 4;
@@ -567,7 +619,7 @@ export class Ui {
 
   private drawHelpPanel(d: Draw): void {
     const w = 200;
-    const h = 114;
+    const h = 122;
     const x = Math.round(view.w / 2 - w / 2);
     const y = Math.round(view.h / 2 - h / 2);
     d.panel(x, y, w, h, 1, C.Amber);
@@ -580,6 +632,7 @@ export class Ui {
       ['enter', 'ngobrol'],
       ['j', 'catatan tangkapan'],
       ['b', 'papan komunitas'],
+      ['p', 'lihat pemain online'],
       ['c', 'salin link room'],
       ['- / =', 'zoom keluar / masuk'],
       ['m', 'suara on/off'],
