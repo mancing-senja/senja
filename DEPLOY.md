@@ -69,14 +69,19 @@ auto_stop_machines = false
 min_machines_running = 1
 ```
 
-### 2. Disk permanen
+### 2. Penyimpanan profil
 
-Profil pemain (`players.json`) butuh disk yang tidak hilang. Kalau host-nya
-tidak punya, **tidak apa-apa** — sudah diuji: server mulai kosong, tetap
-jalan, tetap menerima join, dan tidak mati saat gagal menulis. Yang hilang
-hanya koin dan catatan tangkapan setiap restart.
+**Bagian ini berubah** sejak profil dipindah ke Supabase. Sebelumnya profil
+ada di `players.json` di disk, jadi host tanpa volume berarti kehilangan koin
+setiap restart. Sekarang tidak: Supabase yang menyimpan, dan disk host tidak
+dipakai untuk itu sama sekali.
 
-Kalau host-nya punya volume, arahkan `SENJA_DATA` ke sana.
+Artinya paket gratis tanpa disk **tidak lagi punya kekurangan** di sisi ini —
+justru ini yang menyelesaikan masalahnya.
+
+Kalau `SENJA_SUPABASE_URL` / `SENJA_SUPABASE_KEY` tidak diisi, server **tetap
+jalan** (sudah diuji: HTTP 200, socket menerima join). Yang hilang cuma
+persistensi profil.
 
 ---
 
@@ -85,10 +90,17 @@ Kalau host-nya punya volume, arahkan `SENJA_DATA` ke sana.
 | Nama | Perlu? | Catatan |
 |---|---|---|
 | `PORT` | biasanya diisi host | Server baca `SENJA_PORT ?? PORT ?? 8787`. Sebagian besar host menyuntik `PORT` sendiri, jadi tidak perlu diapa-apakan. |
-| `SENJA_DATA` | opsional | Path file profil. Default `data/players.json` relatif ke cwd. Arahkan ke volume kalau ada. |
+| `SENJA_SUPABASE_URL` | untuk persistensi | Project Supabase tempat profil disimpan. |
+| `SENJA_SUPABASE_KEY` | untuk persistensi | Publishable key project itu. |
+| `SENJA_DISABLE_PERSISTENCE` | `1` di CI | Mematikan tulis-baca profil sepenuhnya, supaya tes tidak menulis profil palsu ke project sungguhan. |
 
-Tidak ada secret, tidak ada API key, tidak ada database. Tidak ada yang perlu
-dirahasiakan.
+Baris "tidak ada secret, tidak ada API key" pernah ada di dokumen ini dan
+sekarang salah. Ditulis sebelum profil pindah ke Supabase, dan tidak
+diperbarui saat itu terjadi — dokumen yang mengklaim lebih sederhana dari
+kenyataannya lebih berbahaya daripada tidak ada dokumen.
+
+Yang masih benar: tidak ada `service_role` key di mana pun, dan tidak ada
+yang perlu dirahasiakan di sisi client.
 
 ---
 
