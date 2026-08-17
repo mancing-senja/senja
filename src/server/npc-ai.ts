@@ -2,9 +2,8 @@ import type {
   NpcMemoryData, NpcTalkRequest, NpcTalkResponse,
 } from '../shared/npc-ai.js';
 
-const GATEWAY_URL = 'https://ai-gateway.vercel.sh/v1/chat/completions';
-const PRIMARY_MODEL = process.env.SENJA_NPC_MODEL ?? 'openai/gpt-5.6-sol';
-const FALLBACK_MODELS = ['anthropic/claude-sonnet-5', 'google/gemini-3.6-flash'];
+const DEFAULT_AI_BASE_URL = 'https://router.bynara.id/v1';
+const DEFAULT_AI_MODEL = 'auto/bynara';
 const MIN_GAP_MS = 650;
 const recentByClient = new Map<string, number>();
 
@@ -14,25 +13,45 @@ export class NpcAiError extends Error {
   }
 }
 
-/** Generate one short, structured turn. The browser never receives Gateway
- * credentials: production uses Vercel's OIDC token, while local development
- * may opt into AI by providing AI_GATEWAY_API_KEY. */
+interface AiConfig {
+  url: string;
+  model: string;
+  apiKey: string;
+  provider: string;
+}
+
+/** Generate one short, structured turn through any OpenAI-compatible backend.
+ *
+ * Production defaults to NaraRouter, but the provider is deliberately
+ * configured through environment variables rather than baked into the NPC
+ * system. Switching router/model later must not require touching dialogue,
+ * memory, cooldown, or browser code.
+ *
+ * Required secret:
+ *   SENJA_AI_API_KEY (BYNARA_API_KEY is accepted as a convenience alias)
+ * Optional:
+ *   SENJA_AI_BASE_URL  default https://router.bynara.id/v1
+ *   SENJA_AI_CHAT_URL  exact endpoint override
+ *   SENJA_AI_MODEL     default auto/bynara
+ *   SENJA_AI_PROVIDER  label used only in server errors/logs
+ */
 export async function generateNpcTurn(raw: unknown, clientKey: string): Promise<NpcTalkResponse> {
   throttle(clientKey);
   const req = cleanRequest(raw);
-  const credential = process.env.AI_GATEWAY_API_KEY ?? process.env.VERCEL_OIDC_TOKEN;
-  if (!credential) throw new NpcAiError(503, 'AI belum tersedia di server ini');
+  const config = aiConfig();
 
-  const response = await fetch(GATEWAY_URL, {
+  const response = await fetch(config.url, {
     method: 'POST',
     headers: {
-      authorization: `Bearer ${credential}`,
+      authorization: `Bearer ${config.apiKey}`,
       'content-type': 'application/json',
     },
     body: JSON.stringify({
-      model: PRIMARY_MODEL,
-      models: FALLBACK_MODELS,
+      model: config.model,
       stream: false,
+      // NPC dialogue values responsiveness over deep chain-of-thought. Nara
+      // documents this as safe to send to non-reasoning models as well.
+      reasoning_effort: 'low',
       messages: [
         { role: 'system', content: systemPrompt(req) },
         { role: 'user', content: turnPrompt(req) },
@@ -43,15 +62,40 @@ export async function generateNpcTurn(raw: unknown, clientKey: string): Promise<
 
   if (!response.ok) {
     const detail = (await response.text()).slice(0, 240);
-    throw new NpcAiError(502, `AI Gateway gagal (${response.status}): ${detail}`);
+    throw new NpcAiError(
+      502,
+      `${config.provider} gagal (${response.status})${detail ? `: ${detail}` : ''}`,
+    );
   }
 
   const payload = await response.json() as {
     choices?: Array<{ message?: { content?: string | null } }>;
   };
   const content = payload.choices?.[0]?.message?.content;
-  if (!content) throw new NpcAiError(502, 'AI tidak mengembalikan dialog');
+  if (!content) throw new NpcAiError(502, `${config.provider} tidak mengembalikan dialog`);
   return cleanResponse(parseJson(content), req.history.length);
+}
+
+function aiConfig(): AiConfig {
+  const apiKey = cleanSecret(process.env.SENJA_AI_API_KEY)
+    || cleanSecret(process.env.BYNARA_API_KEY);
+  if (!apiKey) {
+    throw new NpcAiError(
+      503,
+      'AI belum dikonfigurasi di server (set SENJA_AI_API_KEY)',
+    );
+  }
+
+  const base = cleanUrl(process.env.SENJA_AI_BASE_URL) || DEFAULT_AI_BASE_URL;
+  const exact = cleanUrl(process.env.SENJA_AI_CHAT_URL);
+  const model = cleanEnv(process.env.SENJA_AI_MODEL, 120) || DEFAULT_AI_MODEL;
+  const provider = cleanEnv(process.env.SENJA_AI_PROVIDER, 40) || 'NaraRouter';
+  return {
+    apiKey,
+    model,
+    provider,
+    url: exact || `${base.replace(/\/+$/, '')}/chat/completions`,
+  };
 }
 
 function systemPrompt(req: NpcTalkRequest): string {
@@ -240,6 +284,25 @@ function cleanText(value: unknown, max: number): string {
   return typeof value === 'string'
     ? value.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max)
     : '';
+}
+
+function cleanEnv(value: string | undefined, max: number): string {
+  return typeof value === 'string' ? value.trim().slice(0, max) : '';
+}
+
+function cleanSecret(value: string | undefined): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function cleanUrl(value: string | undefined): string {
+  const text = cleanEnv(value, 300);
+  if (!text) return '';
+  try {
+    const url = new URL(text);
+    return url.protocol === 'https:' || url.hostname === 'localhost' ? url.toString().replace(/\/$/, '') : '';
+  } catch {
+    return '';
+  }
 }
 
 function bounded(value: unknown, lo: number, hi: number): number {
