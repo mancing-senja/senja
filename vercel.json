@@ -4,7 +4,7 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "env": {
-    "SENJA_AI_MODEL": "deepseek-v4-flash-free"
+    "SENJA_AI_MODEL": "muse-spark-1.2-contributor"
   },
   "rewrites": [
     {
