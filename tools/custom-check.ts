@@ -8,7 +8,7 @@
  *  Run: npx tsx tools/custom-check.ts */
 
 import {
-  BOOTS, CLOTH, HAIR_STYLES, HEAD_COLS, HEAD_GEAR, OPTION_COUNT, TROUSERS,
+  BOOTS, CLOTH, HAIR_STYLES, HEAD_COLS, HEAD_GEAR, LOWER, OPTION_COUNT, TROUSERS,
   bitsUsed, lookFromCode, packLook, randomCode, unpackLook, variantCount,
   type Choices,
 } from '../src/client/art/custom';
@@ -38,6 +38,7 @@ const widths: Array<[string, number, number]> = [
   ['shirt', 4, CLOTH.length],
   ['pants', 3, TROUSERS.length],
   ['boot', 3, BOOTS.length],
+  ['lower', 1, LOWER.length],
 ];
 for (const [name, b, count] of widths) {
   if (count > (1 << b)) {

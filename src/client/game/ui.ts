@@ -622,7 +622,7 @@ export class Ui {
   private drawHelpHint(d: Draw): void {
     const a = Math.min(1, this.helpT / 2);
     d.textCentered(
-      'wasd jalan · spasi mancing · e pegang · j catatan · h bantuan',
+      'wasd jalan · spasi mancing · e pegang · k karakter · h bantuan',
       view.w / 2, view.h - 26, C.Pale, C.InkDeep, a * 0.9,
     );
   }
@@ -644,6 +644,7 @@ export class Ui {
       ['b', 'papan komunitas'],
       ['p', 'lihat pemain online'],
       ['c', 'salin link room'],
+      ['k', 'bikin karakter'],
       ['- / =', 'zoom keluar / masuk'],
       ['m', 'suara on/off'],
       ['h', 'tutup panel ini'],

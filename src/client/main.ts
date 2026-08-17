@@ -119,7 +119,7 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
    *  somebody arrives with no saved appearance — a game that hands you a
    *  random stranger and never mentions you can change it is a game where
    *  nobody knows they can. */
-  const creator = new Creator(face ?? randomCode());
+  const creator = new Creator(face ?? randomCode(), name, input);
   if (face === null) creator.show();
   const net = new Net(name, hue);
 
@@ -550,16 +550,28 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
     if (creator.open) {
       const chosen = creator.update(dt, input);
       if (chosen !== null) {
-        face = chosen;
-        localStorage.setItem('senja.face', String(chosen));
+        face = chosen.code;
+        localStorage.setItem('senja.face', String(chosen.code));
+        localStorage.setItem('senja.name', chosen.name);
+        player.name = chosen.name;
+        // The name travels on `join`, so a rename lands for other players on
+        // the next connect rather than immediately. Saying so beats a silent
+        // half-change.
+        ui.say('karakter disimpan · nama tampil ke pemain lain setelah reconnect');
         // One rebake, on confirm only. The preview never touched the atlas.
         draw.reload(buildAtlas(handDrawn, season, extraLooks()));
         player.hue = LOOK_COUNT;
-        ui.say('karakter disimpan');
       }
       return;
     }
-    if (input.pressed('c') && !ui.chatOpen) creator.show();
+    // `K` for karakter, not `C`.
+    //
+    // `C` was already the one-key room invite, advertised in the HUD as
+    // "c undang" — and binding the creator to it meant pressing invite opened
+    // the character screen instead of copying the link. Nothing of that
+    // feature was edited; the collision was enough to break it, which is the
+    // cheaper way to break somebody's work and the harder one to notice.
+    if (input.pressed('k') && !ui.chatOpen) creator.show();
 
     if (indoors) player.updateIndoors(dt, input, indoors);
     else player.update(dt, input, map);

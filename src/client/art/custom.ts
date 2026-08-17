@@ -22,12 +22,22 @@
 
 import { C, HAIR_TONES, SKIN_TONES } from './palette';
 import { GARMENT_IDS, type GarmentId } from './garment';
-import type { HairStyle, HeadGear, Look, Outfit } from './character';
+import type { HairStyle, HeadGear, Look, Lower, Outfit } from './character';
 
 // --- the option lists ------------------------------------------------------
 
 export const HAIR_STYLES: readonly HairStyle[] = ['short', 'bob', 'tied', 'crop'];
 export const HEAD_GEAR: readonly HeadGear[] = ['bare', 'cap', 'hat', 'hood'];
+
+/** Trousers or a skirt.
+ *
+ *  This is what a sixteen-pixel sprite can actually say about how somebody
+ *  presents. There is no face at this size and no figure to reshape; the
+ *  readable difference is the silhouette below the waist, and hair and
+ *  clothing carry the rest. Offered as its own choice rather than bundled
+ *  behind one label, so a player picks the pieces instead of being handed a
+ *  set of assumptions. */
+export const LOWER: readonly Lower[] = ['celana', 'rok'];
 
 /** Cloth colours offered for shirts, and the shade that goes under each.
  *
@@ -75,6 +85,22 @@ export const HEAD_COLS: ReadonlyArray<readonly [C, C]> = [
   [C.Pale, C.Mist],
 ];
 
+/** Names offered in the creator.
+ *
+ *  A pool rather than a text field, for now. `playerName()` has always picked
+ *  one of these at random and there has never been a way to change it — which
+ *  is the actual gap. Free typing is better and is the next step; a list that
+ *  works beats a text field that does not exist.
+ *
+ *  Indonesian, and deliberately mixed rather than sorted into two blocks: a
+ *  list split by gender turns picking a name into declaring one, which is not
+ *  what this screen is for. */
+export const NAME_POOL: readonly string[] = [
+  'Rian', 'Sari', 'Bayu', 'Nadia', 'Adit', 'Tari', 'Galih', 'Wulan',
+  'Dimas', 'Ayu', 'Hana', 'Razan', 'Intan', 'Fajar', 'Mira', 'Yoga',
+  'Lestari', 'Bagas', 'Citra', 'Arif', 'Nur', 'Eka', 'Putri', 'Reza',
+];
+
 // --- the choices, and how they pack ---------------------------------------
 
 export interface Choices {
@@ -87,6 +113,7 @@ export interface Choices {
   shirt: number;
   pants: number;
   boot: number;
+  lower: number;
 }
 
 /** Bit widths, in packing order. The sum has to stay under 31 so the packed
@@ -104,6 +131,7 @@ const FIELDS: ReadonlyArray<readonly [keyof Choices, number, number]> = [
   ['shirt', 4, CLOTH.length],
   ['pants', 3, TROUSERS.length],
   ['boot', 3, BOOTS.length],
+  ['lower', 1, LOWER.length],
 ];
 
 const TOTAL_BITS = FIELDS.reduce((n, f) => n + f[1], 0);
@@ -184,6 +212,7 @@ export function lookFromCode(code: number, id = 'custom'): Look {
     // read and draw with.
     headCol: head === 'bare' ? 0 : headCol,
     headSh: head === 'bare' ? 0 : headSh,
+    lower: LOWER[c.lower],
     outfit: outfitFor(garment),
     garment,
     shirt,
@@ -212,5 +241,6 @@ export function randomCode(rand: () => number = Math.random): number {
     shirt: pick(CLOTH.length),
     pants: pick(TROUSERS.length),
     boot: pick(BOOTS.length),
+    lower: pick(LOWER.length),
   });
 }
