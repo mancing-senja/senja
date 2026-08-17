@@ -278,7 +278,7 @@ async function handle(c: Client, msg: ClientMsg): Promise<void> {
         t: 'profile',
         profile: {
           name: p.name, look: p.look, coins: p.coins, caught: p.caught,
-          day: p.day, log: p.log, lore: p.lore,
+          day: p.day, log: p.log, lore: p.lore, minds: p.minds,
         },
       });
     }

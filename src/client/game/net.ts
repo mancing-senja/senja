@@ -17,6 +17,7 @@ import {
   type ServerMsg,
 } from '../../shared/protocol';
 import { RemotePlayer } from './player';
+import { exportProfileMinds, mergeProfileMinds } from './mind-sync';
 
 export type NetStatus = 'offline' | 'connecting' | 'online' | 'full';
 
@@ -78,10 +79,6 @@ export class Net {
   }
 
   get url(): string {
-    // Always same-origin, on a path the dev server (and any production
-    // reverse proxy) forwards to the room server. Guessing a second port
-    // used to work on localhost and broke the moment anyone shared a
-    // tunnelled link with a friend.
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     return `${proto}//${location.host}/room`;
   }
@@ -134,6 +131,9 @@ export class Net {
       case 'profile':
         if (msg.profile.name) this.name = msg.profile.name;
         if (Number.isFinite(msg.profile.look)) this.hue = msg.profile.look;
+        // Relationship memory is part of the player profile, but the main
+        // loop should not have to know which villagers currently exist.
+        mergeProfileMinds(msg.profile.minds);
         this.onProfile?.(msg.profile);
         break;
 
@@ -257,6 +257,9 @@ export class Net {
 
   send(msg: ClientMsg): void {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      // Existing save call sites stay untouched. NPC memory is appended at
+      // the network boundary, which also covers the pagehide save path.
+      if (msg.t === 'save') msg.profile.minds = exportProfileMinds();
       this.ws.send(JSON.stringify(msg));
     }
   }
@@ -276,23 +279,17 @@ const ROOM_KEY = 'senja.room';
 function readRoomFromUrl(): string {
   const h = location.hash.replace('#', '').trim().toLowerCase();
   if (h) {
-    // An explicit hash is an invite or a deliberate room switch. It wins
-    // over the remembered room and becomes the room we return to next time.
     const room = h.slice(0, 12);
     localStorage.setItem(ROOM_KEY, room);
     return room;
   }
 
-  // Opening the bare game URL should feel like continuing a session, not
-  // silently dropping the player into a fresh multiplayer world every time.
   const remembered = localStorage.getItem(ROOM_KEY)?.trim().toLowerCase().slice(0, 12);
   if (remembered) {
     location.hash = remembered;
     return remembered;
   }
 
-  // First visit only: mint a room, remember it, and make the invite URL
-  // visible so sharing is unambiguous.
   const code = randomCode();
   localStorage.setItem(ROOM_KEY, code);
   location.hash = code;

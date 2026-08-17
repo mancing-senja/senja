@@ -9,6 +9,8 @@
  * RPCs used below. Environment variables can override both values when the
  * project or key is rotated. */
 
+import type { NpcMemoryData, NpcMindState } from '../shared/npc-ai.js';
+
 export interface Profile {
   name: string;
   look: number;
@@ -19,6 +21,8 @@ export interface Profile {
   log: Record<string, { count: number; best: number; bestGrade: number }>;
   /** Lore fragment ids already read. */
   lore: string[];
+  /** NPC id → that villager's relationship with this player. */
+  minds: Record<string, NpcMindState>;
   /** Unix ms, for pruning profiles nobody has touched in a long time. */
   seen: number;
 }
@@ -40,7 +44,7 @@ export function validToken(t: unknown): t is string {
 function emptyProfile(): Profile {
   return {
     name: '', look: 0, coins: 0, caught: 0, day: 0,
-    log: {}, lore: [], seen: Date.now(),
+    log: {}, lore: [], minds: {}, seen: Date.now(),
   };
 }
 
@@ -55,6 +59,7 @@ function asProfile(value: unknown): Profile {
     day: num(raw.day),
     log: cleanLog(raw.log),
     lore: cleanLore(raw.lore),
+    minds: cleanMinds(raw.minds),
     seen: num(raw.seen) || Date.now(),
   };
 }
@@ -128,6 +133,7 @@ function sanitizePatch(patch: Partial<Profile>): Partial<Profile> {
   if (Number.isFinite(patch.day)) out.day = num(patch.day);
   if (patch.log && typeof patch.log === 'object') out.log = cleanLog(patch.log);
   if (Array.isArray(patch.lore)) out.lore = cleanLore(patch.lore);
+  if (patch.minds && typeof patch.minds === 'object') out.minds = cleanMinds(patch.minds);
   return out;
 }
 
@@ -154,6 +160,52 @@ function cleanLore(value: unknown): string[] {
     if (unique.size >= 256) break;
   }
   return [...unique];
+}
+
+function cleanMinds(value: unknown): Record<string, NpcMindState> {
+  const result: Record<string, NpcMindState> = {};
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return result;
+  for (const [id, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (!/^[A-Za-z0-9:_-]{1,64}$/.test(id) || !raw || typeof raw !== 'object') continue;
+    const state = raw as Record<string, unknown>;
+    const memories: NpcMemoryData[] = [];
+    if (Array.isArray(state.memories)) {
+      for (const item of state.memories) {
+        const memory = cleanMemory(item);
+        if (memory) memories.push(memory);
+        if (memories.length >= 6) break;
+      }
+    }
+    result[id] = {
+      memories,
+      met: Math.min(100000, num(state.met)),
+      lastDay: signedDay(state.lastDay),
+    };
+    if (Object.keys(result).length >= 256) break;
+  }
+  return result;
+}
+
+function cleanMemory(value: unknown): NpcMemoryData | null {
+  if (!value || typeof value !== 'object') return null;
+  const raw = value as Record<string, unknown>;
+  const kind = raw.kind;
+  if (kind !== 'meet' && kind !== 'record' && kind !== 'rare'
+    && kind !== 'promise' && kind !== 'gift' && kind !== 'absence') return null;
+  const subject = typeof raw.subject === 'string'
+    ? raw.subject.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 80)
+    : undefined;
+  return {
+    kind,
+    day: Math.max(-1, Math.min(100000, Math.floor(Number(raw.day) || 0))),
+    weight: Math.max(0, Math.min(10, Number(raw.weight) || 0)),
+    ...(subject ? { subject } : {}),
+    ...(Number.isFinite(raw.value) ? { value: Math.max(-1000000, Math.min(1000000, Number(raw.value))) } : {}),
+  };
+}
+
+function signedDay(v: unknown): number {
+  return Number.isFinite(v) ? Math.max(-1, Math.min(100000, Math.floor(v as number))) : -1;
 }
 
 function num(v: unknown): number {
