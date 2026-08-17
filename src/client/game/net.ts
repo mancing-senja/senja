@@ -20,6 +20,12 @@ import { RemotePlayer } from './player';
 
 export type NetStatus = 'offline' | 'connecting' | 'online' | 'full';
 
+export interface RoomPlayerSummary {
+  name: string;
+  hue: number;
+  mine: boolean;
+}
+
 /** This player's save key.
  *
  *  Minted once, in the browser, and never shown to anybody. It is not an
@@ -109,6 +115,7 @@ export class Net {
       this.ws = null;
       if (this.status !== 'full') this.status = 'offline';
       this.players.clear();
+      this.publishPlayers();
       this.scheduleRetry();
     };
 
@@ -136,7 +143,8 @@ export class Net {
         this.serverRain = msg.state.rain;
         this.plots = msg.state.plots;
         this.onPlots?.(this.plots);
-        for (const p of msg.players) this.addPlayer(p);
+        for (const p of msg.players) this.addPlayer(p, false);
+        this.publishPlayers();
         break;
 
       case 'joined':
@@ -146,6 +154,7 @@ export class Net {
       case 'left': {
         const rp = this.players.get(msg.id);
         if (rp) rp.leaving = true;
+        this.publishPlayers();
         break;
       }
 
@@ -158,9 +167,16 @@ export class Net {
           seen.add(s.id);
           const rp = this.players.get(s.id);
           if (rp) rp.applySnapshot(s);
-          else this.addPlayer(s);
+          else this.addPlayer(s, false);
         }
-        for (const [id, rp] of this.players) if (!seen.has(id)) rp.leaving = true;
+        let changed = false;
+        for (const [id, rp] of this.players) {
+          if (!seen.has(id) && !rp.leaving) {
+            rp.leaving = true;
+            changed = true;
+          }
+        }
+        if (changed) this.publishPlayers();
         break;
       }
 
@@ -189,9 +205,24 @@ export class Net {
     }
   }
 
-  private addPlayer(s: PlayerState): void {
+  private addPlayer(s: PlayerState, publish = true): void {
     if (s.id === this.youId) return;
     this.players.set(s.id, new RemotePlayer(s.id, s.name, s.hue, s));
+    if (publish) this.publishPlayers();
+  }
+
+  /** Keep the pixel HUD decoupled from the socket implementation. The HUD
+   * only needs a tiny roster, so a browser event is enough and avoids
+   * threading networking objects through the render context every frame. */
+  private publishPlayers(): void {
+    const detail: RoomPlayerSummary[] = [];
+    if (this.status === 'online') {
+      detail.push({ name: this.name, hue: this.hue, mine: true });
+      for (const rp of this.players.values()) {
+        if (!rp.leaving) detail.push({ name: rp.name, hue: rp.hue, mine: false });
+      }
+    }
+    window.dispatchEvent(new CustomEvent<RoomPlayerSummary[]>('senja:players', { detail }));
   }
 
   update(dt: number, x: number, y: number, facing: PlayerState['facing'], action: PlayerState['action']): void {
@@ -200,10 +231,15 @@ export class Net {
       if (this.retryIn <= 0 && !this.ws) this.connect();
     }
 
+    let rosterChanged = false;
     for (const [id, rp] of this.players) {
       rp.update(dt);
-      if (rp.leaving && rp.fade <= 0) this.players.delete(id);
+      if (rp.leaving && rp.fade <= 0) {
+        this.players.delete(id);
+        rosterChanged = true;
+      }
     }
+    if (rosterChanged) this.publishPlayers();
 
     if (this.status !== 'online') return;
     this.sendAcc += dt;
