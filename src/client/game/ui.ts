@@ -87,6 +87,11 @@ export class Ui {
 
   private onKey(e: KeyboardEvent): void {
     if (!this.chatOpen) {
+      if (e.key === 'c' || e.key === 'C') {
+        e.preventDefault();
+        void this.copyInvite();
+        return;
+      }
       if (e.key === 'Enter' || e.key === 't' || e.key === 'T') {
         // Only open on Enter; t is a shortcut but must not fire while the
         // player is walking with a hand on the keyboard.
@@ -111,6 +116,18 @@ export class Ui {
       this.chatText = this.chatText.slice(0, -1);
     } else if (e.key.length === 1 && this.chatText.length < MAX_CHAT_LEN) {
       this.chatText += e.key;
+    }
+  }
+
+  /** Copy the exact room URL. A keyboard gesture keeps the Clipboard API
+   * permission model happy without introducing a DOM button into pixel UI. */
+  private async copyInvite(): Promise<void> {
+    const url = `${location.origin}${location.pathname}${location.hash}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      this.say('link room disalin');
+    } catch {
+      this.say('gagal salin link room');
     }
   }
 
@@ -499,7 +516,7 @@ export class Ui {
   private drawRoom(d: Draw, ctx: HudCtx): void {
     const dot = ctx.status === 'online' ? C.Grass : ctx.status === 'connecting' ? C.Amber : C.Slate;
     const label = ctx.status === 'online'
-      ? `${ctx.room} · ${ctx.playerCount}`
+      ? `${ctx.room} · ${ctx.playerCount} · c undang`
       : ctx.status === 'connecting' ? 'nyambung...' : 'sendirian';
     const w = textWidth(label) + 15;
     const x = 4;
@@ -563,6 +580,7 @@ export class Ui {
       ['enter', 'ngobrol'],
       ['j', 'catatan tangkapan'],
       ['b', 'papan komunitas'],
+      ['c', 'salin link room'],
       ['- / =', 'zoom keluar / masuk'],
       ['m', 'suara on/off'],
       ['h', 'tutup panel ini'],
@@ -573,6 +591,6 @@ export class Ui {
       d.text(v, x + 68, ry, C.Pale, 0.9);
       ry += LINE_H + 1;
     }
-    d.text('link room di address bar — kirim ke temen', x + 8, y + h - 11, C.Mist, 0.8);
+    d.text('kirim linknya ke temen — langsung satu room', x + 8, y + h - 11, C.Mist, 0.8);
   }
 }
