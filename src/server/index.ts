@@ -271,7 +271,26 @@ async function handle(c: Client, msg: ClientMsg): Promise<void> {
       c.token = token;
       const p = await store.get(token);
       if (p.name) c.state.name = p.name;
-      if (Number.isFinite(p.look)) c.state.hue = p.look % 12;
+      // Only trust the stored look if the profile has actually been saved
+      // before, and a name is the marker for that: every save the client makes
+      // carries one, and the server floors it to 'pemancing' if it is blank.
+      //
+      // The line below used to run for everybody, and `emptyProfile()` hands
+      // out `look: 0`. `Number.isFinite(0)` is true, so a brand-new player who
+      // joined as look 3 was silently overwritten to 0 — which meant every
+      // first-time player in a room wore preset zero and they all looked like
+      // the same person. `p.name` is checked one line above for exactly this
+      // reason; `look` was missed because 0 is a legitimate value and an
+      // absent one look identical.
+      //
+      // Not gated on `p.look !== 0`, which would break anyone who genuinely
+      // chose preset zero, and not on a sentinel like -1, which the column's
+      // `check (look between 0 and 63)` would reject on the next save.
+      //
+      // Failure mode if a stored profile ever has a look but no name: the
+      // player keeps the hue they joined with, which is the one their own
+      // browser saved. They look right either way.
+      if (p.name && Number.isFinite(p.look)) c.state.hue = p.look % 12;
       c.state.coins = p.coins;
       c.state.caught = p.caught;
       send(c, {

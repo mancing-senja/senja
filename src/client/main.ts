@@ -114,6 +114,14 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
   // The wire still carries the preset index — the protocol clamps it to
   // twelve — so remote players see a preset until that lands. Locally the
   // custom slot is used when there is one.
+  // Two different numbers that were being stored in one field.
+  //
+  // `player.hue` is an *atlas slot* — LOOK_COUNT when a custom appearance is
+  // baked. The profile's `look` is a *preset index*, 0..11, and the server
+  // reads it as one (`p.look % 12`). Saving the slot into it wrote 12, which
+  // the server folded to 0 and which then overwrote `senja.look` on the way
+  // back, resetting the player's preset. `presetHue` is the one that travels.
+  const presetHue = hue;
   const player = new LocalPlayer(name, face === null ? hue : LOOK_COUNT, map);
   const fishing = new Fishing();
   const farm = new Farm();
@@ -235,7 +243,7 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
       t: 'save',
       profile: {
         name: player.name,
-        look: player.hue,
+        look: presetHue,
         coins: farm.coins,
         caught: player.caught,
         day: dayCount,

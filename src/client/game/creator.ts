@@ -72,6 +72,9 @@ export class Creator {
   /** Cached preview frame, rebuilt only when a choice actually changes. */
   private frame: PixelCanvas | null = null;
   private turn = 0;
+  /** What was on disk when the screen opened, so cancelling can restore it. */
+  private opened = 0;
+  private openedName = '';
 
   constructor(code: number, name: string, private input: Input) {
     this.choices = unpackLook(code);
@@ -128,6 +131,8 @@ export class Creator {
     this.row = 0;
     this.frame = null;
     this.stopTyping();
+    this.opened = this.code;
+    this.openedName = this.name_;
   }
 
   /** Returns the chosen code once, on the frame the player confirms. */
@@ -183,11 +188,31 @@ export class Creator {
       this.name_ = NAME_POOL[Math.floor(Math.random() * NAME_POOL.length)];
       this.frame = null;
     }
+    // A way out that changes nothing.
+    //
+    // The only exit used to be Enter, which saves — so pressing `G` by
+    // accident trapped you in the screen until you committed an appearance you
+    // had not asked for. `G` again and Escape both back out, and the choices
+    // are reset to what was on disk so a stray arrow press on the way out does
+    // not linger until next time.
+    if (input.pressed('g', 'escape')) {
+      this.cancel();
+      return null;
+    }
     if (input.pressed('enter', ' ')) {
       this.open = false;
       return { code: this.code, name: this.name };
     }
     return null;
+  }
+
+  /** Closes without saving, and forgets anything touched while open. */
+  cancel(): void {
+    this.open = false;
+    this.stopTyping();
+    this.choices = unpackLook(this.opened);
+    this.name_ = this.openedName;
+    this.frame = null;
   }
 
   private build(): PixelCanvas {
@@ -217,7 +242,7 @@ export class Creator {
     d.textCentered(
       this.typing
         ? 'ketik nama  ·  enter/esc selesai ngetik'
-        : 'wasd/panah pilih  ·  enter di nama buat ngetik  ·  r acak',
+        : 'wasd/panah pilih  ·  r acak  ·  enter simpan  ·  g/esc batal',
       cx, 20, C.Mist, C.InkDeep, 0.8,
     );
 
