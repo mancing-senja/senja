@@ -36,6 +36,10 @@ export class NpcConversation {
     return this._sayT > 0;
   }
 
+  get hasChoices(): boolean {
+    return !this.loading && this.choices.length > 0;
+  }
+
   /** True means the owner must stand still this frame. */
   update(dt: number): boolean {
     if (this._sayT <= 0) return false;
@@ -94,6 +98,10 @@ export class NpcConversation {
     this.loading = true;
     this._sayT = Infinity;
     void this.requestTurn();
+  }
+
+  chooseSelected(): void {
+    this.choose(this.selected);
   }
 
   moveSelection(delta: number): void {
@@ -270,21 +278,23 @@ function clean(value: unknown, max: number): string {
 
 if (typeof window !== 'undefined') {
   window.addEventListener('keydown', (e) => {
-    if (!active || !active.talking) return;
+    if (!active || !active.talking || !active.hasChoices) return;
     const k = e.key.toLowerCase();
     if (k === 'w' || e.key === 'ArrowUp') {
       e.preventDefault();
+      e.stopImmediatePropagation();
       active.moveSelection(-1);
     } else if (k === 's' || e.key === 'ArrowDown') {
       e.preventDefault();
+      e.stopImmediatePropagation();
       active.moveSelection(1);
     } else if (k === 'e' || e.key === 'Enter') {
       e.preventDefault();
-      // E selects the highlighted answer only when choices exist. During a
-      // loading/final line it intentionally does nothing.
-      active.choose((active as unknown as { selected: number }).selected ?? 0);
+      e.stopImmediatePropagation();
+      active.chooseSelected();
     } else if (e.key === '1' || e.key === '2' || e.key === '3') {
       e.preventDefault();
+      e.stopImmediatePropagation();
       active.choose(Number(e.key) - 1);
     }
   });
