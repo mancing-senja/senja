@@ -25,6 +25,14 @@ import {
 const PORT = Number(process.env.SENJA_PORT ?? process.env.PORT ?? 8787);
 /** Shortest gap between two accepted saves from one connection. */
 const SAVE_MIN_MS = 4000;
+/** Two community beds are reserved for Wahyu's visible autonomous crop loop.
+ * Player actions still work everywhere; the NPC marker is only trusted for
+ * these beds (watering remains harmless/idempotent on any planted bed). */
+const NPC_FARMER_NAME = 'Wahyu';
+const NPC_FARM_PLOTS = new Set([
+  Math.max(0, FARM_PLOT_COUNT - 2),
+  Math.max(0, FARM_PLOT_COUNT - 1),
+]);
 
 interface Client {
   ws: WebSocket;
@@ -373,6 +381,13 @@ async function handle(c: Client, msg: ClientMsg): Promise<void> {
       if (!Number.isFinite(i) || i < 0 || i >= r.plots.length) return;
       const plot = r.plots[i];
       const now = Date.now();
+      const actorMark = (msg as ClientMsg & { actor?: unknown }).actor;
+      const npcFarmer = actorMark === 'wahyu';
+      // NPC-authored till/plant/harvest is limited to the two community beds.
+      // Water remains safe on any planted crop and is idempotent server-side.
+      if (npcFarmer && msg.op !== 'water' && !NPC_FARM_PLOTS.has(i)) return;
+      const actorName = npcFarmer ? NPC_FARMER_NAME : c.state.name;
+
       switch (msg.op) {
         case 'till':
           if (plot.stage === -1) {
@@ -383,14 +398,14 @@ async function handle(c: Client, msg: ClientMsg): Promise<void> {
           }
           break;
         case 'plant':
-          if (plot.stage === 0 && !plot.crop) {
+          if (plot.stage === 0 && !plot.crop && (!npcFarmer || !plot.by || plot.by === NPC_FARMER_NAME)) {
             plot.crop = clean(msg.crop, 12) || 'tomat';
             plot.stage = 1;
             plot.watered = false;
-            plot.by = c.state.name;
+            plot.by = actorName;
             plot.t = now;
             r.plotsDirty = true;
-            feed(r, 'farm', c.state.name, `nanam ${plot.crop}`);
+            feed(r, 'farm', actorName, `nanam ${plot.crop}`);
           }
           break;
         case 'water':
@@ -401,8 +416,9 @@ async function handle(c: Client, msg: ClientMsg): Promise<void> {
           }
           break;
         case 'harvest':
+          if (npcFarmer && plot.by !== NPC_FARMER_NAME) return;
           if (plot.crop && plot.stage >= CROP_STAGES) {
-            feed(r, 'farm', c.state.name, `panen ${plot.crop}`);
+            feed(r, 'farm', actorName, `panen ${plot.crop}`);
             plot.crop = null;
             plot.stage = 0;
             plot.watered = false;
