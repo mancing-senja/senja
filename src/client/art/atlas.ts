@@ -12,7 +12,9 @@ import {
   makeTablet, makeTerminal, makeTorch, makeTower, makeWallSegment,
 } from './genre';
 import { GLYPH_H, glyph } from './font';
-import { buildCharacterFrames, charKey } from './character';
+import {
+  LOOK_COUNT, buildCharacterFrames, charKey, framesForLooks, type Look,
+} from './character';
 import { buildPortraits, portraitKey } from './portrait';
 import { seasonal, type Season } from '../world/season';
 import {
@@ -137,6 +139,7 @@ export type Overrides = ReadonlyMap<string, PixelCanvas>;
 
 export function buildAtlas(
   overrides: Overrides = new Map(), season?: Season,
+  extraLooks: readonly Look[] = [],
 ): Atlas {
   const packer = new ShelfPacker(ATLAS_W, ATLAS_H);
   const frames = new Map<string, Frame>();
@@ -188,6 +191,13 @@ export function buildAtlas(
 
   // --- characters
   for (const cf of buildCharacterFrames()) {
+    add(charKey(cf.look, cf.dir, cf.pose), cf.canvas);
+  }
+  // Custom appearances take slots above the presets, so a saved `hue` from
+  // before this existed still points at the same person. Thirty-six frames
+  // each — about 14k pixels out of two million, so eight of them (a full
+  // room) costs five per cent of the atlas.
+  for (const cf of framesForLooks(extraLooks, LOOK_COUNT)) {
     add(charKey(cf.look, cf.dir, cf.pose), cf.canvas);
   }
   // Conversation portraits. Same Look record as the world sprite, so the

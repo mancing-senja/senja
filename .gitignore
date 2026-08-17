@@ -6,3 +6,8 @@ dist/
 
 # Local dev-tool config: contains absolute paths for one machine.
 .claude/
+
+# Player profiles written by a locally-run room server. Real people's coins
+# and catch logs — never the repo's business, and it appeared here the first
+# time the server was started without SENJA_DATA pointing elsewhere.
+data/

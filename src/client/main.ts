@@ -15,7 +15,9 @@ import {
 } from './world/season';
 import { loadHandDrawn } from './art/handdrawn';
 import type { PixelCanvas } from './art/canvas';
-import { LOOKS, LOOK_COUNT } from './art/character';
+import { LOOKS, LOOK_COUNT, type Look } from './art/character';
+import { lookFromCode, randomCode } from './art/custom';
+import { Creator } from './game/creator';
 import { col01, C } from './art/palette';
 import { Draw } from './render/draw';
 import {
@@ -60,8 +62,19 @@ function playerName(): string {
   return n;
 }
 
-/** Which of the twelve character looks this player wears. Stored, so you
- *  are the same person every time you come back. */
+/** The player's own appearance, as the packed code from `art/custom.ts`.
+ *
+ *  Kept separate from `senja.look`, which is the preset index and still what
+ *  goes over the wire. Somebody who played before this existed keeps their
+ *  preset until they open the creator, and somebody who opens the creator and
+ *  backs out is unchanged. */
+function playerFace(): number | null {
+  const saved = localStorage.getItem('senja.face');
+  if (saved === null) return null;
+  const n = Number(saved);
+  return Number.isFinite(n) ? n : null;
+}
+
 function playerLook(): number {
   const saved = localStorage.getItem('senja.look');
   if (saved !== null) return Number(saved) % LOOK_COUNT;
@@ -77,7 +90,13 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
   let season: Season = seasonForDay(
     Number(localStorage.getItem('senja.day') ?? 0),
   );
-  const atlas = buildAtlas(handDrawn, season);
+  // A saved custom appearance is baked into the slot above the presets, and
+  // the player renders from that slot. No saved appearance means no extra
+  // look and no extra pixels: the atlas is exactly what it was.
+  let face = playerFace();
+  const extraLooks = (): Look[] =>
+    face === null ? [] : [lookFromCode(face, 'me')];
+  const atlas = buildAtlas(handDrawn, season, extraLooks());
   const draw = new Draw(gl, atlas);
   const rt = new RenderTarget(gl, view.w, view.h);
   const skywater = new SkyWater(gl);
@@ -90,9 +109,18 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
 
   const name = playerName();
   const hue = playerLook();
-  const player = new LocalPlayer(name, hue, map);
+  // The wire still carries the preset index — the protocol clamps it to
+  // twelve — so remote players see a preset until that lands. Locally the
+  // custom slot is used when there is one.
+  const player = new LocalPlayer(name, face === null ? hue : LOOK_COUNT, map);
   const fishing = new Fishing();
   const farm = new Farm();
+  /** The character creator. Opens on `C`, and unprompted the first time
+   *  somebody arrives with no saved appearance — a game that hands you a
+   *  random stranger and never mentions you can change it is a game where
+   *  nobody knows they can. */
+  const creator = new Creator(face ?? randomCode());
+  if (face === null) creator.show();
   const net = new Net(name, hue);
 
   const lm = map.landmarks;
@@ -511,6 +539,27 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
     L.ambient[0] *= season.warmth[0];
     L.ambient[1] *= season.warmth[1];
     L.ambient[2] *= season.warmth[2];
+
+    // While the creator is open it owns the keyboard and the world is paused.
+    // Letting the player walk behind a full-screen overlay means arriving
+     // somewhere unexpected on close, and the arrow keys would do two things
+    // at once.
+    // The creator owns the keyboard, including Enter — which Ui otherwise
+    // grabs for chat before the frame ever runs.
+    ui.modal = creator.open;
+    if (creator.open) {
+      const chosen = creator.update(dt, input);
+      if (chosen !== null) {
+        face = chosen;
+        localStorage.setItem('senja.face', String(chosen));
+        // One rebake, on confirm only. The preview never touched the atlas.
+        draw.reload(buildAtlas(handDrawn, season, extraLooks()));
+        player.hue = LOOK_COUNT;
+        ui.say('karakter disimpan');
+      }
+      return;
+    }
+    if (input.pressed('c') && !ui.chatOpen) creator.show();
 
     if (indoors) player.updateIndoors(dt, input, indoors);
     else player.update(dt, input, map);
@@ -946,6 +995,11 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
       board: net.board,
       myName: name,
     });
+
+    // Last, so it covers the HUD. Drawn before it, the clock and the coin
+    // purse and the control hints all showed through a full-screen overlay,
+    // which reads as a UI bug rather than as a screen.
+    creator.draw(draw);
     draw.flush();
 
     // --- present

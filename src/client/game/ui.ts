@@ -74,6 +74,15 @@ export class Ui {
   /** Set by the frame while the reel bar is up, so the help row gets out of
    *  the way of it. */
   reeling = false;
+
+  /** Set by the frame while a full-screen screen owns the keyboard.
+   *
+   *  This class listens for keydown on `window` itself, and opening chat calls
+   *  `input.capture(true)`, which clears the frame's pressed keys. So without
+   *  this the character creator never saw its own Enter: chat swallowed the
+   *  key and then wiped it, and the only visible symptom was a confirm that
+   *  did nothing. */
+  modal = false;
   /** True while a conversation panel is on screen. The controls hint lives
    *  in the same strip of screen, and two panels stacked there is unreadable. */
   talking = false;
@@ -103,6 +112,7 @@ export class Ui {
         void this.copyInvite();
         return;
       }
+      if (this.modal) return;
       if (e.key === 'Enter' || e.key === 't' || e.key === 'T') {
         // Only open on Enter; t is a shortcut but must not fire while the
         // player is walking with a hand on the keyboard.
