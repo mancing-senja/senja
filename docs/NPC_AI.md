@@ -3,24 +3,30 @@
 NPC conversation generation runs only on the server through `/api/npc-talk`.
 The browser never receives the provider API key.
 
-## Default provider
+## Provider
 
-Senja defaults to the OpenAI-compatible NaraRouter API:
+Senja uses the OpenAI-compatible NaraRouter API:
 
 - base URL: `https://router.bynara.id/v1`
-- model: `muse-spark-1.2-contributor`
 - endpoint: `/chat/completions`
+- production model: selected through the Vercel environment variable `SENJA_AI_MODEL`
 
-The Vercel deployment pins `SENJA_AI_MODEL=muse-spark-1.2-contributor` in
-`vercel.json`, so production does not use NaraRouter's automatic model routing.
+The model is intentionally **not pinned in `vercel.json`**. This keeps model
+selection operational: changing models should only require editing the Vercel
+environment variable and creating a new deployment, not changing application
+source code.
 
-Set this secret in the deployment environment:
+Set these values in the Vercel project environment:
 
 ```text
 SENJA_AI_API_KEY=<provider secret>
+SENJA_AI_MODEL=muse-spark-1.2-contributor
 ```
 
-`BYNARA_API_KEY` is also accepted as a convenience alias.
+`BYNARA_API_KEY` is also accepted as a convenience alias for the API key.
+
+For the current test, use `muse-spark-1.2-contributor`. To test another model,
+replace only the value of `SENJA_AI_MODEL` in Vercel and redeploy.
 
 After adding or changing provider secrets/configuration in Vercel, create a new
 production deployment so the updated environment is available to the running
@@ -46,7 +52,10 @@ Providers that ignore `reasoning_effort` can still be used.
 
 Provider errors never make the game unplayable. The client catches a failed
 `/api/npc-talk` request and falls back to Senja's deterministic local dialogue
-engine. NPC cooldown and persistent relationship memory continue to work.
+engine.
+
+During the temporary repeat-NPC test mode, relationship persistence is paused so
+repeated provider tests do not pollute NPC relationship data.
 
 Do not commit API keys to this repository or expose them through client-side
 Vite variables.

@@ -3,9 +3,6 @@
   "framework": "vite",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "env": {
-    "SENJA_AI_MODEL": "muse-spark-1.2-contributor"
-  },
   "rewrites": [
     {
       "source": "/room",
