@@ -229,12 +229,30 @@ export class Net {
   }
 }
 
+const ROOM_KEY = 'senja.room';
+
 function readRoomFromUrl(): string {
   const h = location.hash.replace('#', '').trim().toLowerCase();
-  if (h) return h.slice(0, 12);
-  // A stable default keeps "just open it and play" working, but a fresh
-  // random room is written into the URL so sharing is unambiguous.
+  if (h) {
+    // An explicit hash is an invite or a deliberate room switch. It wins
+    // over the remembered room and becomes the room we return to next time.
+    const room = h.slice(0, 12);
+    localStorage.setItem(ROOM_KEY, room);
+    return room;
+  }
+
+  // Opening the bare game URL should feel like continuing a session, not
+  // silently dropping the player into a fresh multiplayer world every time.
+  const remembered = localStorage.getItem(ROOM_KEY)?.trim().toLowerCase().slice(0, 12);
+  if (remembered) {
+    location.hash = remembered;
+    return remembered;
+  }
+
+  // First visit only: mint a room, remember it, and make the invite URL
+  // visible so sharing is unambiguous.
   const code = randomCode();
+  localStorage.setItem(ROOM_KEY, code);
   location.hash = code;
   return code;
 }
