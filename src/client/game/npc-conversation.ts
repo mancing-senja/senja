@@ -8,6 +8,11 @@ import { moodFor, remember, speak, type Mind, type TalkCtx } from './dialogue';
 import { cacheMinds } from './mind-sync';
 
 const PANEL_HOLD = 6.5;
+// Temporary production test switch. While true, the same NPC can be queried
+// repeatedly on the same in-game day and test requests do not mutate
+// relationship counters/cooldowns or persist new AI-created memories.
+const NPC_AI_REPEAT_TESTING = true;
+const NPC_AI_CLIENT_TIMEOUT_MS = 20_000;
 let active: NpcConversation | null = null;
 
 /** One NPC's conversation UI/state. Kept outside Npc movement so the same
@@ -53,10 +58,10 @@ export class NpcConversation {
   start(ctx: TalkCtx): void {
     if (active && active !== this) active.close();
 
-    // The relationship has already spent its conversation for this in-game
-    // day. E may acknowledge that, but it never rolls another random line or
-    // calls the model until tomorrow.
-    if (this.mind.lastDay === ctx.day && this.mind.met > 0) {
+    // Normal gameplay allows one full conversation per NPC per in-game day.
+    // This is intentionally bypassed while testing provider reliability so E
+    // can immediately start another AI request against the same nearby NPC.
+    if (!NPC_AI_REPEAT_TESTING && this.mind.lastDay === ctx.day && this.mind.met > 0) {
       active = this;
       this.ctx = ctx;
       this.line = this.mind.personality.warmth > 0.55
@@ -77,9 +82,11 @@ export class NpcConversation {
     // and absence callbacks depend on the old relationship state. It is used
     // only if the network/model path fails.
     this.fallback = speak(this.mind, ctx);
-    this.mind.met++;
-    this.mind.lastDay = ctx.day;
-    cacheMinds([this.mind]);
+    if (!NPC_AI_REPEAT_TESTING) {
+      this.mind.met++;
+      this.mind.lastDay = ctx.day;
+      cacheMinds([this.mind]);
+    }
     this.line = '...';
     this.choices = [];
     this.loading = true;
@@ -211,7 +218,7 @@ export class NpcConversation {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(request),
-        signal: AbortSignal.timeout(13_000),
+        signal: AbortSignal.timeout(NPC_AI_CLIENT_TIMEOUT_MS),
       });
       if (!response.ok) throw new Error(`npc-talk ${response.status}`);
       const turn = await response.json() as NpcTalkResponse;
@@ -240,7 +247,7 @@ export class NpcConversation {
     this.line = line || this.fallback;
     this.loading = false;
 
-    if (turn.memory && (turn.memory.kind === 'promise' || turn.memory.kind === 'gift')) {
+    if (!NPC_AI_REPEAT_TESTING && turn.memory && (turn.memory.kind === 'promise' || turn.memory.kind === 'gift')) {
       const subject = clean(turn.memory.subject, 80);
       if (subject) {
         remember(this.mind, {
