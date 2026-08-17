@@ -137,6 +137,31 @@ const LEGS_SIDE = [
   ['....22222222....', '....2222..22....', '....222....2....', '....aaa...aa....'],
 ];
 
+/** A skirt, derived from the trouser frames rather than drawn beside them.
+ *
+ *  Deriving keeps the two in step: the trousers already carry the walk cycle's
+ *  leg positions for all four phases, and a hand-drawn skirt set would have to
+ *  be corrected every time one of those changed. So the hem is a flared row
+ *  laid over the top, and the legs below it are the trouser shapes in skin.
+ *
+ *  This is what "gender" can actually mean on a sixteen-pixel sprite. There is
+ *  no face to change and no figure to reshape — the readable difference is the
+ *  silhouette below the waist, and hair and clothing carry the rest. Offering
+ *  the pieces beats offering a flag that quietly picks them for you. */
+function skirtFrom(legs: readonly string[][]): string[][] {
+  return legs.map((frame) => {
+    const [, a, b, boots] = frame;
+    // Flared one pixel past the hips on each side, in the trouser colour, so
+    // the skirt reads as its own garment rather than as shorts.
+    const hem = '...2222222222...';
+    const skin = (row: string): string => row.replace(/2/g, '6');
+    return [hem, skin(a), skin(b), boots];
+  });
+}
+
+const SKIRT_FRONT = skirtFrom(LEGS_FRONT);
+const SKIRT_SIDE = skirtFrom(LEGS_SIDE);
+
 export type Pose =
   | 'idle' | 'idle2' | 'blink'
   | 'walk0' | 'walk1' | 'walk2' | 'walk3'
@@ -156,6 +181,7 @@ export type Dir = 'front' | 'back' | 'side';
 export type HeadGear = 'hat' | 'hood' | 'cap' | 'bare';
 export type HairStyle = 'short' | 'bob' | 'tied' | 'crop';
 export type Outfit = 'shirt' | 'jacket' | 'hoodie' | 'tunic';
+export type Lower = 'celana' | 'rok';
 
 export interface Look {
   id: string;
@@ -172,6 +198,9 @@ export interface Look {
   head: HeadGear;
   headCol: number;
   headSh: number;
+  /** Trousers or a skirt. The one silhouette choice the world sprite is big
+   *  enough to show. */
+  lower: Lower;
   outfit: Outfit;
   /** What the portrait dresses them in. The world sprite is sixteen pixels
    *  wide and cannot tell a cardigan from a coat, so it keeps `outfit`. */
@@ -240,6 +269,7 @@ function look(
   return {
     id, skinLt, skin, skinSh, skinDp,
     hair, hairSh, hairHi, hairStyle, head, headCol, headSh,
+    lower: 'celana',
     outfit, garment, shirt, shirtDim,
     trim: C.White,
     pants, boot,
@@ -500,7 +530,10 @@ function closeEyes(c: PixelCanvas, dir: Dir, lk: Look): void {
 
 function poseCanvas(dir: Dir, pose: Pose, lk: Look): PixelCanvas {
   const rows = base(dir);
-  const legs = dir === 'side' ? LEGS_SIDE : LEGS_FRONT;
+  const skirt = lk.lower === 'rok';
+  const legs = dir === 'side'
+    ? (skirt ? SKIRT_SIDE : LEGS_SIDE)
+    : (skirt ? SKIRT_FRONT : LEGS_FRONT);
 
   let legFrame = 0;
   let bob = 0;
@@ -561,12 +594,22 @@ export interface CharFrame {
 }
 
 export function buildCharacterFrames(): CharFrame[] {
+  return framesForLooks(LOOKS);
+}
+
+/** Frames for an arbitrary set of looks, numbered from `first`.
+ *
+ *  Split out from `buildCharacterFrames` so a custom appearance can be baked
+ *  without being a preset. The presets keep indices 0..LOOKS.length-1 and
+ *  custom characters take slots above that, which is what lets an existing
+ *  saved `hue` keep meaning the same person after this landed. */
+export function framesForLooks(looks: readonly Look[], first = 0): CharFrame[] {
   const out: CharFrame[] = [];
   const dirs: Dir[] = ['front', 'back', 'side'];
-  for (let i = 0; i < LOOKS.length; i++) {
+  for (let i = 0; i < looks.length; i++) {
     for (const dir of dirs) {
       for (const pose of POSES) {
-        out.push({ dir, pose, look: i, canvas: poseCanvas(dir, pose, LOOKS[i]) });
+        out.push({ dir, pose, look: first + i, canvas: poseCanvas(dir, pose, looks[i]) });
       }
     }
   }
