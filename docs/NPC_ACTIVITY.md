@@ -27,3 +27,7 @@ Online plot mutation remains authoritative on the room server. The water operati
 Nearby intent thoughts use one shared queue. Only one ordinary NPC inner-thought bubble is visible at a time, followed by a short quiet beat before the next villager. The client keeps at most one visible thought and one prepared thought, which avoids both visual noise and bursty Agnes usage in crowds.
 
 Concrete reactions to something that just happened, such as an NPC landing a fish, are allowed to appear immediately.
+
+## Manual verification
+
+For v3B, a quick production check is: plant a crop in the central shared farm, leave it unwatered, then watch Wahyu during a kebun schedule. He should walk to the nearest dry planted bed, perform the `tend` animation, and the shared plot should become watered without consuming seeds or harvesting the crop.
