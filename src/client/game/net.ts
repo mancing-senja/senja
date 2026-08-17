@@ -132,6 +132,8 @@ export class Net {
   private handle(msg: ServerMsg): void {
     switch (msg.t) {
       case 'profile':
+        if (msg.profile.name) this.name = msg.profile.name;
+        if (Number.isFinite(msg.profile.look)) this.hue = msg.profile.look;
         this.onProfile?.(msg.profile);
         break;
 
@@ -162,14 +164,18 @@ export class Net {
         this.serverTime = msg.time;
         this.serverRain = msg.rain;
         const seen = new Set<string>();
+        let changed = false;
         for (const s of msg.players) {
           if (s.id === this.youId) continue;
           seen.add(s.id);
           const rp = this.players.get(s.id);
-          if (rp) rp.applySnapshot(s);
-          else this.addPlayer(s, false);
+          if (rp) {
+            rp.applySnapshot(s);
+          } else {
+            this.addPlayer(s, false);
+            changed = true;
+          }
         }
-        let changed = false;
         for (const [id, rp] of this.players) {
           if (!seen.has(id) && !rp.leaving) {
             rp.leaving = true;
