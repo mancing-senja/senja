@@ -3,7 +3,11 @@
  * Movement is a loop of waypoints with pauses, driven off the same Actor
  * shape the players use. Conversation is delegated to NpcConversation so a
  * villager can stop, face the player, wait on an AI turn and offer choices
- * without tangling asynchronous network state into movement. */
+ * without tangling asynchronous network state into movement.
+ *
+ * v2 adds a deterministic daily routine on top of those waypoints. The room
+ * clock and weather decide what an NPC is doing; AI only receives that state
+ * as context, so model latency never controls simulation or movement. */
 
 import { TILE } from '../../shared/constants';
 import type { Facing, PlayerAction } from '../../shared/protocol';
@@ -16,6 +20,9 @@ import { makeMind, type Mind, type Personality, type TalkCtx } from './dialogue'
 import type { Register } from './registers';
 import { NpcConversation } from './npc-conversation';
 import { hydrateMinds } from './mind-sync';
+import {
+  resolveNpcSchedule, scheduleTalkPlace, type NpcScheduleState,
+} from './npc-schedule';
 
 export interface NpcDef {
   id: string;
@@ -49,6 +56,7 @@ export class Npc implements Actor {
   private waitT: number;
   private rng: Rng;
   private conversation: NpcConversation;
+  private scheduleState: NpcScheduleState;
 
   readonly mind: Mind;
 
@@ -60,7 +68,8 @@ export class Npc implements Actor {
     this.y = ty * TILE + 8;
     this.rng = new Rng(seed * 7717 + 3);
     this.waitT = this.rng.range(0.5, 4);
-    this.action = def.idle;
+    this.scheduleState = resolveNpcSchedule(def.id, def.name, def.route, def.idle);
+    this.action = this.scheduleState.idle;
 
     this.mind = makeMind(def.id, def.name, seed, def.register ?? 'cozy');
     if (def.bias) Object.assign(this.mind.personality, def.bias);
@@ -71,7 +80,21 @@ export class Npc implements Actor {
   }
 
   get standing(): boolean {
-    return this.def.route.length <= 1;
+    return this.scheduleState.route.length <= 1;
+  }
+
+  /** Exposed for future HUD/debug surfaces without coupling them to the
+   * schedule resolver. */
+  get activity(): string {
+    return this.scheduleState.activity;
+  }
+
+  get goal(): string {
+    return this.scheduleState.goal;
+  }
+
+  get destination(): string {
+    return this.scheduleState.destination;
   }
 
   /** Kept as a number because the main loop already uses it to decide whether
@@ -91,12 +114,26 @@ export class Npc implements Actor {
   }
 
   /** Same routine on a room's tiles. Residents pace around a table using
-   * the identical waypoint logic — only the collision source changes. */
+   * the identical schedule/waypoint logic — only collision changes. */
   updateIn(dt: number, it: Interior): void {
     this.step(dt, (tx, ty) => walkableI(it, tx, ty));
   }
 
+  private refreshSchedule(): void {
+    const next = resolveNpcSchedule(this.def.id, this.def.name, this.def.route, this.def.idle);
+    if (next.key !== this.scheduleState.key) {
+      this.scheduleState = next;
+      this.leg = 0;
+      // A phase change should become visible soon, but never snap an NPC.
+      this.waitT = Math.min(this.waitT, 0.6);
+    } else {
+      this.scheduleState = next;
+    }
+  }
+
   private step(dt: number, walk: (tx: number, ty: number) => boolean): void {
+    this.refreshSchedule();
+
     // Talking wins over the route. This is what makes the NPC actually stop
     // and attend to the player instead of continuing to pace mid-sentence.
     if (this.conversation.update(dt)) {
@@ -105,20 +142,21 @@ export class Npc implements Actor {
       return;
     }
 
-    if (this.standing) {
-      this.action = this.def.idle;
+    const route = this.scheduleState.route.length ? this.scheduleState.route : this.def.route;
+    if (route.length <= 1) {
+      this.action = this.scheduleState.idle;
       this.animT = 0;
       return;
     }
 
     if (this.waitT > 0) {
       this.waitT -= dt;
-      this.action = this.def.idle;
+      this.action = this.scheduleState.idle;
       this.animT = 0;
       return;
     }
 
-    const [tx, ty] = this.def.route[this.leg];
+    const [tx, ty] = route[this.leg % route.length];
     const gx = tx * TILE + 8;
     const gy = ty * TILE + 8;
     const dx = gx - this.x;
@@ -126,12 +164,12 @@ export class Npc implements Actor {
     const dist = Math.hypot(dx, dy);
 
     if (dist < 2) {
-      this.leg = (this.leg + 1) % this.def.route.length;
-      this.waitT = this.rng.range(1.5, 6);
+      this.leg = (this.leg + 1) % route.length;
+      this.waitT = this.rng.range(this.scheduleState.pauseMin, this.scheduleState.pauseMax);
       return;
     }
 
-    const step = Math.min(dist, SPEED * dt);
+    const step = Math.min(dist, SPEED * this.scheduleState.speed * dt);
     const nx = this.x + (dx / dist) * step;
     const ny = this.y + (dy / dist) * step;
 
@@ -143,15 +181,23 @@ export class Npc implements Actor {
       if (Math.abs(dx) > Math.abs(dy)) this.facing = dx > 0 ? 'right' : 'left';
       else this.facing = dy > 0 ? 'down' : 'up';
     } else {
-      this.leg = (this.leg + 1) % this.def.route.length;
+      this.leg = (this.leg + 1) % route.length;
       this.waitT = this.rng.range(0.5, 2);
     }
   }
 
-  /** Starts a conversation. NpcConversation handles the same-day cooldown,
-   * async AI turns, choices and deterministic fallback. */
+  /** Starts a conversation. The current job/goal is folded into the compact
+   * place context sent to the model, keeping v2 compatible with the existing
+   * /api/npc-talk contract and whichever SENJA_AI_MODEL is selected in Vercel. */
   talk(ctx: TalkCtx): void {
-    this.conversation.start(ctx);
+    this.scheduleState = resolveNpcSchedule(
+      this.def.id, this.def.name, this.def.route, this.def.idle,
+      { day: ctx.day, time: ctx.time, rain: ctx.rain },
+    );
+    this.conversation.start({
+      ...ctx,
+      place: scheduleTalkPlace(ctx.place, this.scheduleState),
+    });
   }
 
   /** Faces whoever is talking to them. Fixed-route villagers are allowed to

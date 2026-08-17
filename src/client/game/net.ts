@@ -27,6 +27,21 @@ export interface RoomPlayerSummary {
   mine: boolean;
 }
 
+/** Tiny read-only bridge for deterministic NPC schedules. The room server
+ * already owns time/weather; routines consume that same snapshot so two
+ * players do not see the village living in different hours. */
+export interface NpcWorldSnapshot {
+  online: boolean;
+  time: number;
+  rain: number;
+}
+
+const npcWorld: NpcWorldSnapshot = { online: false, time: -1, rain: 0 };
+
+export function npcWorldSnapshot(): NpcWorldSnapshot {
+  return { ...npcWorld };
+}
+
 /** This player's save key.
  *
  *  Minted once, in the browser, and never shown to anybody. It is not an
@@ -111,6 +126,7 @@ export class Net {
     ws.onclose = () => {
       this.ws = null;
       if (this.status !== 'full') this.status = 'offline';
+      npcWorld.online = false;
       this.players.clear();
       this.publishPlayers();
       this.scheduleRetry();
@@ -143,6 +159,9 @@ export class Net {
         this.room = msg.room;
         this.serverTime = msg.state.time;
         this.serverRain = msg.state.rain;
+        npcWorld.online = true;
+        npcWorld.time = msg.state.time;
+        npcWorld.rain = msg.state.rain;
         this.plots = msg.state.plots;
         this.onPlots?.(this.plots);
         for (const p of msg.players) this.addPlayer(p, false);
@@ -163,6 +182,9 @@ export class Net {
       case 'snapshot': {
         this.serverTime = msg.time;
         this.serverRain = msg.rain;
+        npcWorld.online = true;
+        npcWorld.time = msg.time;
+        npcWorld.rain = msg.rain;
         const seen = new Set<string>();
         let changed = false;
         for (const s of msg.players) {
@@ -203,6 +225,7 @@ export class Net {
 
       case 'full':
         this.status = 'full';
+        npcWorld.online = false;
         break;
 
       case 'ping':
