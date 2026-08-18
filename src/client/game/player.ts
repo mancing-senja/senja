@@ -342,9 +342,9 @@ export function drawActor(
     d.rect(x - 16, by + 2, 32, 6, C.WaterBr, alpha * 0.4);
     
     // Draw the new pixel-art rowboat sprite
-    // The sprite is 64x48. To center it on the player's feet (x, a.y), 
-    // we offset by -32 for x and -24 for y.
-    d.sprite('rowboat', x - 32, by - 24, { alpha });
+    // The sprite is 32x24. To center it on the player's feet (x, a.y), 
+    // we offset by -16 for x and -12 for y.
+    d.sprite('rowboat', x - 16, by - 12, { alpha });
   }
 
   d.sprite(key, x, y + (a.boat ? -3 + Math.sin(clock * 2 + a.x) * 1 : 0), { flipX: flip, alpha });
