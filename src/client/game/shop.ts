@@ -34,6 +34,8 @@ export interface LineStats {
   abrasionResist: number;
   /** Stretch that cushions shock but slightly delays direct pressure, 0..1. */
   elasticity: number;
+  /** Relative usable line capacity on the spool. */
+  capacity: number;
 }
 
 export interface HookStats {
@@ -123,15 +125,15 @@ export const RODS: readonly RodStats[] = [
 export const LINES: readonly LineStats[] = [
   {
     label: 'Senar Nilon', cost: 0, slackGrace: 0, failGrace: 0,
-    strength: 1.00, abrasionResist: 0.42, elasticity: 0.38,
+    strength: 1.00, abrasionResist: 0.42, elasticity: 0.38, capacity: 1.00,
   },
   {
     label: 'Senar Kepang', cost: 75, slackGrace: 0.45, failGrace: 0.04,
-    strength: 1.52, abrasionResist: 0.72, elasticity: 0.08,
+    strength: 1.52, abrasionResist: 0.72, elasticity: 0.08, capacity: 1.12,
   },
   {
     label: 'Senar Danau', cost: 185, slackGrace: 0.90, failGrace: 0.08,
-    strength: 2.18, abrasionResist: 0.90, elasticity: 0.22,
+    strength: 2.18, abrasionResist: 0.90, elasticity: 0.22, capacity: 1.26,
   },
 ];
 
