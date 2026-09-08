@@ -539,7 +539,7 @@ function nightness(time: number): number {
  *  that is what makes walking to the swamp at night worth doing. */
 function rollSpecies(
   time: number, depth01: number, spot: Spot, district: District | null,
-  season: Season, baited: BaitId | null,
+  season: Season, baited: BaitId | null, rain: number,
 ): Species {
   const p = phaseIndex(time);
   const weights = SPECIES.map((s) => {
@@ -561,6 +561,21 @@ function rollSpecies(
     // the game for a week without anyone noticing.
     const deep = Math.min(1, s.maxCm / 90);
     w *= deep * season.deepBias + (1 - deep) * season.shallowBias;
+
+    // Rain is part of the same world the player can see. It never summons an
+    // impossible fish; it only reshapes the pool that this spot/time already
+    // allows. Light-active fish wake up in rain, while strong current fish get
+    // a smaller bonus where runoff is actually moving water.
+    const rain01 = clamp01(rain);
+    const weatherStyle = styleFor(s);
+    const surfaceActive = s.maxCm <= 42
+      && (weatherStyle.id === 'lincah' || weatherStyle.id === 'menggetar');
+    const currentFish = spot.current >= 0.45
+      && (weatherStyle.id === 'lari' || weatherStyle.id === 'menyelam' || s.fight >= 1.25);
+    if (surfaceActive) w *= 1 + rain01 * 0.28;
+    if (currentFish) w *= 1 + rain01 * 0.18;
+    if (deep > 0.72 && rain01 > 0.65) w *= 0.96;
+
     // Bait is deliberately last. It can tilt a roll that already makes sense
     // here, but it never overrides a spot or district that suppresses a fish.
     if (baited) {
@@ -730,6 +745,9 @@ export class Fishing {
   private fishStamina = 1;
   private dragSlip = 0;
   private lineStretch = 0;
+  private rain = 0;
+  private waterCurrent = 0;
+  private turbidity = 0;
   /** Approximate share of usable line currently off the spool. Unlike catch
    * progress it can move backwards during a run, so drag has a real cost. */
   private lineOut = 0;
@@ -800,6 +818,7 @@ export class Fishing {
     tension: number; target: number; progress: number; momentum: number;
     load: number; stamina: number; dragSlip: number; stretch: number; lineOut: number;
     landing: number; snag: number;
+    rain: number; waterCurrent: number; turbidity: number;
     hookHold: number; escape: string; warning: string;
     style: string; zone: number; veil: boolean;
   } {
@@ -813,6 +832,9 @@ export class Fishing {
       lineOut: this.lineOut,
       landing: this.landingT,
       snag: this.snag,
+      rain: this.rain,
+      waterCurrent: this.waterCurrent,
+      turbidity: this.turbidity,
       hookHold: this.hookHold,
       escape: this.escapeT > 0 ? this.escapeName : '',
       warning: this.tackleWarning,
@@ -824,11 +846,21 @@ export class Fishing {
 
   update(
     dt: number, input: Input, p: LocalPlayer, map: WorldMap,
-    time: number, particles: Particles, audio: Audio,
+    time: number, rain: number, particles: Particles, audio: Audio,
     onCatch: (c: Catch) => void, onCastNet: (x: number, y: number) => void,
   ): void {
     this.t += dt;
     this.flash = Math.max(0, this.flash - dt * 4);
+    this.rain = clamp01(rain);
+    // Rain matters most where water is already moving. A still swamp does not
+    // become a river just because it rains; a river mouth visibly loads up.
+    this.waterCurrent = Math.min(
+      1.25,
+      this.spot.current * (1 + this.rain * (0.18 + this.spot.current * 0.52)),
+    );
+    this.turbidity = clamp01(
+      this.rain * (0.26 + this.spot.current * 0.42 + this.spot.cover * 0.12),
+    );
 
     switch (this.state) {
       case 'idle': {
@@ -874,7 +906,10 @@ export class Fishing {
           this.t = 0;
           // Better rods are a comfort upgrade, not a different game. Even
           // the top tier still leaves enough quiet to look at the lake.
-          this.biteAt = (2.4 + Math.random() * 7.5) * rodStats().waitMul;
+          const rainActivity = 1 - this.rain * 0.16;
+          this.biteAt = (2.4 + Math.random() * 7.5)
+            * rodStats().waitMul
+            * rainActivity;
         }
         break;
       }
@@ -888,7 +923,8 @@ export class Fishing {
         }
         if (this.t >= this.biteAt) {
           this.pending = rollSpecies(
-            time, this.depth01, this.spot, this.district, this.season, this.baitedCast,
+            time, this.depth01, this.spot, this.district, this.season,
+            this.baitedCast, this.rain,
           );
           // Deep water, a good spot and the small hours all improve the
           // odds, so chasing a rare fish means going somewhere for it
@@ -1123,7 +1159,7 @@ export class Fishing {
           : 1;
         const environment = 1
           + this.depth01 * 0.10
-          + this.spot.current * 0.18;
+          + this.waterCurrent * 0.18;
         const rawLoad = fight
           * (0.68 + size01 * 0.42)
           * environment
@@ -1142,7 +1178,10 @@ export class Fishing {
         // hurts only while the line is loaded. A good abrasion-resistant line
         // meaningfully changes Tanjung Batu without being mandatory elsewhere.
         const offForGear = Math.abs(this.tension - this.target);
-        const coverPressure = this.spot.cover * clamp01(offForGear * 2.2);
+        const coverPressure = Math.min(
+          1.2,
+          this.spot.cover * (1 + this.rain * 0.08) * clamp01(offForGear * 2.2),
+        );
         const abrasionPressure = this.spot.abrasion
           * (1 - line.abrasionResist)
           * clamp01(this.tension * 1.15);
