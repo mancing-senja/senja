@@ -457,6 +457,7 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
     drag: dragStats(),
     action: rodActionStats(),
     hookSize: hookSizeStats(),
+    weather: { rain: Number(rain.toFixed(3)) },
     net: net.status,
     peers: net.players.size,
     room: net.room,
@@ -594,7 +595,7 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
 
     fishing.season = season;
     fishing.update(
-      dt, input, player, map, time, particles, audio,
+      dt, input, player, map, time, rain, particles, audio,
       (c) => {
         const prevBest = farm.log[c.species.id]?.best ?? 0;
         const isRecord = c.cm > prevBest && c.cm >= Math.max(20, prevBest);
