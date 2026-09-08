@@ -572,7 +572,9 @@ function rollSpecies(
   return SPECIES[0];
 }
 
-export type FishState = 'idle' | 'aim' | 'cast' | 'wait' | 'nibble' | 'bite' | 'reel' | 'card' | 'miss';
+export type FishState =
+  | 'idle' | 'aim' | 'cast' | 'wait' | 'nibble' | 'omen'
+  | 'bite' | 'reel' | 'card' | 'miss';
 
 export interface Catch {
   species: Species;
@@ -837,14 +839,42 @@ export class Fishing {
           audio.blip(300 + this.nibbleDone * 34, 0.035, 0.08);
 
           if (this.nibbleDone >= this.nibbleNeed) {
-            this.state = 'bite';
-            this.t = 0;
-            particles.spawnSplash(this.bobX, this.bobY + 2, 5 + heavy);
-            audio.bite();
+            if (this.pendingGrade.tier >= 5) {
+              // Mitos gets a beat of impossible calm before the take. The
+              // odds are still rare, but when it happens the lake announces
+              // it before the result card does.
+              this.state = 'omen';
+              this.t = 0;
+              this.flash = Math.max(this.flash, 0.18);
+              audio.blip(145, 0.16, 0.14);
+            } else {
+              this.state = 'bite';
+              this.t = 0;
+              particles.spawnSplash(this.bobX, this.bobY + 2, 5 + heavy);
+              audio.bite();
+            }
           } else {
             this.nibbleNext += this.nibbleGapMin
               + Math.random() * (this.nibbleGapMax - this.nibbleGapMin);
           }
+        }
+        break;
+      }
+
+      case 'omen': {
+        // Stillness first, then one slow pulse. It is deliberately not an
+        // extra reflex check: the player is being warned, not tested twice.
+        this.bobY += Math.sin(this.t * 3.2) * dt * 0.7;
+        if (this.t > 0.55 && this.t < 0.62) {
+          particles.spawnSplash(this.bobX, this.bobY + 3, 3);
+          audio.blip(190, 0.12, 0.12);
+        }
+        if (this.t >= 1.25) {
+          this.state = 'bite';
+          this.t = 0;
+          particles.spawnSplash(this.bobX, this.bobY + 2, 11);
+          particles.spawnSpark(this.bobX, this.bobY - 3, 8);
+          audio.bite();
         }
         break;
       }
@@ -1115,6 +1145,10 @@ export class Fishing {
       const twitch = Math.abs(Math.sin(this.t * 8)) * 1.5;
       d.textCentered('·', this.bobX, this.bobY - 12 - twitch, C.Mist, C.InkDeep, 0.7);
     }
+    if (this.state === 'omen') {
+      const pulse = 0.35 + 0.4 * Math.abs(Math.sin(this.t * 2.5));
+      d.textCentered('…', this.bobX, this.bobY - 15, this.pendingGrade.colour, C.InkDeep, pulse);
+    }
     if (this.state === 'bite') {
       const bounce = Math.abs(Math.sin(this.t * 9)) * 3;
       d.textCentered('!', this.bobX, this.bobY - 16 - bounce, C.Lantern, C.InkDeep);
@@ -1150,6 +1184,12 @@ export class Fishing {
     if (this.state === 'nibble') {
       d.textCentered(this.nibbleText, cx, view.h - 34, C.Mist, C.InkDeep, 0.85);
       d.textCentered('tunggu sampai nyantol', cx, view.h - 22, C.Pale, C.InkDeep, 0.65);
+    }
+
+    if (this.state === 'omen') {
+      const msg = this.t < 0.65 ? 'air mendadak diam...' : 'sesuatu besar bergerak...';
+      d.textCentered(msg, cx, view.h - 34, this.pendingGrade.colour, C.InkDeep, 0.95);
+      d.textCentered('jangan tarik dulu', cx, view.h - 22, C.Pale, C.InkDeep, 0.7);
     }
 
     if (this.state === 'bite') {
