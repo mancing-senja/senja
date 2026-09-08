@@ -783,6 +783,7 @@ export class Fishing {
     this.pendingCm = 0;
     this.baitedCast = null;
     this.momentum = 0;
+    this.lineOut = 0;
     this.resetGearStress();
     this.hookHold = 1;
     this.mouth = 'normal';
@@ -1316,7 +1317,7 @@ export class Fishing {
           : 0;
         this.lineOut += dt * (this.dragSlip * 0.085 + runTake);
         if (inZone && !this.snagged) {
-          this.lineOut -= dt * reelGain * (0.072 + this.momentum * 0.028);
+          this.lineOut -= dt * reelGain * (0.56 + this.momentum * 0.24);
         }
         this.lineOut = Math.max(0, this.lineOut);
 
@@ -1462,6 +1463,13 @@ export class Fishing {
     const shoreCol = map.shore[clampInt(Math.floor(tx / TILE), 0, map.shore.length - 1)];
     const fromShore = shoreCol * TILE - ty;
     this.depth01 = clamp01(this.spot.depth + clamp01(fromShore / 200) * 0.45);
+    // Long casts start with more line in the water. Capacity is deliberately
+    // not filled by a normal cast; only a hooked fish can threaten the spool.
+    const line = lineStats();
+    this.lineOut = Math.min(
+      line.capacity * 0.78,
+      0.34 + this.power * 0.28 + this.depth01 * 0.10,
+    );
 
     audio.cast();
     particles.spawnSpark(hand.x, hand.y, 3);
@@ -1513,6 +1521,7 @@ export class Fishing {
     this.progress = 0.28;
     this.slack = 0;
     this.momentum = 0;
+    this.lineOut = Math.min(lineStats().capacity * 0.62, 0.52);
     this.resetGearStress();
     this.hookHold = 1;
     this.hookText = 'debug hook';
