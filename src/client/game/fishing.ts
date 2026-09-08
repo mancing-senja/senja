@@ -28,8 +28,9 @@ import {
   STYLES, applyGrade, newFight, styleFor, type FightState, type FightStyle,
 } from './fight';
 import {
-  baitById, baitWeight, consumeBaitCast, hookStats, lineStats, rodStats,
-  type BaitId,
+  baitById, baitWeight, brokenPart, conditionFactor, consumeBaitCast,
+  damageTackle, hookStats, lineStats, rodStats,
+  type BaitId, type GearPart,
 } from './shop';
 
 export interface Species {
@@ -596,6 +597,21 @@ function colTint(c: C): [number, number, number] {
 const MAX_CAST = 96;
 const MIN_CAST = 26;
 
+function gearName(part: GearPart): string {
+  return part === 'rod' ? 'joran' : part === 'line' ? 'senar' : 'kail';
+}
+
+/** The fish's actual size is decided when it takes the bait, not after the
+ * fight. Size therefore contributes to load and gear choice instead of being
+ * cosmetic information revealed only on the result card. */
+function rollCatchSize(fish: Species, grade: Grade): number {
+  const roll = Math.random() * Math.random();
+  const baseK = Math.min(1, (1 - roll) + grade.sizeBias * roll);
+  const rod = rodStats();
+  const k = Math.min(1, baseK + (1 - baseK) * rod.sizeBias);
+  return Math.round(fish.minCm + (fish.maxCm - fish.minCm) * k);
+}
+
 export class Fishing {
   state: FishState = 'idle';
   private t = 0;
@@ -621,6 +637,7 @@ export class Fishing {
   private spot: Spot = DEFAULT_SPOT;
   private district: District | null = null;
   private pending: Species | null = null;
+  private pendingCm = 0;
   /** Which bait was consumed by this cast. Null means bare hook. */
   private baitedCast: BaitId | null = null;
   /** Set by the frame. Shifts what is biting without touching any species'
@@ -639,6 +656,16 @@ export class Fishing {
   /** Staying on the fish builds momentum. It rewards a smooth reel without
    *  adding another button or making one missed beat cost the whole catch. */
   private momentum = 0;
+  /** Physical load model. Risk meters rise only under sustained overload, so
+   * one bad correction is a warning rather than an instant broken item. */
+  private gearLoad = 0;
+  private rodRisk = 0;
+  private lineRisk = 0;
+  private hookRisk = 0;
+  private rodWear = 0;
+  private lineWear = 0;
+  private hookWear = 0;
+  private tackleWarning = '';
   private hookText = '';
   private missText = 'lepas...';
   /** How this fish fights, chosen when it takes the hook. */
@@ -668,8 +695,10 @@ export class Fishing {
     this.state = 'idle';
     this.t = 0;
     this.pending = null;
+    this.pendingCm = 0;
     this.baitedCast = null;
     this.momentum = 0;
+    this.resetGearStress();
     this.hookText = '';
     this.missText = 'lepas...';
     this.nibbleText = 'ada gerakan...';
@@ -681,11 +710,14 @@ export class Fishing {
    *  whole catch flow without a human on the keyboard. */
   get reel(): {
     tension: number; target: number; progress: number; momentum: number;
+    load: number; warning: string;
     style: string; zone: number; veil: boolean;
   } {
     return {
       tension: this.tension, target: this.target, progress: this.progress,
       momentum: this.momentum,
+      load: this.gearLoad,
+      warning: this.tackleWarning,
       style: this.style.id,
       zone: Math.max(0.12, this.style.zone * (1 - this.pendingGrade.tier * 0.075)),
       veil: this.fight.veil > 0,
@@ -703,6 +735,14 @@ export class Fishing {
     switch (this.state) {
       case 'idle': {
         if (input.pressed(' ') && facingWater(p, map)) {
+          const broken = brokenPart();
+          if (broken) {
+            this.missText = `${gearName(broken)} rusak — servis di kios`;
+            this.state = 'miss';
+            this.t = 0;
+            audio.blip(170, 0.12, 0.14);
+            break;
+          }
           this.state = 'aim';
           this.power = 0;
           this.powerDir = 1;
@@ -758,6 +798,7 @@ export class Fishing {
           this.pendingGrade = rollGrade(
             luckFrom(this.depth01, this.spot.depth, nightness(time)),
           );
+          this.pendingCm = rollCatchSize(this.pending, this.pendingGrade);
 
           // Don't jump straight from silence to TARIK. The fish noses the bait
           // first, with heavier/rarer fish tending to give one extra tell.
@@ -900,6 +941,7 @@ export class Fishing {
           this.progress = clean ? 0.36 : steady ? 0.31 : 0.25;
           this.slack = 0;
           this.momentum = clean ? 0.16 : 0;
+          this.resetGearStress();
           this.fight = newFight();
           p.action = 'reel';
           audio.blip(clean ? 610 : 520, 0.06, clean ? 0.24 : 0.2);
@@ -928,6 +970,80 @@ export class Fishing {
         const pull = input.held(' ') ? 1 : -1;
         this.tension = clamp01(this.tension + pull * dt * 0.7);
 
+        // --- realistic tackle load ---------------------------------------
+        // Species/grade give the fish's power; actual rolled size, depth and
+        // current turn it into line load. Rod flex absorbs part of sudden
+        // shock before it reaches the line and hook.
+        const size01 = clamp01(
+          (this.pendingCm - fish.minCm) / Math.max(1, fish.maxCm - fish.minCm),
+        );
+        const styleShock = this.style.id === 'lari' ? 1.12
+          : this.style.id === 'menggetar' ? 1.08
+          : this.style.id === 'menyelam' ? 1.06
+          : this.style.id === 'mengendap' && f.beat === 1 ? 1.10
+          : 1;
+        const environment = 1
+          + this.depth01 * 0.10
+          + this.spot.current * 0.18;
+        const rawLoad = fight
+          * (0.68 + size01 * 0.42)
+          * environment
+          * styleShock
+          * (0.64 + this.tension * 0.48);
+
+        const rod = rodStats();
+        const line = lineStats();
+        const hook = hookStats();
+        const rodCap = rod.strength * conditionFactor('rod');
+        const lineCap = line.strength * conditionFactor('line');
+        const hookCap = hook.strength * conditionFactor('hook');
+
+        // Cover is dangerous when the fish gets away from your marker; rock
+        // hurts only while the line is loaded. A good abrasion-resistant line
+        // meaningfully changes Tanjung Batu without being mandatory elsewhere.
+        const offForGear = Math.abs(this.tension - this.target);
+        const coverPressure = this.spot.cover * clamp01(offForGear * 2.2);
+        const abrasionPressure = this.spot.abrasion
+          * (1 - line.abrasionResist)
+          * clamp01(this.tension * 1.15);
+        const transmitted = rawLoad * (1 - rod.shockAbsorb * 0.24);
+        const lineLoad = transmitted * (1 + coverPressure * 0.22 + abrasionPressure * 0.28);
+        const hookLoad = transmitted * (
+          1 + (this.style.id === 'lincah' || this.style.id === 'menggetar' ? 0.08 : 0)
+        );
+
+        const rodRatio = rawLoad / Math.max(0.1, rodCap);
+        const lineRatio = lineLoad / Math.max(0.1, lineCap);
+        const hookRatio = hookLoad / Math.max(0.1, hookCap);
+        this.gearLoad = Math.max(rodRatio, lineRatio, hookRatio);
+
+        const rise = (ratio: number, seconds: number): number =>
+          ratio > 1 ? dt * (0.45 + (ratio - 1) * 1.8) : -dt / seconds;
+        this.rodRisk = Math.max(0, this.rodRisk + rise(rodRatio, 1.6));
+        this.lineRisk = Math.max(0, this.lineRisk + rise(lineRatio, 1.2));
+        this.hookRisk = Math.max(0, this.hookRisk + rise(hookRatio, 1.4));
+
+        // Normal use creates tiny wear; meaningful damage comes from fishing
+        // the wrong setup hard for a sustained period.
+        this.rodWear += dt * Math.max(0, rodRatio - 0.72) * 0.10;
+        this.lineWear += dt * (
+          Math.max(0, lineRatio - 0.68) * 0.13 + abrasionPressure * 0.035
+        );
+        this.hookWear += dt * Math.max(0, hookRatio - 0.78) * 0.08;
+
+        this.tackleWarning = '';
+        if (this.lineRisk > 0.28) {
+          this.tackleWarning = abrasionPressure > 0.10
+            ? 'senar gesek struktur — kendurkan'
+            : 'senar terlalu tegang — kendurkan';
+        } else if (this.rodRisk > 0.38) {
+          this.tackleWarning = 'joran terlalu terbebani — kendurkan';
+        } else if (this.hookRisk > 0.34) {
+          this.tackleWarning = 'kail mulai membuka — kendurkan';
+        } else if (coverPressure > 0.48) {
+          this.tackleWarning = 'ikan masuk cover — jaga tekanan';
+        }
+
         // Still forgiving: the reel is something you do while looking at the
         // lake, not a rhythm test. Losing a fish should take sustained
         // inattention, not a moment of it — the styles differ in what they
@@ -953,14 +1069,39 @@ export class Fishing {
         this.bobX += (Math.random() - 0.5) * 12 * dt;
         this.bobY += (Math.random() - 0.5) * 8 * dt;
 
-        const line = lineStats();
-        if (this.progress >= 1) {
+        if (this.rodRisk > 2.25) {
+          damageTackle('rod', 100);
+          this.commitWear('rod');
+          this.missText = 'joran patah — beban terlalu besar';
+          this.state = 'miss';
+          this.t = 0;
+          audio.blip(120, 0.20, 0.18);
+        } else if (this.lineRisk > 1.45) {
+          // A snapped line costs condition but not the entire spool. The next
+          // cast is possible after an implied re-tie, unless wear had already
+          // brought it to zero.
+          damageTackle('line', 24 + Math.min(18, this.spot.abrasion * 18));
+          this.commitWear('line');
+          this.missText = 'senar putus — tekanan/gesekan terlalu tinggi';
+          this.state = 'miss';
+          this.t = 0;
+          audio.blip(145, 0.18, 0.16);
+        } else if (this.hookRisk > 1.75) {
+          damageTackle('hook', 100);
+          this.commitWear('hook');
+          this.missText = 'kail melurus — terlalu ringan untuk ikan ini';
+          this.state = 'miss';
+          this.t = 0;
+          audio.blip(155, 0.18, 0.16);
+        } else if (this.progress >= 1) {
+          this.commitWear();
           this.land(fish, particles, audio, onCatch, p);
         } else if (
-          this.progress <= -0.15 - line.failGrace
-          || this.slack > 4.0 + line.slackGrace
+          this.progress <= -0.15 - lineStats().failGrace
+          || this.slack > 4.0 + lineStats().slackGrace
         ) {
-          this.missText = this.tension >= 0.97 ? 'senar putus...' : 'senar kendur...';
+          this.commitWear();
+          this.missText = this.tension >= 0.97 ? 'senar terlalu tegang...' : 'senar kendur...';
           this.state = 'miss';
           this.t = 0;
           audio.blip(180, 0.18, 0.16);
@@ -1047,6 +1188,7 @@ export class Fishing {
     const fish = SPECIES.find((f) => f.id === speciesId);
     if (!fish) return `tidak ada spesies ${speciesId}`;
     this.pendingGrade = gradeById(gradeId as GradeId);
+    this.pendingCm = rollCatchSize(fish, this.pendingGrade);
     this.slack = 0;
     this.bobX = p.x;
     this.bobY = p.y - 8;
@@ -1069,6 +1211,7 @@ export class Fishing {
     // common fish and the screenshot proves nothing.
     if (grade.id !== gradeId) return `tidak ada grade ${gradeId}`;
     this.pendingGrade = grade;
+    this.pendingCm = rollCatchSize(fish, grade);
     this.style = styleFor(fish);
     this.fight = newFight();
     this.state = 'reel';
@@ -1078,6 +1221,7 @@ export class Fishing {
     this.progress = 0.28;
     this.slack = 0;
     this.momentum = 0;
+    this.resetGearStress();
     this.hookText = 'debug hook';
     this.bobX = p.x;
     this.bobY = p.y - 8;
@@ -1091,15 +1235,9 @@ export class Fishing {
     onCatch: (c: Catch) => void, p: LocalPlayer,
   ): void {
     const grade = this.pendingGrade;
-    // Small fish are common; a high grade drags the roll toward the top of
-    // the species' range rather than past it, so a Mitos wader is still a
-    // wader and the size numbers stay believable. The rod adds only a small
-    // second nudge toward that same ceiling.
-    const roll = Math.random() * Math.random();
-    const baseK = Math.min(1, (1 - roll) + grade.sizeBias * roll);
-    const rod = rodStats();
-    const k = Math.min(1, baseK + (1 - baseK) * rod.sizeBias);
-    const cm = Math.round(fish.minCm + (fish.maxCm - fish.minCm) * k);
+    // Size was rolled when the fish took the bait so it could influence the
+    // physical fight. Debug/direct catches fall back to rolling here.
+    const cm = this.pendingCm > 0 ? this.pendingCm : rollCatchSize(fish, grade);
     const sizeK = (cm - fish.minCm) / Math.max(1, fish.maxCm - fish.minCm);
     const perfect = this.slack < 0.35;
     const coins = Math.max(1, Math.round(
@@ -1128,12 +1266,35 @@ export class Fishing {
     onCatch(this.lastCatch);
   }
 
+  private resetGearStress(): void {
+    this.gearLoad = 0;
+    this.rodRisk = 0;
+    this.lineRisk = 0;
+    this.hookRisk = 0;
+    this.rodWear = 0;
+    this.lineWear = 0;
+    this.hookWear = 0;
+    this.tackleWarning = '';
+  }
+
+  /** Persist accumulated wear once per fight, never once per frame. */
+  private commitWear(skip?: GearPart): void {
+    if (skip !== 'rod' && this.rodWear >= 0.35) damageTackle('rod', this.rodWear);
+    if (skip !== 'line' && this.lineWear >= 0.35) damageTackle('line', this.lineWear);
+    if (skip !== 'hook' && this.hookWear >= 0.35) damageTackle('hook', this.hookWear);
+    this.rodWear = 0;
+    this.lineWear = 0;
+    this.hookWear = 0;
+  }
+
   private reset(p: LocalPlayer): void {
     this.state = 'idle';
     this.t = 0;
     this.pending = null;
+    this.pendingCm = 0;
     this.baitedCast = null;
     this.momentum = 0;
+    this.resetGearStress();
     this.hookText = '';
     this.missText = 'lepas...';
     p.locked = false;
@@ -1271,9 +1432,20 @@ export class Fishing {
         C.InkDeep, 0.85,
       );
 
-      if (!stuck && this.momentum >= 0.45) {
+      if (this.tackleWarning) {
+        const hard = this.gearLoad >= 1.15;
+        d.textCentered(
+          `${this.tackleWarning} · ${Math.round(this.gearLoad * 100)}%`,
+          cx, y + 15, hard ? C.Red : C.Amber, C.InkDeep, 0.88,
+        );
+      } else if (!stuck && this.momentum >= 0.45) {
         const mul = (1 + this.momentum * 0.35).toFixed(1);
         d.textCentered(`ritme bagus ×${mul}`, cx, y + 15, C.Grass, C.InkDeep, 0.8);
+      } else if (this.gearLoad > 0.72) {
+        d.textCentered(
+          `beban alat ${Math.round(this.gearLoad * 100)}%`,
+          cx, y + 15, C.Mist, C.InkDeep, 0.72,
+        );
       }
     }
 
