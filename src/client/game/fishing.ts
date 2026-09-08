@@ -29,7 +29,8 @@ import {
 } from './fight';
 import {
   baitById, baitWeight, brokenPart, conditionFactor, consumeBaitCast,
-  damageTackle, dragStats, gearCondition, hookStats, lineStats, rodStats,
+  damageTackle, dragStats, gearCondition, hookSizeStats, hookSizeWeight,
+  hookStats, lineStats, rodActionStats, rodStats,
   type BaitId, type GearPart,
 } from './shop';
 
@@ -566,6 +567,9 @@ function rollSpecies(
       const style = styleFor(s);
       w *= baitWeight(baited, s.value, s.fight, s.maxCm, style.id);
     }
+    // Hook size is a preference, not a gate. A huge hook at Teluk Eceng
+    // makes tiny fish less eager; a small hook is less attractive to monsters.
+    w *= hookSizeWeight(s.maxCm);
     return w;
   });
   const total = weights.reduce((a, b) => a + b, 0);
@@ -613,6 +617,27 @@ function mouthHint(mouth: MouthType): string {
   if (mouth === 'lunak') return 'mulut lunak · jangan paksa tension';
   if (mouth === 'keras') return 'mulut keras · hook bersih lebih penting';
   return 'mulut normal';
+}
+
+interface EscapeBeat {
+  at: number;
+  label: string;
+  mul: number;
+  duration: number;
+}
+
+function escapeBeat(style: string, used: number): EscapeBeat | null {
+  if (style === 'lari') {
+    if (used === 0) return { at: 0.38, label: 'first run — biarkan drag kerja', mul: 1.22, duration: 1.8 };
+    if (used === 1) return { at: 0.74, label: 'second run — jangan buru-buru', mul: 1.18, duration: 1.5 };
+    return null;
+  }
+  if (used > 0) return null;
+  if (style === 'menyelam') return { at: 0.58, label: 'ikan menyelam lagi', mul: 1.20, duration: 1.7 };
+  if (style === 'mengendap') return { at: 0.80, label: 'sentakan terakhir dekat tepi', mul: 1.24, duration: 1.25 };
+  if (style === 'lincah') return { at: 0.48, label: 'ikan balik arah cepat', mul: 1.14, duration: 1.15 };
+  if (style === 'menggetar') return { at: 0.55, label: 'rentetan getaran baru', mul: 1.16, duration: 1.25 };
+  return { at: 0.70, label: 'ikan coba lari sekali lagi', mul: 1.10, duration: 1.2 };
 }
 
 function spotHazardHint(spot: Spot): string {
@@ -685,6 +710,11 @@ export class Fishing {
    * This makes a long, clean fight calm down instead of only escalating. */
   private fishStamina = 1;
   private dragSlip = 0;
+  private lineStretch = 0;
+  private escapeT = 0;
+  private escapeUsed = 0;
+  private escapeName = '';
+  private escapeMul = 1;
   private snag = 0;
   private snagged = false;
   private hookHold = 1;
@@ -742,8 +772,8 @@ export class Fishing {
    *  whole catch flow without a human on the keyboard. */
   get reel(): {
     tension: number; target: number; progress: number; momentum: number;
-    load: number; stamina: number; dragSlip: number; snag: number;
-    hookHold: number; warning: string;
+    load: number; stamina: number; dragSlip: number; stretch: number; snag: number;
+    hookHold: number; escape: string; warning: string;
     style: string; zone: number; veil: boolean;
   } {
     return {
@@ -752,8 +782,10 @@ export class Fishing {
       load: this.gearLoad,
       stamina: this.fishStamina,
       dragSlip: this.dragSlip,
+      stretch: this.lineStretch,
       snag: this.snag,
       hookHold: this.hookHold,
+      escape: this.escapeT > 0 ? this.escapeName : '',
       warning: this.tackleWarning,
       style: this.style.id,
       zone: Math.max(0.12, this.style.zone * (1 - this.pendingGrade.tier * 0.075)),
@@ -971,12 +1003,21 @@ export class Fishing {
           const hook = hookStats();
           const clean = this.t <= hook.cleanWindow;
           const steady = this.t <= Math.min(hook.biteWindow - 0.45, hook.cleanWindow + 0.78);
+          const action = rodActionStats();
+          const size = hookSizeStats();
           this.hookText = clean ? 'hook mantap!' : steady ? 'kena.' : 'nyaris telat...';
-          this.hookHold = this.mouth === 'keras'
+          const timing = this.mouth === 'keras'
             ? (clean ? 1 : steady ? 0.86 : 0.68)
             : this.mouth === 'lunak'
               ? (clean ? 0.96 : 0.90)
               : (clean ? 1 : steady ? 0.94 : 0.82);
+          const mouthFit = this.mouth === 'lunak'
+            ? (action.id === 'light' ? 1.06 : action.id === 'heavy' ? 0.90 : 1)
+              * (size.id === 'kecil' ? 1.06 : size.id === 'besar' ? 0.90 : 1)
+            : this.mouth === 'keras'
+              ? action.hookSet * size.hookSet
+              : 1;
+          this.hookHold = clamp01(timing * mouthFit);
           this.state = 'reel';
           this.t = 0;
           this.tension = 0.5;
@@ -998,8 +1039,24 @@ export class Fishing {
 
       case 'reel': {
         const fish = this.pending!;
+
+        this.escapeT = Math.max(0, this.escapeT - dt);
+        if (this.escapeT <= 0) {
+          const beat = escapeBeat(this.style.id, this.escapeUsed);
+          if (beat && this.progress >= beat.at && this.fishStamina > 0.34) {
+            this.escapeT = beat.duration;
+            this.escapeName = beat.label;
+            this.escapeMul = beat.mul;
+            this.escapeUsed++;
+            this.momentum = Math.max(0, this.momentum - 0.18);
+            audio.blip(250 + this.escapeUsed * 40, 0.07, 0.12);
+          }
+        }
+
         const baseFight = fish.fight * this.pendingGrade.fightMul;
-        const fight = baseFight * (0.72 + this.fishStamina * 0.28);
+        const fight = baseFight
+          * (0.72 + this.fishStamina * 0.28)
+          * (this.escapeT > 0 ? this.escapeMul : 1);
 
         // The species decides the pattern, the grade decides the teeth.
         // Everything that used to live here — one smooth wander plus a surge
@@ -1011,8 +1068,9 @@ export class Fishing {
         const tune = applyGrade(this.style, f, dt, this.pendingGrade.tier);
         this.target = f.target;
 
+        const action = rodActionStats();
         const pull = input.held(' ') ? 1 : -1;
-        this.tension = clamp01(this.tension + pull * dt * 0.7);
+        this.tension = clamp01(this.tension + pull * dt * 0.7 * action.control);
 
         // --- realistic tackle load ---------------------------------------
         // Species/grade give the fish's power; actual rolled size, depth and
@@ -1038,9 +1096,10 @@ export class Fishing {
         const rod = rodStats();
         const line = lineStats();
         const hook = hookStats();
-        const rodCap = rod.strength * conditionFactor('rod');
+        const hookSize = hookSizeStats();
+        const rodCap = rod.strength * action.loadMul * conditionFactor('rod');
         const lineCap = line.strength * conditionFactor('line');
-        const hookCap = hook.strength * conditionFactor('hook');
+        const hookCap = hook.strength * hookSize.strengthMul * conditionFactor('hook');
 
         // Cover is dangerous when the fish gets away from your marker; rock
         // hurts only while the line is loaded. A good abrasion-resistant line
@@ -1050,9 +1109,20 @@ export class Fishing {
         const abrasionPressure = this.spot.abrasion
           * (1 - line.abrasionResist)
           * clamp01(this.tension * 1.15);
-        const transmitted = rawLoad * (1 - rod.shockAbsorb * 0.24);
-        const lineLoad = transmitted * (1 + coverPressure * 0.22 + abrasionPressure * 0.28);
-        const hookLoad = transmitted * (
+        const rodFlex = rod.shockAbsorb + action.flex;
+        const transmitted = rawLoad * (1 - Math.min(0.60, rodFlex) * 0.24);
+        const rawLineLoad = transmitted * (1 + coverPressure * 0.22 + abrasionPressure * 0.28);
+
+        // Stretch stores part of a shock and releases it gradually. Nilon is
+        // weak but forgiving; braid is strong and very direct. That makes line
+        // choice situational instead of a straight price ladder.
+        const stretchTarget = clamp01(
+          (rawLineLoad / Math.max(0.1, lineCap) - 0.38) * 1.45,
+        ) * line.elasticity;
+        this.lineStretch += (stretchTarget - this.lineStretch) * Math.min(1, dt * 3.4);
+        const elasticCushion = this.lineStretch * 0.30;
+        const lineLoad = rawLineLoad * (1 - elasticCushion);
+        const hookLoad = transmitted * (1 - elasticCushion * 0.75) * (
           1 + (this.style.id === 'lincah' || this.style.id === 'menggetar' ? 0.08 : 0)
         );
 
@@ -1096,7 +1166,11 @@ export class Fishing {
         // Soft mouths tear under hard sustained pressure; hard mouths punish
         // weak hook-sets instead. Neither is an instant random failure.
         if (this.mouth === 'lunak' && this.tension > 0.88) {
-          this.hookHold = Math.max(0, this.hookHold - dt * (0.12 + hookRatio * 0.08));
+          const softProtection = 1 - Math.min(0.55, line.elasticity * 0.60 + action.flex * 0.35);
+          this.hookHold = Math.max(
+            0,
+            this.hookHold - dt * (0.12 + hookRatio * 0.08) * softProtection,
+          );
         } else if (this.mouth === 'keras' && this.hookHold < 0.9 && this.dragSlip > 0.35) {
           this.hookHold = Math.max(0, this.hookHold - dt * 0.035);
         } else {
@@ -1112,7 +1186,9 @@ export class Fishing {
         this.hookWear += dt * Math.max(0, hookRatio - 0.78) * 0.08;
 
         this.tackleWarning = '';
-        if (this.hookHold < 0.38) {
+        if (this.escapeT > 0) {
+          this.tackleWarning = this.escapeName;
+        } else if (this.hookHold < 0.38) {
           this.tackleWarning = this.mouth === 'lunak'
             ? 'kail hampir sobek — kurangi tekanan'
             : 'kail kurang nancep — jaga tekanan halus';
@@ -1162,9 +1238,12 @@ export class Fishing {
         const fatigueBonus = 1 + (1 - this.fishStamina) * 0.16;
         const reelGain = tune.gain * (1 + this.momentum * 0.35) * fatigueBonus;
         const dragLoss = this.dragSlip * 0.48;
+        const stretchLoss = this.lineStretch * 0.12;
         const snagMul = this.snagged ? 0.18 : 1;
         this.progress += (
-          inZone ? reelGain * snagMul - dragLoss * tune.gain : -tune.drain
+          inZone
+            ? reelGain * snagMul * (1 - stretchLoss) - dragLoss * tune.gain
+            : -tune.drain
         ) * dt;
         this.slack = inZone ? Math.max(0, this.slack - dt * 0.6) : this.slack + dt * 0.5;
 
@@ -1382,6 +1461,11 @@ export class Fishing {
     this.gearLoad = 0;
     this.fishStamina = 1;
     this.dragSlip = 0;
+    this.lineStretch = 0;
+    this.escapeT = 0;
+    this.escapeUsed = 0;
+    this.escapeName = '';
+    this.escapeMul = 1;
     this.snag = 0;
     this.snagged = false;
     this.rodRisk = 0;
@@ -1576,6 +1660,11 @@ export class Fishing {
         d.textCentered(
           `drag slip ${Math.round(this.dragSlip * 100)}% · biarkan lari`,
           cx, y + 15, C.Mist, C.InkDeep, 0.76,
+        );
+      } else if (this.lineStretch > 0.20) {
+        d.textCentered(
+          `senar meredam hentakan ${Math.round(this.lineStretch * 100)}%`,
+          cx, y + 15, C.Mist, C.InkDeep, 0.74,
         );
       } else if (this.fishStamina < 0.48) {
         d.textCentered('ikan mulai lelah · tekan stabil', cx, y + 15, C.Grass, C.InkDeep, 0.78);
