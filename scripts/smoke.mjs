@@ -146,6 +146,7 @@ try {
     || typeof fightInfo.reel.rain !== 'number'
     || typeof fightInfo.reel.waterCurrent !== 'number'
     || typeof fightInfo.reel.turbidity !== 'number'
+    || typeof fightInfo.reel.castLane !== 'string'
     || typeof fightInfo.reel.escape !== 'string'
   ) {
     problems.push(`advanced fight state invalid: ${JSON.stringify(fightInfo)}`);
