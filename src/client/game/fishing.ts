@@ -623,25 +623,40 @@ function mouthHint(mouth: MouthType): string {
   return 'mulut normal';
 }
 
+type EscapeKind = 'run' | 'jump' | 'dive' | 'headshake' | 'roll';
+
 interface EscapeBeat {
   at: number;
   label: string;
+  kind: EscapeKind;
   mul: number;
   duration: number;
 }
 
 function escapeBeat(style: string, used: number): EscapeBeat | null {
   if (style === 'lari') {
-    if (used === 0) return { at: 0.38, label: 'first run — biarkan drag kerja', mul: 1.22, duration: 1.8 };
-    if (used === 1) return { at: 0.74, label: 'second run — jangan buru-buru', mul: 1.18, duration: 1.5 };
+    if (used === 0) {
+      return { at: 0.38, label: 'first run — biarkan drag kerja', kind: 'run', mul: 1.22, duration: 1.8 };
+    }
+    if (used === 1) {
+      return { at: 0.74, label: 'second run — jangan buru-buru', kind: 'run', mul: 1.18, duration: 1.5 };
+    }
     return null;
   }
   if (used > 0) return null;
-  if (style === 'menyelam') return { at: 0.58, label: 'ikan menyelam lagi', mul: 1.20, duration: 1.7 };
-  if (style === 'mengendap') return { at: 0.80, label: 'sentakan terakhir dekat tepi', mul: 1.24, duration: 1.25 };
-  if (style === 'lincah') return { at: 0.48, label: 'ikan balik arah cepat', mul: 1.14, duration: 1.15 };
-  if (style === 'menggetar') return { at: 0.55, label: 'rentetan getaran baru', mul: 1.16, duration: 1.25 };
-  return { at: 0.70, label: 'ikan coba lari sekali lagi', mul: 1.10, duration: 1.2 };
+  if (style === 'menyelam') {
+    return { at: 0.58, label: 'dive kedua — jangan sampai slack', kind: 'dive', mul: 1.20, duration: 1.7 };
+  }
+  if (style === 'mengendap') {
+    return { at: 0.80, label: 'rolling dekat tepi — jangan paksa', kind: 'roll', mul: 1.24, duration: 1.25 };
+  }
+  if (style === 'lincah') {
+    return { at: 0.48, label: 'ikan lompat — turunkan tekanan', kind: 'jump', mul: 1.14, duration: 1.15 };
+  }
+  if (style === 'menggetar') {
+    return { at: 0.55, label: 'headshake — jangan tahan keras', kind: 'headshake', mul: 1.16, duration: 1.25 };
+  }
+  return { at: 0.70, label: 'ikan coba lari sekali lagi', kind: 'run', mul: 1.10, duration: 1.2 };
 }
 
 function spotHazardHint(spot: Spot): string {
@@ -715,9 +730,15 @@ export class Fishing {
   private fishStamina = 1;
   private dragSlip = 0;
   private lineStretch = 0;
+  /** Approximate share of usable line currently off the spool. Unlike catch
+   * progress it can move backwards during a run, so drag has a real cost. */
+  private lineOut = 0;
+  private spoolRisk = 0;
+  private landingT = 0;
   private escapeT = 0;
   private escapeUsed = 0;
   private escapeName = '';
+  private escapeKind: EscapeKind = 'run';
   private escapeMul = 1;
   private snag = 0;
   private snagged = false;
@@ -776,7 +797,8 @@ export class Fishing {
    *  whole catch flow without a human on the keyboard. */
   get reel(): {
     tension: number; target: number; progress: number; momentum: number;
-    load: number; stamina: number; dragSlip: number; stretch: number; snag: number;
+    load: number; stamina: number; dragSlip: number; stretch: number; lineOut: number;
+    landing: number; snag: number;
     hookHold: number; escape: string; warning: string;
     style: string; zone: number; veil: boolean;
   } {
@@ -787,6 +809,8 @@ export class Fishing {
       stamina: this.fishStamina,
       dragSlip: this.dragSlip,
       stretch: this.lineStretch,
+      lineOut: this.lineOut,
+      landing: this.landingT,
       snag: this.snag,
       hookHold: this.hookHold,
       escape: this.escapeT > 0 ? this.escapeName : '',
@@ -1050,9 +1074,17 @@ export class Fishing {
           if (beat && this.progress >= beat.at && this.fishStamina > 0.34) {
             this.escapeT = beat.duration;
             this.escapeName = beat.label;
+            this.escapeKind = beat.kind;
             this.escapeMul = beat.mul;
             this.escapeUsed++;
             this.momentum = Math.max(0, this.momentum - 0.18);
+            const splash = beat.kind === 'jump' ? 10
+              : beat.kind === 'headshake' || beat.kind === 'roll' ? 8
+              : beat.kind === 'dive' ? 5 : 6;
+            particles.spawnSplash(this.bobX, this.bobY + 3, splash);
+            if (beat.kind === 'jump' && this.pendingGrade.tier >= 2) {
+              particles.spawnSpark(this.bobX, this.bobY - 5, 4 + this.pendingGrade.tier);
+            }
             audio.blip(250 + this.escapeUsed * 40, 0.07, 0.12);
           }
         }
@@ -1146,6 +1178,23 @@ export class Fishing {
         const hookRatio = slippedHookLoad / Math.max(0.1, hookCap);
         this.gearLoad = Math.max(rodRatio, lineRatio, hookRatio);
 
+        // Different surface behaviours demand different *pressure*, still with
+        // the same hold/release control. A jump/headshake under hard tension
+        // works the hook loose; a dive under zero pressure creates slack.
+        if (this.escapeT > 0) {
+          if (
+            (this.escapeKind === 'jump' || this.escapeKind === 'headshake' || this.escapeKind === 'roll')
+            && this.tension > 0.78
+          ) {
+            const k = this.escapeKind === 'jump' ? 0.10 : this.escapeKind === 'roll' ? 0.085 : 0.075;
+            this.hookHold = Math.max(0, this.hookHold - dt * k * (1 + hookRatio * 0.35));
+          }
+          if (this.escapeKind === 'dive' && this.tension < 0.16) {
+            this.slack += dt * 0.42;
+            this.progress -= dt * 0.018;
+          }
+        }
+
         const rise = (ratio: number, seconds: number): number =>
           ratio > 1 ? dt * (0.45 + (ratio - 1) * 1.8) : -dt / seconds;
         this.rodRisk = Math.max(0, this.rodRisk + rise(rodRatio, 1.6));
@@ -1190,7 +1239,16 @@ export class Fishing {
         this.hookWear += dt * Math.max(0, hookRatio - 0.78) * 0.08;
 
         this.tackleWarning = '';
-        if (this.escapeT > 0) {
+        const spoolPct = this.lineOut / Math.max(0.1, line.capacity);
+        if (this.spoolRisk > 0.25) {
+          this.tackleWarning = spoolPct >= 1
+            ? 'senar di reel hampir habis — tahan larinya'
+            : 'ikan makin jauh — mulai ambil line';
+        } else if (this.landingT > 0.05) {
+          this.tackleWarning = this.tension > 0.82
+            ? 'dekat tepi — jangan angkat paksa'
+            : 'dekat tepi — tahan stabil, serok pelan';
+        } else if (this.escapeT > 0) {
           this.tackleWarning = this.escapeName;
         } else if (this.hookHold < 0.38) {
           this.tackleWarning = this.mouth === 'lunak'
@@ -1249,12 +1307,48 @@ export class Fishing {
             ? reelGain * snagMul * (1 - stretchLoss) - dragLoss * tune.gain
             : -tune.drain
         ) * dt;
+
+        // Distance on the spool is independent from abstract fight progress.
+        // Drag slip and a hard run send the fish away; smooth reeling actually
+        // recovers line. This is what turns "loose drag" into a trade-off.
+        const runTake = this.escapeT > 0 && this.escapeKind === 'run'
+          ? 0.038 * (0.7 + this.fishStamina * 0.3)
+          : 0;
+        this.lineOut += dt * (this.dragSlip * 0.085 + runTake);
+        if (inZone && !this.snagged) {
+          this.lineOut -= dt * reelGain * (0.072 + this.momentum * 0.028);
+        }
+        this.lineOut = Math.max(0, this.lineOut);
+
+        const spoolLimit = line.capacity;
+        const nearSpool = this.lineOut / Math.max(0.1, spoolLimit);
+        this.spoolRisk = nearSpool >= 0.96
+          ? this.spoolRisk + dt * (0.42 + (nearSpool - 0.96) * 5)
+          : Math.max(0, this.spoolRisk - dt * 0.7);
+
+        // Final metres are intentionally calmer, not a second minigame.
+        // Stable medium pressure for a short beat completes the landing.
+        const nearBank = this.progress >= 0.90 && this.lineOut <= 0.18;
+        const landingPressure = this.tension >= 0.24 && this.tension <= 0.80;
+        this.landingT = nearBank && inZone && landingPressure
+          ? Math.min(1, this.landingT + dt * 0.75)
+          : Math.max(0, this.landingT - dt * 0.45);
+        if (nearBank && this.tension > 0.86) {
+          this.hookHold = Math.max(0, this.hookHold - dt * (this.mouth === 'lunak' ? 0.055 : 0.022));
+        }
         this.slack = inZone ? Math.max(0, this.slack - dt * 0.6) : this.slack + dt * 0.5;
 
         this.bobX += (Math.random() - 0.5) * 12 * dt;
         this.bobY += (Math.random() - 0.5) * 8 * dt;
 
-        if (this.hookHold <= 0.02) {
+        if (this.spoolRisk > 1.25) {
+          damageTackle('line', 18);
+          this.commitWear('line');
+          this.missText = 'senar habis dari reel — ikan terlalu jauh';
+          this.state = 'miss';
+          this.t = 0;
+          audio.blip(130, 0.20, 0.16);
+        } else if (this.hookHold <= 0.02) {
           this.commitWear();
           this.missText = this.mouth === 'lunak'
             ? 'kail sobek dari mulut ikan'
@@ -1286,9 +1380,13 @@ export class Fishing {
           this.state = 'miss';
           this.t = 0;
           audio.blip(155, 0.18, 0.16);
-        } else if (this.progress >= 1) {
+        } else if (this.progress >= 1 && this.lineOut <= 0.10 && this.landingT >= 0.55) {
           this.commitWear();
           this.land(fish, particles, audio, onCatch, p);
+        } else if (this.progress >= 1) {
+          // The fish is beaten, but still has line out. Keep it at the bank
+          // rather than teleporting it into the catch card.
+          this.progress = 0.995;
         } else if (
           this.progress <= -0.15 - lineStats().failGrace
           || this.slack > 4.0 + lineStats().slackGrace
@@ -1466,9 +1564,12 @@ export class Fishing {
     this.fishStamina = 1;
     this.dragSlip = 0;
     this.lineStretch = 0;
+    this.spoolRisk = 0;
+    this.landingT = 0;
     this.escapeT = 0;
     this.escapeUsed = 0;
     this.escapeName = '';
+    this.escapeKind = 'run';
     this.escapeMul = 1;
     this.snag = 0;
     this.snagged = false;
