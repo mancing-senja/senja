@@ -32,6 +32,8 @@ export interface LineStats {
   strength: number;
   /** Protection against rock/wood rubbing while loaded, 0..1. */
   abrasionResist: number;
+  /** Stretch that cushions shock but slightly delays direct pressure, 0..1. */
+  elasticity: number;
 }
 
 export interface HookStats {
@@ -57,6 +59,8 @@ export interface BaitStats {
 
 export type GearPart = 'rod' | 'line' | 'hook';
 export type DragId = 'longgar' | 'seimbang' | 'kencang';
+export type RodActionId = 'light' | 'medium' | 'heavy';
+export type HookSizeId = 'kecil' | 'sedang' | 'besar';
 
 export interface DragStats {
   id: DragId;
@@ -65,6 +69,31 @@ export interface DragStats {
   hold: number;
   /** How fast the spool gives line under excess load. */
   slip: number;
+}
+
+export interface RodActionStats {
+  id: RodActionId;
+  label: string;
+  /** Trade raw load capacity for feel/control or vice versa. */
+  loadMul: number;
+  /** Extra flex that cushions shock before line/hook see it. */
+  flex: number;
+  /** How quickly the player can move tension toward/away from the fish. */
+  control: number;
+  /** How firmly a hook-set transfers into hard mouths. */
+  hookSet: number;
+}
+
+export interface HookSizeStats {
+  id: HookSizeId;
+  label: string;
+  /** Physical strength multiplier for the installed hook model. */
+  strengthMul: number;
+  /** Hook-set transfer; bigger hook penetrates hard mouths better. */
+  hookSet: number;
+  /** Relative bite chance for small / large fish. */
+  smallFit: number;
+  bigFit: number;
 }
 
 export interface GearCondition {
@@ -79,6 +108,8 @@ export interface TackleState {
   hook: number;
   condition: GearCondition;
   drag: DragId;
+  action: RodActionId;
+  hookSize: HookSizeId;
   bait: BaitId;
   baits: Record<BaitId, number>;
 }
@@ -90,9 +121,18 @@ export const RODS: readonly RodStats[] = [
 ];
 
 export const LINES: readonly LineStats[] = [
-  { label: 'Senar Nilon', cost: 0, slackGrace: 0, failGrace: 0, strength: 1.00, abrasionResist: 0.42 },
-  { label: 'Senar Kepang', cost: 75, slackGrace: 0.45, failGrace: 0.04, strength: 1.52, abrasionResist: 0.72 },
-  { label: 'Senar Danau', cost: 185, slackGrace: 0.90, failGrace: 0.08, strength: 2.18, abrasionResist: 0.90 },
+  {
+    label: 'Senar Nilon', cost: 0, slackGrace: 0, failGrace: 0,
+    strength: 1.00, abrasionResist: 0.42, elasticity: 0.38,
+  },
+  {
+    label: 'Senar Kepang', cost: 75, slackGrace: 0.45, failGrace: 0.04,
+    strength: 1.52, abrasionResist: 0.72, elasticity: 0.08,
+  },
+  {
+    label: 'Senar Danau', cost: 185, slackGrace: 0.90, failGrace: 0.08,
+    strength: 2.18, abrasionResist: 0.90, elasticity: 0.22,
+  },
 ];
 
 export const HOOKS: readonly HookStats[] = [
@@ -107,7 +147,21 @@ export const DRAGS: readonly DragStats[] = [
   { id: 'kencang', label: 'Drag Kencang', hold: 0.92, slip: 0.42 },
 ];
 
+export const ROD_ACTIONS: readonly RodActionStats[] = [
+  { id: 'light', label: 'Action Light', loadMul: 0.84, flex: 0.34, control: 1.12, hookSet: 0.90 },
+  { id: 'medium', label: 'Action Medium', loadMul: 1.00, flex: 0.22, control: 1.00, hookSet: 1.00 },
+  { id: 'heavy', label: 'Action Heavy', loadMul: 1.18, flex: 0.10, control: 0.91, hookSet: 1.14 },
+];
+
+export const HOOK_SIZES: readonly HookSizeStats[] = [
+  { id: 'kecil', label: 'Kail Kecil', strengthMul: 0.86, hookSet: 0.94, smallFit: 1.18, bigFit: 0.84 },
+  { id: 'sedang', label: 'Kail Sedang', strengthMul: 1.00, hookSet: 1.00, smallFit: 1.00, bigFit: 1.00 },
+  { id: 'besar', label: 'Kail Besar', strengthMul: 1.18, hookSet: 1.12, smallFit: 0.74, bigFit: 1.20 },
+];
+
 const DRAG_IDS = DRAGS.map((d) => d.id) as DragId[];
+const ROD_ACTION_IDS = ROD_ACTIONS.map((a) => a.id) as RodActionId[];
+const HOOK_SIZE_IDS = HOOK_SIZES.map((h) => h.id) as HookSizeId[];
 
 export const BAITS: readonly BaitStats[] = [
   { id: 'cacing', label: 'Cacing Tanah', cost: 12, casts: 6, hint: 'serbaguna · ikan tenang' },
@@ -137,6 +191,37 @@ export function cycleDrag(): DragStats {
   state = { ...state, drag: DRAG_IDS[(i + 1) % DRAG_IDS.length] };
   save();
   return dragStats();
+}
+
+export function rodActionStats(): RodActionStats {
+  return ROD_ACTIONS.find((a) => a.id === state.action) ?? ROD_ACTIONS[1];
+}
+
+export function cycleRodAction(): RodActionStats {
+  const i = Math.max(0, ROD_ACTION_IDS.indexOf(state.action));
+  state = { ...state, action: ROD_ACTION_IDS[(i + 1) % ROD_ACTION_IDS.length] };
+  save();
+  return rodActionStats();
+}
+
+export function hookSizeStats(): HookSizeStats {
+  return HOOK_SIZES.find((h) => h.id === state.hookSize) ?? HOOK_SIZES[1];
+}
+
+export function cycleHookSize(): HookSizeStats {
+  const i = Math.max(0, HOOK_SIZE_IDS.indexOf(state.hookSize));
+  state = { ...state, hookSize: HOOK_SIZE_IDS[(i + 1) % HOOK_SIZE_IDS.length] };
+  save();
+  return hookSizeStats();
+}
+
+/** Hook size changes which already-valid species are comfortable committing
+ * to the bait. It never zeroes a species, so casual/default play stays open. */
+export function hookSizeWeight(maxCm: number): number {
+  const h = hookSizeStats();
+  const small = maxCm <= 30;
+  const big = maxCm >= 55;
+  return small ? h.smallFit : big ? h.bigFit : 1;
 }
 
 export function brokenPart(): GearPart | null {
@@ -347,13 +432,22 @@ function isDragId(v: unknown): v is DragId {
   return typeof v === 'string' && DRAG_IDS.includes(v as DragId);
 }
 
+function isRodActionId(v: unknown): v is RodActionId {
+  return typeof v === 'string' && ROD_ACTION_IDS.includes(v as RodActionId);
+}
+
+function isHookSizeId(v: unknown): v is HookSizeId {
+  return typeof v === 'string' && HOOK_SIZE_IDS.includes(v as HookSizeId);
+}
+
 function load(): TackleState {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) {
       return {
         rod: 0, line: 0, hook: 0, condition: fullCondition(),
-        drag: 'seimbang', bait: 'cacing', baits: emptyBaits(),
+        drag: 'seimbang', action: 'medium', hookSize: 'sedang',
+        bait: 'cacing', baits: emptyBaits(),
       };
     }
 
@@ -363,6 +457,8 @@ function load(): TackleState {
       hook?: unknown;
       condition?: Partial<Record<GearPart, unknown>>;
       drag?: unknown;
+      action?: unknown;
+      hookSize?: unknown;
       bait?: unknown;
       baits?: Partial<Record<BaitId, unknown>>;
       /** v1 migration: the old system only had one generic bait stack. */
@@ -387,13 +483,16 @@ function load(): TackleState {
         hook: clampInt(Number(parsed.condition?.hook ?? 100), 0, 100),
       },
       drag: isDragId(parsed.drag) ? parsed.drag : 'seimbang',
+      action: isRodActionId(parsed.action) ? parsed.action : 'medium',
+      hookSize: isHookSizeId(parsed.hookSize) ? parsed.hookSize : 'sedang',
       bait: isBaitId(parsed.bait) ? parsed.bait : 'cacing',
       baits,
     };
   } catch {
     return {
       rod: 0, line: 0, hook: 0, condition: fullCondition(),
-      drag: 'seimbang', bait: 'cacing', baits: emptyBaits(),
+      drag: 'seimbang', action: 'medium', hookSize: 'sedang',
+      bait: 'cacing', baits: emptyBaits(),
     };
   }
 }
