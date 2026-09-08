@@ -682,6 +682,43 @@ function spotHazardHint(spot: Spot): string {
   return '';
 }
 
+type CastLaneId = 'open' | 'cover-edge' | 'current-seam' | 'dropoff';
+
+interface CastLane {
+  id: CastLaneId;
+  label: string;
+  waitMul: number;
+  coverMul: number;
+  currentMul: number;
+  luckBonus: number;
+}
+
+const OPEN_LANE: CastLane = {
+  id: 'open', label: 'air terbuka', waitMul: 1, coverMul: 1, currentMul: 1, luckBonus: 0,
+};
+
+function castLaneFor(spot: Spot, depth: number): CastLane {
+  if (spot.cover >= 0.62 && depth <= 0.58) {
+    return {
+      id: 'cover-edge', label: 'tepi cover',
+      waitMul: 0.88, coverMul: 1.18, currentMul: 1, luckBonus: 0.015,
+    };
+  }
+  if (spot.current >= 0.46 && depth >= 0.24 && depth <= 0.78) {
+    return {
+      id: 'current-seam', label: 'jalur arus',
+      waitMul: 0.86, coverMul: 1, currentMul: 1.12, luckBonus: 0.025,
+    };
+  }
+  if (depth >= 0.82) {
+    return {
+      id: 'dropoff', label: 'drop-off dalam',
+      waitMul: 0.94, coverMul: 1, currentMul: 1.04, luckBonus: 0.07,
+    };
+  }
+  return OPEN_LANE;
+}
+
 /** The fish's actual size is decided when it takes the bait, not after the
  * fight. Size therefore contributes to load and gear choice instead of being
  * cosmetic information revealed only on the result card. */
@@ -715,6 +752,7 @@ export class Fishing {
   private nibbleMotion = 2.2;
   private nibbleText = 'ada gerakan...';
   private depth01 = 0;
+  private castLane: CastLane = OPEN_LANE;
   private spot: Spot = DEFAULT_SPOT;
   private district: District | null = null;
   private pending: Species | null = null;
@@ -818,7 +856,7 @@ export class Fishing {
     tension: number; target: number; progress: number; momentum: number;
     load: number; stamina: number; dragSlip: number; stretch: number; lineOut: number;
     landing: number; snag: number;
-    rain: number; waterCurrent: number; turbidity: number;
+    rain: number; waterCurrent: number; turbidity: number; castLane: string;
     hookHold: number; escape: string; warning: string;
     style: string; zone: number; veil: boolean;
   } {
@@ -835,6 +873,7 @@ export class Fishing {
       rain: this.rain,
       waterCurrent: this.waterCurrent,
       turbidity: this.turbidity,
+      castLane: this.castLane.id,
       hookHold: this.hookHold,
       escape: this.escapeT > 0 ? this.escapeName : '',
       warning: this.tackleWarning,
@@ -909,7 +948,8 @@ export class Fishing {
           const rainActivity = 1 - this.rain * 0.16;
           this.biteAt = (2.4 + Math.random() * 7.5)
             * rodStats().waitMul
-            * rainActivity;
+            * rainActivity
+            * this.castLane.waitMul;
         }
         break;
       }
@@ -930,7 +970,10 @@ export class Fishing {
           // odds, so chasing a rare fish means going somewhere for it
           // rather than casting more times in the same place.
           this.pendingGrade = rollGrade(
-            luckFrom(this.depth01, this.spot.depth, nightness(time)),
+            clamp01(
+              luckFrom(this.depth01, this.spot.depth, nightness(time))
+              + this.castLane.luckBonus,
+            ),
           );
           this.pendingCm = rollCatchSize(this.pending, this.pendingGrade);
 
@@ -1159,7 +1202,7 @@ export class Fishing {
           : 1;
         const environment = 1
           + this.depth01 * 0.10
-          + this.waterCurrent * 0.18;
+          + this.waterCurrent * this.castLane.currentMul * 0.18;
         const rawLoad = fight
           * (0.68 + size01 * 0.42)
           * environment
@@ -1180,7 +1223,10 @@ export class Fishing {
         const offForGear = Math.abs(this.tension - this.target);
         const coverPressure = Math.min(
           1.2,
-          this.spot.cover * (1 + this.rain * 0.08) * clamp01(offForGear * 2.2),
+          this.spot.cover
+            * this.castLane.coverMul
+            * (1 + this.rain * 0.08)
+            * clamp01(offForGear * 2.2),
         );
         const abrasionPressure = this.spot.abrasion
           * (1 - line.abrasionResist)
@@ -1513,6 +1559,7 @@ export class Fishing {
     const shoreCol = map.shore[clampInt(Math.floor(tx / TILE), 0, map.shore.length - 1)];
     const fromShore = shoreCol * TILE - ty;
     this.depth01 = clamp01(this.spot.depth + clamp01(fromShore / 200) * 0.45);
+    this.castLane = castLaneFor(this.spot, this.depth01);
     // Long casts start with more line in the water. Capacity is deliberately
     // not filled by a normal cast; only a hooked fish can threaten the spool.
     const line = lineStats();
@@ -1722,6 +1769,12 @@ export class Fishing {
       const hazard = spotHazardHint(this.spot);
       if (hazard) {
         d.textCentered(hazard, cx, view.h - 40, C.Mist, C.InkDeep, 0.62);
+      }
+      if (this.castLane.id !== 'open') {
+        d.textCentered(
+          `lemparan: ${this.castLane.label}`,
+          cx, view.h - 50, C.GrassLt, C.InkDeep, 0.64,
+        );
       }
 
       if (this.rain >= 0.12) {
