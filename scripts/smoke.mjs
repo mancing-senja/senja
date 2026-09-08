@@ -99,6 +99,7 @@ try {
       drag: dbg ? dbg.drag : null,
       action: dbg ? dbg.action : null,
       hookSize: dbg ? dbg.hookSize : null,
+      weather: dbg ? dbg.weather : null,
       hazardSpot: map ? map.spots.find((s) => s.id === 'tanjung') : null,
     };
   });
@@ -142,6 +143,9 @@ try {
     || !(fightInfo.reel.lineOut > 0)
     || fightInfo.reel.landing !== 0
     || !(fightInfo.reel.hookHold > 0)
+    || typeof fightInfo.reel.rain !== 'number'
+    || typeof fightInfo.reel.waterCurrent !== 'number'
+    || typeof fightInfo.reel.turbidity !== 'number'
     || typeof fightInfo.reel.escape !== 'string'
   ) {
     problems.push(`advanced fight state invalid: ${JSON.stringify(fightInfo)}`);
@@ -149,6 +153,9 @@ try {
 
   // Multiplayer reaches the room server through the /room proxy. If this
   // regresses, solo play still works and nothing else in CI would notice.
+  if (!info.weather || typeof info.weather.rain !== 'number') {
+    problems.push(`weather debug state missing: ${JSON.stringify(info.weather)}`);
+  }
   if (info.net !== 'online') problems.push(`room socket not connected (net=${info.net})`);
 
   if (problems.length) {
