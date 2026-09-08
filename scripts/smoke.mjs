@@ -138,11 +138,13 @@ try {
   });
   if (
     !fightInfo.reel
+    || !Number.isFinite(fightInfo.reel.lineOut)
     || !(fightInfo.reel.lineOut > 0)
-    || typeof fightInfo.reel.landing !== 'number'
+    || fightInfo.reel.landing !== 0
+    || !(fightInfo.reel.hookHold > 0)
     || typeof fightInfo.reel.escape !== 'string'
   ) {
-    problems.push(`advanced fight state missing: ${JSON.stringify(fightInfo)}`);
+    problems.push(`advanced fight state invalid: ${JSON.stringify(fightInfo)}`);
   }
 
   // Multiplayer reaches the room server through the /room proxy. If this
