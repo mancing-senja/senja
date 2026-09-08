@@ -13,7 +13,9 @@ import type { Lighting } from '../world/lighting';
 import type { Input } from '../engine/input';
 import { CROP_INFO } from './farm';
 import { SPECIES } from './fishing';
+import { styleFor } from './fight';
 import { GRADES } from './grade';
+import type { Spot } from '../world/spots';
 import { Blend } from '../engine/batch';
 import { lookColour } from '../art/character';
 import type { LoreFragment } from './lore';
@@ -56,6 +58,7 @@ export interface HudCtx {
   playerCount: number;
   caught: number;
   farm: Farm;
+  spots: readonly Spot[];
   L: Lighting;
   board: BoardEntry[];
   myName: string;
@@ -463,6 +466,23 @@ export class Ui {
     for (let i = 0; i < Math.min(3, lines.length); i++) {
       d.text(lines[i], LEFT, y + 88 + i * LINE_H, C.Mist, 0.85);
     }
+
+    // What it does on the line and where the actual spawn table favours it.
+    // This is learned knowledge: the sheet only gets here after a catch, and
+    // the spot is derived from the same multipliers rollSpecies uses.
+    const style = styleFor(sp);
+    let bestSpot: Spot | null = null;
+    let bestMul = 1;
+    for (const spot of ctx.spots) {
+      const mul = spot.mult[sp.id] ?? 1;
+      if (mul > bestMul) {
+        bestMul = mul;
+        bestSpot = spot;
+      }
+    }
+    d.text(`gaya: ${style.label}`, LEFT, y + 117, C.Pale, 0.88);
+    const habitat = bestSpot ? bestSpot.label : 'air terbuka';
+    d.text(`cari: ${clipTo(habitat, 67)}`, LEFT, y + 128, C.GrassLt, 0.88);
 
     // --- right: the numbers that say where to go looking for a bigger one.
     let ry = y + 24;
