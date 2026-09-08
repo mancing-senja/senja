@@ -12,7 +12,7 @@ import type { Draw } from '../render/draw';
 import type { Lighting } from '../world/lighting';
 import type { Input } from '../engine/input';
 import { CROP_INFO } from './farm';
-import { SPECIES } from './fishing';
+import { mouthTypeForSpecies, SPECIES } from './fishing';
 import { styleFor } from './fight';
 import { GRADES } from './grade';
 import { BAITS, baitWeight } from './shop';
@@ -412,7 +412,7 @@ export class Ui {
     // blurb run under the whole panel width and it landed straight across
     // the bite-time bars — the two halves have to own their own space.
     const w = 224;
-    const h = 160;
+    const h = 174;
     const x = Math.round(view.w / 2 - w / 2);
     const y = Math.round(view.h / 2 - h / 2);
     const tier = e ? (e.bestGrade ?? 0) : 0;
@@ -495,6 +495,13 @@ export class Ui {
     const habitat = bestSpot ? bestSpot.label : 'air terbuka';
     d.text(`cari: ${clipTo(habitat, 67)}`, LEFT, y + 120, C.GrassLt, 0.88);
     d.text(`umpan: ${clipTo(bestBait.label, 61)}`, LEFT, y + 131, C.Amber, 0.88);
+
+    const mouth = mouthTypeForSpecies(sp);
+    const hookAdvice = mouth === 'lunak' || sp.maxCm <= 30
+      ? 'kecil'
+      : mouth === 'keras' || sp.maxCm >= 55 ? 'besar' : 'sedang';
+    d.text(`mulut: ${mouth}`, LEFT, y + 142, C.Pale, 0.84);
+    d.text(`kail: ${hookAdvice}`, LEFT, y + 153, C.WaterBr, 0.84);
 
     // --- right: the numbers that say where to go looking for a bigger one.
     let ry = y + 24;
