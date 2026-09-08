@@ -17,6 +17,12 @@ export interface Spot {
   mult: Record<string, number>;
   /** Baseline depth for the rarity roll, 0..1. Casting further still helps. */
   depth: number;
+  /** Vegetation/roots/structure the fish can run into. Raises snag pressure. */
+  cover: number;
+  /** Rock, concrete and shell that can rub a loaded line. */
+  abrasion: number;
+  /** Moving water. Adds sustained load but also makes the spot feel alive. */
+  current: number;
   blurb: string;
 }
 
@@ -25,7 +31,7 @@ export const DEFAULT_SPOT: Spot = {
   label: 'Kolam',
   x: 0, y: 0, r: 0,
   mult: {},
-  depth: 0.35,
+  depth: 0.35, cover: 0.08, abrasion: 0.05, current: 0.04,
   blurb: 'Air terbuka.',
 };
 
@@ -42,7 +48,7 @@ export function buildSpots(f: {
   return [
     {
       id: 'dermaga', label: 'Dermaga Tua', x: f.pierX, y: f.pierY, r: 150,
-      mult: {}, depth: 0.45,
+      mult: {}, depth: 0.45, cover: 0.18, abrasion: 0.18, current: 0.08,
       blurb: 'Papannya sudah lapuk, tapi ikannya masih mau lewat.',
     },
     {
@@ -51,7 +57,7 @@ export function buildSpots(f: {
         sepat: 3.5, betok: 3, seluang: 3, wader: 2.5, nila: 1.6,
         arwana: 0.2, belida: 0.2, ikanhantu: 0.1, duskeel: 0.4, patin: 0.3,
       },
-      depth: 0.12,
+      depth: 0.12, cover: 0.82, abrasion: 0.12, current: 0.03,
       blurb: 'Dangkal, penuh eceng gondok. Ikannya kecil-kecil tapi rame.',
     },
     {
@@ -60,13 +66,13 @@ export function buildSpots(f: {
         belida: 3, arwana: 2.6, patin: 2.4, duskeel: 2.2, bawal: 1.8, glassfin: 1.8,
         wader: 0.3, seluang: 0.3, sepat: 0.3,
       },
-      depth: 0.9,
+      depth: 0.9, cover: 0.14, abrasion: 0.88, current: 0.18,
       blurb: 'Batunya langsung nyemplung ke air dalam.',
     },
     {
       id: 'muara', label: 'Muara Sungai', x: f.mouthX, y: f.mouthY, r: 150,
       mult: { hampala: 3, jelawat: 2.6, tawes: 2.4, nila: 2, bawal: 1.6, ikanhantu: 0.3 },
-      depth: 0.5,
+      depth: 0.5, cover: 0.24, abrasion: 0.22, current: 0.76,
       blurb: 'Air sungai ketemu air danau. Ikannya nunggu di situ.',
     },
     {
@@ -75,7 +81,7 @@ export function buildSpots(f: {
         hampala: 2.6, seluang: 2.6, wader: 2.2, tawes: 1.8, jelawat: 1.6,
         lele: 0.4, gabus: 0.5, ikanhantu: 0.15, belida: 0.4,
       },
-      depth: 0.28,
+      depth: 0.28, cover: 0.20, abrasion: 0.16, current: 0.58,
       blurb: 'Arusnya pelan, airnya bening sampai kelihatan dasarnya.',
     },
     {
@@ -84,7 +90,7 @@ export function buildSpots(f: {
         gabus: 3.4, lele: 3.2, ikanhantu: 2.6, duskeel: 2.2, betok: 1.8,
         tawes: 0.3, seluang: 0.4, sunfish: 0.2, bintangair: 0.4,
       },
-      depth: 0.72,
+      depth: 0.72, cover: 0.90, abrasion: 0.30, current: 0.05,
       blurb: 'Airnya gelap dan diam. Yang di bawah sana ga keliatan.',
     },
     {
@@ -93,7 +99,7 @@ export function buildSpots(f: {
         ikanhantu: 3.2, bintangair: 3, glassfin: 2.6, arwana: 2.4, belida: 2,
         wader: 0.2, seluang: 0.2, sepat: 0.2, oldboot: 0.3, kaleng: 0.3,
       },
-      depth: 1,
+      depth: 1, cover: 0.10, abrasion: 0.38, current: 0.32,
       blurb: 'Jauh dari tepi, dasarnya turun dalam banget.',
     },
   ];
