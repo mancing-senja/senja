@@ -659,6 +659,9 @@ export class Fishing {
   /** Physical load model. Risk meters rise only under sustained overload, so
    * one bad correction is a warning rather than an instant broken item. */
   private gearLoad = 0;
+  /** Fish tire under steady pressure and recover a little when given slack.
+   * This makes a long, clean fight calm down instead of only escalating. */
+  private fishStamina = 1;
   private rodRisk = 0;
   private lineRisk = 0;
   private hookRisk = 0;
@@ -710,13 +713,14 @@ export class Fishing {
    *  whole catch flow without a human on the keyboard. */
   get reel(): {
     tension: number; target: number; progress: number; momentum: number;
-    load: number; warning: string;
+    load: number; stamina: number; warning: string;
     style: string; zone: number; veil: boolean;
   } {
     return {
       tension: this.tension, target: this.target, progress: this.progress,
       momentum: this.momentum,
       load: this.gearLoad,
+      stamina: this.fishStamina,
       warning: this.tackleWarning,
       style: this.style.id,
       zone: Math.max(0.12, this.style.zone * (1 - this.pendingGrade.tier * 0.075)),
@@ -955,7 +959,8 @@ export class Fishing {
 
       case 'reel': {
         const fish = this.pending!;
-        const fight = fish.fight * this.pendingGrade.fightMul;
+        const baseFight = fish.fight * this.pendingGrade.fightMul;
+        const fight = baseFight * (0.72 + this.fishStamina * 0.28);
 
         // The species decides the pattern, the grade decides the teeth.
         // Everything that used to live here — one smooth wander plus a surge
@@ -1062,7 +1067,15 @@ export class Fishing {
         this.momentum = inZone
           ? Math.min(1, this.momentum + dt * 0.24)
           : Math.max(0, this.momentum - dt * 0.52);
-        const reelGain = tune.gain * (1 + this.momentum * 0.35);
+
+        // Steady pressure tires the fish. Giving it a lot of slack lets it
+        // recover a little, but never all the way back to fresh in one fight.
+        this.fishStamina = inZone
+          ? Math.max(0.28, this.fishStamina - dt * (0.022 + this.momentum * 0.018))
+          : Math.min(1, this.fishStamina + dt * 0.008);
+
+        const fatigueBonus = 1 + (1 - this.fishStamina) * 0.16;
+        const reelGain = tune.gain * (1 + this.momentum * 0.35) * fatigueBonus;
         this.progress += (inZone ? reelGain : -tune.drain) * dt;
         this.slack = inZone ? Math.max(0, this.slack - dt * 0.6) : this.slack + dt * 0.5;
 
@@ -1268,6 +1281,7 @@ export class Fishing {
 
   private resetGearStress(): void {
     this.gearLoad = 0;
+    this.fishStamina = 1;
     this.rodRisk = 0;
     this.lineRisk = 0;
     this.hookRisk = 0;
@@ -1441,6 +1455,8 @@ export class Fishing {
       } else if (!stuck && this.momentum >= 0.45) {
         const mul = (1 + this.momentum * 0.35).toFixed(1);
         d.textCentered(`ritme bagus ×${mul}`, cx, y + 15, C.Grass, C.InkDeep, 0.8);
+      } else if (this.fishStamina < 0.48) {
+        d.textCentered('ikan mulai lelah · tekan stabil', cx, y + 15, C.Grass, C.InkDeep, 0.78);
       } else if (this.gearLoad > 0.72) {
         d.textCentered(
           `beban alat ${Math.round(this.gearLoad * 100)}%`,
