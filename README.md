@@ -78,6 +78,8 @@ Secara default server memakai port 8787. Bisa diubah lewat `PORT` atau
 | `Q` | ganti bibit / pindah kategori di toko pancing |
 | `R` | ganti jenis umpan aktif |
 | `F` | ganti drag reel: Longgar / Seimbang / Kencang |
+| `T` | ganti rod action: Light / Medium / Heavy |
+| `Y` | ganti ukuran kail: Kecil / Sedang / Besar |
 | `Enter` | chat sama pemain lain |
 | `J` | catatan tangkapan |
 | `B` | papan komunitas |
@@ -126,6 +128,17 @@ layar yang pakai display scaling.
   snag akan naik; tekanan sedang dan tracking yang rapi bisa membebaskannya.
 - **Karakter mulut ikan.** Ikan kecil tertentu bermulut lunak dan bisa sobek kalau
   dipaksa; ikan kuat bermulut keras lebih butuh hook-set yang bersih.
+- **Rod action punya kompromi.** Light lebih responsif/fleksibel dan ramah mulut
+  lunak; Heavy menahan beban lebih besar dan menancapkan kail lebih tegas ke
+  mulut keras, tapi lebih kasar dan sedikit lambat dikoreksi.
+- **Elastisitas senar nyata.** Nilon menyimpan shock lalu melepasnya pelan,
+  kepang lebih direct, dan Senar Danau ada di tengah; stretch melindungi hook
+  tapi sedikit mengurangi transfer reel.
+- **Ukuran kail ikut memilih target.** Kail kecil lebih cocok ikan kecil,
+  kail besar lebih cocok ikan besar dan kuat; salah ukuran menurunkan peluang
+  bite/hook security tetapi tidak pernah mengunci spesies total.
+- **Escape phase per perilaku.** Ikan lari bisa first/second run, penyelam bisa
+  dive kedua, ikan pengendap bisa memberi sentakan terakhir dekat landing.
 - **Kebun bareng.** Petak-petaknya milik room, bukan milik orang. Tanaman
   temen bisa kamu siram, dan tumbuh terus walau kamu lagi ga main.
 - **Siklus hari 20 menit.** Server yang pegang jamnya, jadi semua orang di
