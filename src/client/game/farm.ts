@@ -18,8 +18,8 @@ import type { WorldMap } from '../world/map';
 import type { Catch } from './fishing';
 import type { LocalPlayer } from './player';
 import {
-  addBait, baitCount, cycleBait, nextHook, nextLine, nextRod, selectedBait,
-  tackleState, upgradeHook, upgradeLine, upgradeRod,
+  addBait, baitCount, nextHook, nextLine, nextRod, selectedBait,
+  upgradeHook, upgradeLine, upgradeRod,
 } from './shop';
 
 export const CROPS = Object.keys(CROP_LOOKS);
@@ -83,13 +83,6 @@ export class Farm {
     this.selected = (this.selected + 1) % CROPS.length;
   }
 
-  /** R only means something while the bait shelf is the active shop tab.
-   * Keeping it contextual avoids spending another global shortcut on a menu
-   * the player may never use. */
-  cycleBaitChoice(): void {
-    if (this.promptMode !== 'shop' || this.shopSelected !== 'bait') return;
-    cycleBait();
-  }
 
   /** What has been caught at least once, and the biggest of each. The log
    *  is the reason to keep casting once coins stop mattering. */
@@ -144,8 +137,6 @@ export class Farm {
     const stall = map.props.find((pr) => pr.kind === 'stall');
     if (stall && near(p, stall.x, stall.y, 30)) {
       this.promptMode = 'shop';
-      tackleState(); // ensure saved tackle is loaded before presenting the stall
-
       if (this.shopSelected === 'rod') {
         const next = nextRod();
         if (next) {
