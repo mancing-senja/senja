@@ -97,6 +97,8 @@ try {
       bait: dbg ? dbg.bait : null,
       gear: dbg ? dbg.gear : null,
       drag: dbg ? dbg.drag : null,
+      action: dbg ? dbg.action : null,
+      hookSize: dbg ? dbg.hookSize : null,
       hazardSpot: map ? map.spots.find((s) => s.id === 'tanjung') : null,
     };
   });
@@ -112,6 +114,12 @@ try {
   }
   if (!info.drag || info.drag.id !== 'seimbang') {
     problems.push(`legacy drag migration failed: ${JSON.stringify(info.drag)}`);
+  }
+  if (!info.action || info.action.id !== 'medium') {
+    problems.push(`legacy rod action migration failed: ${JSON.stringify(info.action)}`);
+  }
+  if (!info.hookSize || info.hookSize.id !== 'sedang') {
+    problems.push(`legacy hook size migration failed: ${JSON.stringify(info.hookSize)}`);
   }
   if (
     !info.hazardSpot
