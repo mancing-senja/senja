@@ -111,6 +111,14 @@ layar yang pakai display scaling.
   jenis, rekor terbesar siapa, siapa lagi online.
 - **Catatan tangkapan** (`J`) dipaging buat roster 86 spesies dan menyimpan
   hasil tangkapan yang sudah ditemukan.
+- **Tackle realistis tapi tetap santai.** Joran, senar, dan kail punya rating
+  kekuatan serta kondisi. Overload yang dibiarkan bisa bikin joran patah,
+  senar putus, atau kail melurus; satu koreksi salah cuma memunculkan warning.
+- **Lokasi ikut membebani alat.** Teluk/Rawa punya cover tinggi, Tanjung Batu
+  abrasif ke senar, Muara/Sungai punya arus, dan Lubuk Dalam memberi beban
+  ekstra karena kedalaman. Kios pancing punya tab servis untuk balikin kondisi.
+- **Ikan punya stamina.** Tekanan yang stabil bikin ikan lelah perlahan sehingga
+  fight panjang justru makin tenang, bukan makin brutal.
 - **Kebun bareng.** Petak-petaknya milik room, bukan milik orang. Tanaman
   temen bisa kamu siram, dan tumbuh terus walau kamu lagi ga main.
 - **Siklus hari 20 menit.** Server yang pegang jamnya, jadi semua orang di
