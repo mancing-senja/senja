@@ -605,7 +605,11 @@ function gearName(part: GearPart): string {
   return part === 'rod' ? 'joran' : part === 'line' ? 'senar' : 'kail';
 }
 
-type MouthType = 'lunak' | 'normal' | 'keras';
+export type MouthType = 'lunak' | 'normal' | 'keras';
+
+export function mouthTypeForSpecies(fish: Species): MouthType {
+  return mouthType(fish, styleFor(fish));
+}
 
 function mouthType(fish: Species, style: FightStyle): MouthType {
   if (fish.maxCm <= 28 && (style.id === 'lincah' || style.id === 'menggetar')) return 'lunak';
