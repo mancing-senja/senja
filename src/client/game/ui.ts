@@ -15,6 +15,7 @@ import { CROP_INFO } from './farm';
 import { SPECIES } from './fishing';
 import { styleFor } from './fight';
 import { GRADES } from './grade';
+import { BAITS, baitWeight } from './shop';
 import type { Spot } from '../world/spots';
 import { Blend } from '../engine/batch';
 import { lookColour } from '../art/character';
@@ -411,7 +412,7 @@ export class Ui {
     // blurb run under the whole panel width and it landed straight across
     // the bite-time bars — the two halves have to own their own space.
     const w = 224;
-    const h = 148;
+    const h = 160;
     const x = Math.round(view.w / 2 - w / 2);
     const y = Math.round(view.h / 2 - h / 2);
     const tier = e ? (e.bestGrade ?? 0) : 0;
@@ -463,13 +464,12 @@ export class Ui {
 
     // --- left: what it is. Two lines, inside the left column's width.
     const lines = wrapText(sp.blurb, 92);
-    for (let i = 0; i < Math.min(3, lines.length); i++) {
+    for (let i = 0; i < Math.min(2, lines.length); i++) {
       d.text(lines[i], LEFT, y + 88 + i * LINE_H, C.Mist, 0.85);
     }
 
-    // What it does on the line and where the actual spawn table favours it.
-    // This is learned knowledge: the sheet only gets here after a catch, and
-    // the spot is derived from the same multipliers rollSpecies uses.
+    // Learned hunting notes. These are computed from the exact systems used
+    // by the roll, so the journal is a field notebook rather than flavour text.
     const style = styleFor(sp);
     let bestSpot: Spot | null = null;
     let bestMul = 1;
@@ -480,9 +480,21 @@ export class Ui {
         bestSpot = spot;
       }
     }
-    d.text(`gaya: ${style.label}`, LEFT, y + 117, C.Pale, 0.88);
+
+    let bestBait = BAITS[0];
+    let bestBaitMul = -Infinity;
+    for (const bait of BAITS) {
+      const mul = baitWeight(bait.id, sp.value, sp.fight, sp.maxCm, style.id);
+      if (mul > bestBaitMul) {
+        bestBaitMul = mul;
+        bestBait = bait;
+      }
+    }
+
+    d.text(`gaya: ${style.label}`, LEFT, y + 109, C.Pale, 0.88);
     const habitat = bestSpot ? bestSpot.label : 'air terbuka';
-    d.text(`cari: ${clipTo(habitat, 67)}`, LEFT, y + 128, C.GrassLt, 0.88);
+    d.text(`cari: ${clipTo(habitat, 67)}`, LEFT, y + 120, C.GrassLt, 0.88);
+    d.text(`umpan: ${clipTo(bestBait.label, 61)}`, LEFT, y + 131, C.Amber, 0.88);
 
     // --- right: the numbers that say where to go looking for a bigger one.
     let ry = y + 24;
