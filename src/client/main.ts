@@ -46,7 +46,7 @@ import { Npc, nearestNpc, villagerDefs } from './game/npc';
 import { loadMinds, saveMinds, witnessCatch } from './game/dialogue';
 import { LORE, loadRead, saveRead } from './game/lore';
 import { Audio } from './game/audio';
-import { baitCount, cycleBait, gearCondition, selectedBait } from './game/shop';
+import { baitCount, cycleBait, cycleDrag, dragStats, gearCondition, selectedBait } from './game/shop';
 
 /** How much of the sprite shading the normal maps do. Under a half the
  *  effect is invisible; over about 0.75 the palette starts banding, because
@@ -451,6 +451,7 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
     caught: player.caught,
     bait: { id: selectedBait().id, label: selectedBait().label, casts: baitCount() },
     gear: gearCondition(),
+    drag: dragStats(),
     net: net.status,
     peers: net.players.size,
     room: net.room,
@@ -750,6 +751,11 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
       const bait = cycleBait();
       ui.say(`${bait.label} · ${baitCount(bait.id)} lempar`);
       audio.blip(560, 0.05, 0.1);
+    }
+    if (input.pressed('f') && !fishing.busy && !ui.chatOpen) {
+      const drag = cycleDrag();
+      ui.say(`${drag.label} · ${Math.round(drag.hold * 100)}% tahan`);
+      audio.blip(510, 0.05, 0.1);
     }
 
     if (input.pressed('v')) {
