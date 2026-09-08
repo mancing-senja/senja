@@ -1,10 +1,12 @@
 /** Village tackle shop state.
  *
- * The stall is intentionally a small convenience layer on top of fishing,
- * not a second economy. Rod upgrades shave a little waiting time and nudge
- * landed fish toward the top of their normal size range; bait only tilts an
- * already-valid spot/time roll toward rarer fish for a handful of casts.
- * Nothing here makes an unupgraded rod wrong to use. */
+ * Gear should change how fishing feels without becoming a gate. Rod, line and
+ * hook are permanent comfort/mastery upgrades; bait is consumable and answers
+ * a different question: "what am I trying to catch tonight?"
+ *
+ * Bait never creates an impossible species. It is applied last, after
+ * time/spot/district/season have already decided what belongs in the water.
+ */
 
 const KEY = 'senja.tackle';
 
@@ -33,11 +35,22 @@ export interface HookStats {
   biteWindow: number;
 }
 
+export type BaitId = 'cacing' | 'serangga' | 'udang' | 'kilau';
+
+export interface BaitStats {
+  id: BaitId;
+  label: string;
+  cost: number;
+  casts: number;
+  hint: string;
+}
+
 export interface TackleState {
   rod: number;
   line: number;
   hook: number;
-  baitCasts: number;
+  bait: BaitId;
+  baits: Record<BaitId, number>;
 }
 
 export const RODS: readonly RodStats[] = [
@@ -58,8 +71,14 @@ export const HOOKS: readonly HookStats[] = [
   { label: 'Kail Lingkar', cost: 170, cleanWindow: 0.90, biteWindow: 2.28 },
 ];
 
-export const BAIT_COST = 18;
-export const BAIT_CASTS = 6;
+export const BAITS: readonly BaitStats[] = [
+  { id: 'cacing', label: 'Cacing Tanah', cost: 12, casts: 6, hint: 'serbaguna · ikan tenang' },
+  { id: 'serangga', label: 'Serangga Air', cost: 18, casts: 6, hint: 'ikan kecil · lincah' },
+  { id: 'udang', label: 'Udang Sungai', cost: 26, casts: 5, hint: 'predator · ikan berat' },
+  { id: 'kilau', label: 'Umpan Kilau', cost: 34, casts: 4, hint: 'langka · ikan aneh' },
+];
+
+const BAIT_IDS = BAITS.map((b) => b.id) as BaitId[];
 
 let state = load();
 
@@ -77,6 +96,25 @@ export function lineStats(): LineStats {
 
 export function hookStats(): HookStats {
   return HOOKS[state.hook] ?? HOOKS[0];
+}
+
+export function selectedBait(): BaitStats {
+  return BAITS.find((b) => b.id === state.bait) ?? BAITS[0];
+}
+
+export function baitById(id: BaitId): BaitStats {
+  return BAITS.find((b) => b.id === id) ?? BAITS[0];
+}
+
+export function baitCount(id: BaitId = state.bait): number {
+  return state.baits[id] ?? 0;
+}
+
+export function cycleBait(): BaitStats {
+  const i = Math.max(0, BAIT_IDS.indexOf(state.bait));
+  state = { ...state, bait: BAIT_IDS[(i + 1) % BAIT_IDS.length] };
+  save();
+  return selectedBait();
 }
 
 export function nextRod(): RodStats | null {
@@ -115,45 +153,117 @@ export function upgradeHook(): HookStats | null {
   return next;
 }
 
-export function addBait(): void {
-  // Enough room to buy a few bundles in advance, but not an unbounded number
-  // accidentally from a held key or a controller that repeats input.
-  state = { ...state, baitCasts: Math.min(60, state.baitCasts + BAIT_CASTS) };
+export function addBait(): BaitStats {
+  const bait = selectedBait();
+  const have = baitCount(bait.id);
+  state = {
+    ...state,
+    baits: { ...state.baits, [bait.id]: Math.min(60, have + bait.casts) },
+  };
   save();
+  return bait;
 }
 
-/** One charge is a cast, not a catch. Pulling the line in early still used
- * the bait; that keeps it understandable and avoids rewarding menu-like
- * recasting until a good bite appears. */
-export function consumeBaitCast(): boolean {
-  if (state.baitCasts <= 0) return false;
-  state = { ...state, baitCasts: state.baitCasts - 1 };
+/** One charge is a cast, not a catch. Pulling the line in early still uses
+ * the bait; otherwise players can menu-recast until the desired roll appears.
+ * Returns the bait that was actually on this cast, or null for bare hook. */
+export function consumeBaitCast(): BaitId | null {
+  const bait = selectedBait();
+  const have = baitCount(bait.id);
+  if (have <= 0) return null;
+  state = {
+    ...state,
+    baits: { ...state.baits, [bait.id]: have - 1 },
+  };
   save();
-  return true;
+  return bait.id;
 }
 
-/** Multiplier applied after time/spot/district/season have already decided
- * which fish make sense here. Common fish stay common; valuable fish get a
- * modest lift, and junk gets a small penalty. */
-export function baitWeight(value: number): number {
-  if (value <= 6) return 0.65;
-  const rare = clamp01((value - 40) / 140);
-  return 1 + rare * 0.65;
+/** Targeting multiplier, deliberately modest.
+ *
+ * The world decides whether a fish belongs here first. Bait only reshapes the
+ * valid pool, so Udang Sungai at Teluk Eceng does not magically summon a
+ * deep-water monster the spot table has already suppressed.
+ */
+export function baitWeight(
+  bait: BaitId,
+  value: number,
+  fight: number,
+  maxCm: number,
+  style: string,
+): number {
+  // Every real bait helps keep rubbish off the hook.
+  if (value <= 6) return 0.55;
+
+  switch (bait) {
+    case 'cacing': {
+      // Broad, cheap and forgiving. Good default for normal freshwater fish.
+      const calm = style === 'tenang' || style === 'menyelam';
+      const ordinary = value < 90;
+      return 1 + (calm ? 0.26 : 0.08) + (ordinary ? 0.08 : -0.08);
+    }
+    case 'serangga': {
+      // Surface/schooling fish: lots of motion, generally not huge.
+      const active = style === 'lincah' || style === 'menggetar';
+      const small = maxCm <= 42;
+      return 0.82 + (active ? 0.42 : 0) + (small ? 0.24 : -0.08);
+    }
+    case 'udang': {
+      // Strong fish and ambush predators. A little worse on tiny fish.
+      const predator = style === 'mengendap' || style === 'menyelam' || fight >= 1.45;
+      const big = maxCm >= 45;
+      return 0.78 + (predator ? 0.40 : 0) + (big ? 0.28 : 0);
+    }
+    case 'kilau': {
+      // Expensive specialist bait. It favours valuable/strange catches, but
+      // never enough to make common fish disappear completely.
+      const rare = clamp01((value - 55) / 145);
+      const dramatic = style === 'lari' || fight >= 1.8;
+      return 0.72 + rare * 0.66 + (dramatic ? 0.16 : 0);
+    }
+  }
+}
+
+function emptyBaits(): Record<BaitId, number> {
+  return { cacing: 0, serangga: 0, udang: 0, kilau: 0 };
+}
+
+function isBaitId(v: unknown): v is BaitId {
+  return typeof v === 'string' && BAIT_IDS.includes(v as BaitId);
 }
 
 function load(): TackleState {
   try {
     const raw = localStorage.getItem(KEY);
-    if (!raw) return { rod: 0, line: 0, hook: 0, baitCasts: 0 };
-    const parsed = JSON.parse(raw) as Partial<TackleState>;
+    if (!raw) return { rod: 0, line: 0, hook: 0, bait: 'cacing', baits: emptyBaits() };
+
+    const parsed = JSON.parse(raw) as {
+      rod?: unknown;
+      line?: unknown;
+      hook?: unknown;
+      bait?: unknown;
+      baits?: Partial<Record<BaitId, unknown>>;
+      /** v1 migration: the old system only had one generic bait stack. */
+      baitCasts?: unknown;
+    };
+
+    const baits = emptyBaits();
+    if (parsed.baits) {
+      for (const id of BAIT_IDS) baits[id] = clampInt(Number(parsed.baits[id] ?? 0), 0, 60);
+    } else {
+      // Preserve old purchases as Cacing Tanah instead of deleting inventory.
+      baits.cacing = clampInt(Number(parsed.baitCasts ?? 0), 0, 60);
+    }
+
     return {
       rod: clampInt(Number(parsed.rod ?? 0), 0, RODS.length - 1),
       line: clampInt(Number(parsed.line ?? 0), 0, LINES.length - 1),
       hook: clampInt(Number(parsed.hook ?? 0), 0, HOOKS.length - 1),
-      baitCasts: clampInt(Number(parsed.baitCasts ?? 0), 0, 60),
+      bait: isBaitId(parsed.bait) ? parsed.bait : 'cacing',
+      baits,
     };
   } catch {
-    return { rod: 0, line: 0, hook: 0, baitCasts: 0 };
+    return { rod: 0, line: 0, hook: 0, bait: 'cacing', baits: emptyBaits() };
   }
 }
 
