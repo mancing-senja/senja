@@ -18,7 +18,8 @@ import type { WorldMap } from '../world/map';
 import type { Catch } from './fishing';
 import type { LocalPlayer } from './player';
 import {
-  addBait, baitCount, nextHook, nextLine, nextRod, selectedBait,
+  addBait, baitCount, gearCondition, nextHook, nextLine, nextRod,
+  repairAll, repairCost, selectedBait,
   upgradeHook, upgradeLine, upgradeRod,
 } from './shop';
 
@@ -42,7 +43,7 @@ export interface Prompt {
 export type FarmAction =
   | { kind: 'plot'; i: number; op: 'till' | 'plant' | 'water' | 'harvest'; crop?: string }
   | { kind: 'sell' }
-  | { kind: 'buy'; crop?: string; shop?: 'rod' | 'line' | 'hook' | 'bait' };
+  | { kind: 'buy'; crop?: string; shop?: 'rod' | 'line' | 'hook' | 'bait' | 'service' };
 
 const REACH = 22;
 
@@ -62,7 +63,7 @@ export class Farm {
   basket: Catch[] = [];
   harvested: Record<string, number> = {};
   selected = 0;
-  private shopSelected: 'rod' | 'line' | 'hook' | 'bait' = 'rod';
+  private shopSelected: 'rod' | 'line' | 'hook' | 'bait' | 'service' = 'rod';
   private promptMode: 'crop' | 'shop' = 'crop';
 
   /** Set each frame by `findPrompt`. */
@@ -75,7 +76,8 @@ export class Farm {
 
   cycleCrop(): void {
     if (this.promptMode === 'shop') {
-      const tabs: Array<'rod' | 'line' | 'hook' | 'bait'> = ['rod', 'line', 'hook', 'bait'];
+      const tabs: Array<'rod' | 'line' | 'hook' | 'bait' | 'service'> =
+        ['rod', 'line', 'hook', 'bait', 'service'];
       const i = tabs.indexOf(this.shopSelected);
       this.shopSelected = tabs[(i + 1) % tabs.length];
       return;
@@ -170,7 +172,7 @@ export class Farm {
         } else {
           this.prompt = { text: 'kail maksimal  [Q] berikut', x: stall.x, y: stall.y - 30 };
         }
-      } else {
+      } else if (this.shopSelected === 'bait') {
         const bait = selectedBait();
         const have = baitCount(bait.id);
         if (have >= 60) {
@@ -184,6 +186,22 @@ export class Farm {
             x: stall.x, y: stall.y - 30,
           };
           this.pendingAction = { kind: 'buy', shop: 'bait' };
+        }
+      } else {
+        const c = gearCondition();
+        const cost = repairCost();
+        const status = `J${Math.round(c.rod)} S${Math.round(c.line)} K${Math.round(c.hook)}`;
+        if (cost <= 0) {
+          this.prompt = {
+            text: `alat prima · ${status}  [Q] berikut`,
+            x: stall.x, y: stall.y - 30,
+          };
+        } else {
+          this.prompt = {
+            text: `[E] servis ${cost} koin · ${status}  [Q] berikut`,
+            x: stall.x, y: stall.y - 30,
+          };
+          this.pendingAction = { kind: 'buy', shop: 'service' };
         }
       }
       return this.pendingAction;
@@ -278,6 +296,13 @@ export class Farm {
           if (baitCount(bait.id) >= 60 || this.coins < bait.cost) return false;
           this.coins -= bait.cost;
           addBait();
+          return true;
+        }
+        if (a.shop === 'service') {
+          const cost = repairCost();
+          if (cost <= 0 || this.coins < cost) return false;
+          this.coins -= cost;
+          repairAll();
           return true;
         }
 
