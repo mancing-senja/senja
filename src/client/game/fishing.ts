@@ -29,7 +29,7 @@ import {
 } from './fight';
 import {
   baitById, baitWeight, brokenPart, conditionFactor, consumeBaitCast,
-  damageTackle, hookStats, lineStats, rodStats,
+  damageTackle, gearCondition, hookStats, lineStats, rodStats,
   type BaitId, type GearPart,
 } from './shop';
 
@@ -599,6 +599,14 @@ const MIN_CAST = 26;
 
 function gearName(part: GearPart): string {
   return part === 'rod' ? 'joran' : part === 'line' ? 'senar' : 'kail';
+}
+
+function spotHazardHint(spot: Spot): string {
+  if (spot.abrasion >= 0.65) return 'batu tajam · senar tahan gesek';
+  if (spot.cover >= 0.72) return 'cover rapat · jaga ikan tetap keluar';
+  if (spot.current >= 0.60) return 'arus kuat · joran & senar lebih berat';
+  if (spot.depth >= 0.85) return 'air dalam · beban fight lebih besar';
+  return '';
 }
 
 /** The fish's actual size is decided when it takes the bait, not after the
@@ -1356,6 +1364,19 @@ export class Fishing {
       if (this.spot.id !== 'kolam' || this.district) {
         d.textCentered(where, cx, view.h - 20, C.Amber, C.InkDeep, 0.6);
       }
+      const hazard = spotHazardHint(this.spot);
+      if (hazard) {
+        d.textCentered(hazard, cx, view.h - 40, C.Mist, C.InkDeep, 0.62);
+      }
+
+      const c = gearCondition();
+      if (Math.min(c.rod, c.line, c.hook) < 45) {
+        d.textCentered(
+          `kondisi alat J${Math.round(c.rod)} S${Math.round(c.line)} K${Math.round(c.hook)}`,
+          cx, view.h - 50, C.Amber, C.InkDeep, 0.68,
+        );
+      }
+
       if (this.baitedCast) {
         const bait = baitById(this.baitedCast);
         d.textCentered(`${bait.label.toLowerCase()} · ${bait.hint}`, cx, view.h - 10, C.Grass, C.InkDeep, 0.65);
