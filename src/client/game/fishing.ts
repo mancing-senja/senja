@@ -1608,6 +1608,7 @@ export class Fishing {
     this.pendingCm = 0;
     this.baitedCast = null;
     this.momentum = 0;
+    this.lineOut = 0;
     this.resetGearStress();
     this.hookHold = 1;
     this.mouth = 'normal';
