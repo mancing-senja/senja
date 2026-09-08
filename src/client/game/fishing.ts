@@ -1239,40 +1239,6 @@ export class Fishing {
         );
         this.hookWear += dt * Math.max(0, hookRatio - 0.78) * 0.08;
 
-        this.tackleWarning = '';
-        const spoolPct = this.lineOut / Math.max(0.1, line.capacity);
-        if (this.spoolRisk > 0.25) {
-          this.tackleWarning = spoolPct >= 1
-            ? 'senar di reel hampir habis — tahan larinya'
-            : 'ikan makin jauh — mulai ambil line';
-        } else if (this.landingT > 0.05) {
-          this.tackleWarning = this.tension > 0.82
-            ? 'dekat tepi — jangan angkat paksa'
-            : 'dekat tepi — tahan stabil, serok pelan';
-        } else if (this.escapeT > 0) {
-          this.tackleWarning = this.escapeName;
-        } else if (this.hookHold < 0.38) {
-          this.tackleWarning = this.mouth === 'lunak'
-            ? 'kail hampir sobek — kurangi tekanan'
-            : 'kail kurang nancep — jaga tekanan halus';
-        } else if (this.snagged) {
-          this.tackleWarning = this.tension > 0.86
-            ? 'nyangkut — jangan ditarik paksa'
-            : 'nyangkut — tekan sedang, arahkan keluar';
-        } else if (this.dragSlip > 0.28) {
-          this.tackleWarning = `${drag.label.toLowerCase()} bunyi — ikan ambil senar`;
-        } else if (this.lineRisk > 0.28) {
-          this.tackleWarning = abrasionPressure > 0.10
-            ? 'senar gesek struktur — kendurkan'
-            : 'senar terlalu tegang — kendurkan';
-        } else if (this.rodRisk > 0.38) {
-          this.tackleWarning = 'joran terlalu terbebani — kendurkan';
-        } else if (this.hookRisk > 0.34) {
-          this.tackleWarning = 'kail mulai membuka — kendurkan';
-        } else if (coverPressure > 0.48) {
-          this.tackleWarning = 'ikan masuk cover — jaga tekanan';
-        }
-
         // Still forgiving: the reel is something you do while looking at the
         // lake, not a rhythm test. Losing a fish should take sustained
         // inattention, not a moment of it — the styles differ in what they
@@ -1319,25 +1285,70 @@ export class Fishing {
         if (inZone && !this.snagged) {
           this.lineOut -= dt * reelGain * (0.56 + this.momentum * 0.24);
         }
-        this.lineOut = Math.max(0, this.lineOut);
-
         const spoolLimit = line.capacity;
+        this.lineOut = Math.max(0, Math.min(spoolLimit * 1.35, this.lineOut));
+
         const nearSpool = this.lineOut / Math.max(0.1, spoolLimit);
         this.spoolRisk = nearSpool >= 0.96
           ? this.spoolRisk + dt * (0.42 + (nearSpool - 0.96) * 5)
           : Math.max(0, this.spoolRisk - dt * 0.7);
 
         // Final metres are intentionally calmer, not a second minigame.
-        // Stable medium pressure for a short beat completes the landing.
+        // An active jump/roll/dive must finish first; otherwise the old logic
+        // could quietly finish the landing while the fish was visibly surging.
         const nearBank = this.progress >= 0.90 && this.lineOut <= 0.18;
         const landingPressure = this.tension >= 0.24 && this.tension <= 0.80;
-        this.landingT = nearBank && inZone && landingPressure
+        const landingSafe = this.escapeT <= 0
+          && !this.snagged
+          && this.dragSlip < 0.22
+          && this.hookHold > 0.18;
+        this.landingT = nearBank && inZone && landingPressure && landingSafe
           ? Math.min(1, this.landingT + dt * 0.75)
-          : Math.max(0, this.landingT - dt * 0.45);
+          : Math.max(0, this.landingT - dt * (this.escapeT > 0 ? 0.90 : 0.45));
         if (nearBank && this.tension > 0.86) {
-          this.hookHold = Math.max(0, this.hookHold - dt * (this.mouth === 'lunak' ? 0.055 : 0.022));
+          this.hookHold = Math.max(
+            0,
+            this.hookHold - dt * (this.mouth === 'lunak' ? 0.055 : 0.022),
+          );
         }
         this.slack = inZone ? Math.max(0, this.slack - dt * 0.6) : this.slack + dt * 0.5;
+
+        // Warnings are resolved after all per-frame physics so they describe
+        // what is dangerous *now*. Critical hook/spool/snag states beat the
+        // softer shore prompt; landing advice must never hide a real failure.
+        this.tackleWarning = '';
+        const spoolPct = this.lineOut / Math.max(0.1, line.capacity);
+        if (this.hookHold < 0.38) {
+          this.tackleWarning = this.mouth === 'lunak'
+            ? 'kail hampir sobek — kurangi tekanan'
+            : 'kail kurang nancep — jaga tekanan halus';
+        } else if (this.spoolRisk > 0.25) {
+          this.tackleWarning = spoolPct >= 1
+            ? 'senar di reel hampir habis — tahan larinya'
+            : 'ikan makin jauh — mulai ambil line';
+        } else if (this.snagged) {
+          this.tackleWarning = this.tension > 0.86
+            ? 'nyangkut — jangan ditarik paksa'
+            : 'nyangkut — tekan sedang, arahkan keluar';
+        } else if (this.escapeT > 0) {
+          this.tackleWarning = this.escapeName;
+        } else if (this.landingT > 0.05 || (nearBank && landingSafe)) {
+          this.tackleWarning = this.tension > 0.82
+            ? 'dekat tepi — jangan angkat paksa'
+            : 'dekat tepi — tahan stabil, serok pelan';
+        } else if (this.dragSlip > 0.28) {
+          this.tackleWarning = `${drag.label.toLowerCase()} bunyi — ikan ambil senar`;
+        } else if (this.lineRisk > 0.28) {
+          this.tackleWarning = abrasionPressure > 0.10
+            ? 'senar gesek struktur — kendurkan'
+            : 'senar terlalu tegang — kendurkan';
+        } else if (this.rodRisk > 0.38) {
+          this.tackleWarning = 'joran terlalu terbebani — kendurkan';
+        } else if (this.hookRisk > 0.34) {
+          this.tackleWarning = 'kail mulai membuka — kendurkan';
+        } else if (coverPressure > 0.48) {
+          this.tackleWarning = 'ikan masuk cover — jaga tekanan';
+        }
 
         this.bobX += (Math.random() - 0.5) * 12 * dt;
         this.bobY += (Math.random() - 0.5) * 8 * dt;
