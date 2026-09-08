@@ -77,6 +77,7 @@ Secara default server memakai port 8787. Bisa diubah lewat `PORT` atau
 | `E` | cangkul, tanam, siram, panen, jual, ngobrol sama warga |
 | `Q` | ganti bibit / pindah kategori di toko pancing |
 | `R` | ganti jenis umpan aktif |
+| `F` | ganti drag reel: Longgar / Seimbang / Kencang |
 | `Enter` | chat sama pemain lain |
 | `J` | catatan tangkapan |
 | `B` | papan komunitas |
@@ -119,6 +120,12 @@ layar yang pakai display scaling.
   ekstra karena kedalaman. Kios pancing punya tab servis untuk balikin kondisi.
 - **Ikan punya stamina.** Tekanan yang stabil bikin ikan lelah perlahan sehingga
   fight panjang justru makin tenang, bukan makin brutal.
+- **Drag reel realistis.** Longgar lebih aman tapi ikan bisa mengambil senar;
+  Kencang lebih cepat menahan ikan tapi memindahkan lebih banyak shock ke alat.
+- **Cover bisa benar-benar nyangkut.** Kalau tertinggal dari ikan di eceng/akar,
+  snag akan naik; tekanan sedang dan tracking yang rapi bisa membebaskannya.
+- **Karakter mulut ikan.** Ikan kecil tertentu bermulut lunak dan bisa sobek kalau
+  dipaksa; ikan kuat bermulut keras lebih butuh hook-set yang bersih.
 - **Kebun bareng.** Petak-petaknya milik room, bukan milik orang. Tanaman
   temen bisa kamu siram, dan tumbuh terus walau kamu lagi ga main.
 - **Siklus hari 20 menit.** Server yang pegang jamnya, jadi semua orang di
