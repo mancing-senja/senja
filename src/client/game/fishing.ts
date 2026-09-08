@@ -1037,6 +1037,9 @@ export class Fishing {
     this.t = 0;
     this.pending = null;
     this.baitedCast = false;
+    this.momentum = 0;
+    this.hookText = '';
+    this.missText = 'lepas...';
     p.locked = false;
     p.action = 'idle';
   }
