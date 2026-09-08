@@ -56,6 +56,16 @@ export interface BaitStats {
 }
 
 export type GearPart = 'rod' | 'line' | 'hook';
+export type DragId = 'longgar' | 'seimbang' | 'kencang';
+
+export interface DragStats {
+  id: DragId;
+  label: string;
+  /** Share of the line's safe strength the reel will hold before slipping. */
+  hold: number;
+  /** How fast the spool gives line under excess load. */
+  slip: number;
+}
 
 export interface GearCondition {
   rod: number;
@@ -68,6 +78,7 @@ export interface TackleState {
   line: number;
   hook: number;
   condition: GearCondition;
+  drag: DragId;
   bait: BaitId;
   baits: Record<BaitId, number>;
 }
@@ -90,6 +101,14 @@ export const HOOKS: readonly HookStats[] = [
   { label: 'Kail Lingkar', cost: 170, cleanWindow: 0.90, biteWindow: 2.28, strength: 2.02 },
 ];
 
+export const DRAGS: readonly DragStats[] = [
+  { id: 'longgar', label: 'Drag Longgar', hold: 0.62, slip: 0.85 },
+  { id: 'seimbang', label: 'Drag Seimbang', hold: 0.78, slip: 0.62 },
+  { id: 'kencang', label: 'Drag Kencang', hold: 0.92, slip: 0.42 },
+];
+
+const DRAG_IDS = DRAGS.map((d) => d.id) as DragId[];
+
 export const BAITS: readonly BaitStats[] = [
   { id: 'cacing', label: 'Cacing Tanah', cost: 12, casts: 6, hint: 'serbaguna · ikan tenang' },
   { id: 'serangga', label: 'Serangga Air', cost: 18, casts: 6, hint: 'ikan kecil · lincah' },
@@ -107,6 +126,17 @@ export function tackleState(): Readonly<TackleState> {
 
 export function gearCondition(): Readonly<GearCondition> {
   return state.condition;
+}
+
+export function dragStats(): DragStats {
+  return DRAGS.find((d) => d.id === state.drag) ?? DRAGS[1];
+}
+
+export function cycleDrag(): DragStats {
+  const i = Math.max(0, DRAG_IDS.indexOf(state.drag));
+  state = { ...state, drag: DRAG_IDS[(i + 1) % DRAG_IDS.length] };
+  save();
+  return dragStats();
 }
 
 export function brokenPart(): GearPart | null {
@@ -313,13 +343,17 @@ function isBaitId(v: unknown): v is BaitId {
   return typeof v === 'string' && BAIT_IDS.includes(v as BaitId);
 }
 
+function isDragId(v: unknown): v is DragId {
+  return typeof v === 'string' && DRAG_IDS.includes(v as DragId);
+}
+
 function load(): TackleState {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) {
       return {
         rod: 0, line: 0, hook: 0, condition: fullCondition(),
-        bait: 'cacing', baits: emptyBaits(),
+        drag: 'seimbang', bait: 'cacing', baits: emptyBaits(),
       };
     }
 
@@ -328,6 +362,7 @@ function load(): TackleState {
       line?: unknown;
       hook?: unknown;
       condition?: Partial<Record<GearPart, unknown>>;
+      drag?: unknown;
       bait?: unknown;
       baits?: Partial<Record<BaitId, unknown>>;
       /** v1 migration: the old system only had one generic bait stack. */
@@ -351,13 +386,14 @@ function load(): TackleState {
         line: clampInt(Number(parsed.condition?.line ?? 100), 0, 100),
         hook: clampInt(Number(parsed.condition?.hook ?? 100), 0, 100),
       },
+      drag: isDragId(parsed.drag) ? parsed.drag : 'seimbang',
       bait: isBaitId(parsed.bait) ? parsed.bait : 'cacing',
       baits,
     };
   } catch {
     return {
       rod: 0, line: 0, hook: 0, condition: fullCondition(),
-      bait: 'cacing', baits: emptyBaits(),
+      drag: 'seimbang', bait: 'cacing', baits: emptyBaits(),
     };
   }
 }
