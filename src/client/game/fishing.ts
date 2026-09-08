@@ -1766,29 +1766,28 @@ export class Fishing {
       if (this.spot.id !== 'kolam' || this.district) {
         d.textCentered(where, cx, view.h - 20, C.Amber, C.InkDeep, 0.6);
       }
+      let infoY = view.h - 40;
+      const info = (text: string, colour: C, alpha = 0.64): void => {
+        d.textCentered(text, cx, infoY, colour, C.InkDeep, alpha);
+        infoY -= 10;
+      };
+
       const hazard = spotHazardHint(this.spot);
-      if (hazard) {
-        d.textCentered(hazard, cx, view.h - 40, C.Mist, C.InkDeep, 0.62);
-      }
-      if (this.castLane.id !== 'open') {
-        d.textCentered(
-          `lemparan: ${this.castLane.label}`,
-          cx, view.h - 50, C.GrassLt, C.InkDeep, 0.64,
-        );
-      }
+      if (hazard) info(hazard, C.Mist, 0.62);
+      if (this.castLane.id !== 'open') info(`lemparan: ${this.castLane.label}`, C.GrassLt);
 
       if (this.rain >= 0.12) {
         const weather = this.rain >= 0.62
           ? (this.waterCurrent >= 0.55 ? 'hujan deras · arus naik & air keruh' : 'hujan deras · ikan lebih aktif')
           : (this.waterCurrent >= 0.50 ? 'hujan · arus mulai naik' : 'gerimis · permukaan lebih hidup');
-        d.textCentered(weather, cx, view.h - 60, C.WaterBr, C.InkDeep, 0.64);
+        info(weather, C.WaterBr);
       }
 
       const c = gearCondition();
       if (Math.min(c.rod, c.line, c.hook) < 45) {
-        d.textCentered(
+        info(
           `kondisi alat J${Math.round(c.rod)} S${Math.round(c.line)} K${Math.round(c.hook)}`,
-          cx, view.h - 50, C.Amber, C.InkDeep, 0.68,
+          C.Amber, 0.68,
         );
       }
 
