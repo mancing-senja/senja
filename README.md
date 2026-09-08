@@ -75,7 +75,8 @@ Secara default server memakai port 8787. Bisa diubah lewat `PORT` atau
 | `WASD` / panah | jalan |
 | `spasi` | lempar kail (tahan buat ngatur jauhnya), tarik pas nyantol, tahan buat gulung |
 | `E` | cangkul, tanam, siram, panen, jual, ngobrol sama warga |
-| `Q` | ganti bibit |
+| `Q` | ganti bibit / pindah kategori di toko pancing |
+| `R` | ganti jenis umpan aktif |
 | `Enter` | chat sama pemain lain |
 | `J` | catatan tangkapan |
 | `B` | papan komunitas |
