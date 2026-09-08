@@ -1724,6 +1724,13 @@ export class Fishing {
         d.textCentered(hazard, cx, view.h - 40, C.Mist, C.InkDeep, 0.62);
       }
 
+      if (this.rain >= 0.12) {
+        const weather = this.rain >= 0.62
+          ? (this.waterCurrent >= 0.55 ? 'hujan deras · arus naik & air keruh' : 'hujan deras · ikan lebih aktif')
+          : (this.waterCurrent >= 0.50 ? 'hujan · arus mulai naik' : 'gerimis · permukaan lebih hidup');
+        d.textCentered(weather, cx, view.h - 60, C.WaterBr, C.InkDeep, 0.64);
+      }
+
       const c = gearCondition();
       if (Math.min(c.rod, c.line, c.hook) < 45) {
         d.textCentered(
