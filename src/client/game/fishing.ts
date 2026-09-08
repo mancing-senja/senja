@@ -1635,6 +1635,16 @@ export class Fishing {
       const bounce = Math.abs(Math.sin(this.t * 9)) * 3;
       d.textCentered('!', this.bobX, this.bobY - 16 - bounce, C.Lantern, C.InkDeep);
     }
+    if (this.state === 'reel' && this.escapeT > 0) {
+      if (this.escapeKind === 'jump') {
+        const hop = Math.abs(Math.sin(this.escapeT * 8)) * 4;
+        d.textCentered('^', this.bobX, this.bobY - 14 - hop, C.Pale, C.InkDeep, 0.9);
+      } else if (this.escapeKind === 'dive') {
+        d.textCentered('v', this.bobX, this.bobY - 12, C.WaterBr, C.InkDeep, 0.82);
+      } else if (this.escapeKind === 'headshake' || this.escapeKind === 'roll') {
+        d.textCentered('~', this.bobX, this.bobY - 13, C.Mist, C.InkDeep, 0.82);
+      }
+    }
   }
 
   /** Screen-space HUD. Drawn with the camera parked at the origin. */
@@ -1778,6 +1788,11 @@ export class Fishing {
       } else if (this.lineStretch > 0.20) {
         d.textCentered(
           `senar meredam hentakan ${Math.round(this.lineStretch * 100)}%`,
+          cx, y + 15, C.Mist, C.InkDeep, 0.74,
+        );
+      } else if (this.lineOut / Math.max(0.1, lineStats().capacity) > 0.64) {
+        d.textCentered(
+          `senar keluar ${Math.round(this.lineOut / Math.max(0.1, lineStats().capacity) * 100)}%`,
           cx, y + 15, C.Mist, C.InkDeep, 0.74,
         );
       } else if (this.fishStamina < 0.48) {
