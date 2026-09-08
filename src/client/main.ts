@@ -1024,6 +1024,7 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
       playerCount: net.players.size + 1,
       caught: player.caught,
       farm,
+      spots: map.spots,
       L,
       board: net.board,
       myName: name,
