@@ -129,6 +129,22 @@ try {
   ) {
     problems.push(`fishing spot hazard model missing: ${JSON.stringify(info.hazardSpot)}`);
   }
+  // Exercise the richer reel state, not just boot. A chosen fight should
+  // start with real line off the spool and expose the new landing/run state.
+  const fightInfo = await page.evaluate(() => {
+    const start = window.__fight ? window.__fight('wader', 'biasa') : 'missing';
+    const dbg = window.__dbg ? window.__dbg() : null;
+    return { start, reel: dbg ? dbg.reel : null };
+  });
+  if (
+    !fightInfo.reel
+    || !(fightInfo.reel.lineOut > 0)
+    || typeof fightInfo.reel.landing !== 'number'
+    || typeof fightInfo.reel.escape !== 'string'
+  ) {
+    problems.push(`advanced fight state missing: ${JSON.stringify(fightInfo)}`);
+  }
+
   // Multiplayer reaches the room server through the /room proxy. If this
   // regresses, solo play still works and nothing else in CI would notice.
   if (info.net !== 'online') problems.push(`room socket not connected (net=${info.net})`);
