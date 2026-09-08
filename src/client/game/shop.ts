@@ -15,8 +15,28 @@ export interface RodStats {
   sizeBias: number;
 }
 
+export interface LineStats {
+  label: string;
+  cost: number;
+  /** Extra seconds of bad tension before the fish can shake free. */
+  slackGrace: number;
+  /** Extra progress debt allowed before the fight is lost. */
+  failGrace: number;
+}
+
+export interface HookStats {
+  label: string;
+  cost: number;
+  /** Clean hook window in seconds after the real take. */
+  cleanWindow: number;
+  /** Total reaction window before the fish spits the hook. */
+  biteWindow: number;
+}
+
 export interface TackleState {
   rod: number;
+  line: number;
+  hook: number;
   baitCasts: number;
 }
 
@@ -24,6 +44,18 @@ export const RODS: readonly RodStats[] = [
   { label: 'Joran Bambu', cost: 0, waitMul: 1, sizeBias: 0 },
   { label: 'Joran Serat', cost: 90, waitMul: 0.90, sizeBias: 0.04 },
   { label: 'Joran Danau', cost: 220, waitMul: 0.82, sizeBias: 0.08 },
+];
+
+export const LINES: readonly LineStats[] = [
+  { label: 'Senar Nilon', cost: 0, slackGrace: 0, failGrace: 0 },
+  { label: 'Senar Kepang', cost: 75, slackGrace: 0.45, failGrace: 0.04 },
+  { label: 'Senar Danau', cost: 185, slackGrace: 0.90, failGrace: 0.08 },
+];
+
+export const HOOKS: readonly HookStats[] = [
+  { label: 'Kail Biasa', cost: 0, cleanWindow: 0.65, biteWindow: 2.10 },
+  { label: 'Kail Tajam', cost: 65, cleanWindow: 0.78, biteWindow: 2.18 },
+  { label: 'Kail Lingkar', cost: 170, cleanWindow: 0.90, biteWindow: 2.28 },
 ];
 
 export const BAIT_COST = 18;
@@ -39,6 +71,14 @@ export function rodStats(): RodStats {
   return RODS[state.rod] ?? RODS[0];
 }
 
+export function lineStats(): LineStats {
+  return LINES[state.line] ?? LINES[0];
+}
+
+export function hookStats(): HookStats {
+  return HOOKS[state.hook] ?? HOOKS[0];
+}
+
 export function nextRod(): RodStats | null {
   return RODS[state.rod + 1] ?? null;
 }
@@ -47,6 +87,30 @@ export function upgradeRod(): RodStats | null {
   const next = nextRod();
   if (!next) return null;
   state = { ...state, rod: Math.min(RODS.length - 1, state.rod + 1) };
+  save();
+  return next;
+}
+
+export function nextLine(): LineStats | null {
+  return LINES[state.line + 1] ?? null;
+}
+
+export function upgradeLine(): LineStats | null {
+  const next = nextLine();
+  if (!next) return null;
+  state = { ...state, line: Math.min(LINES.length - 1, state.line + 1) };
+  save();
+  return next;
+}
+
+export function nextHook(): HookStats | null {
+  return HOOKS[state.hook + 1] ?? null;
+}
+
+export function upgradeHook(): HookStats | null {
+  const next = nextHook();
+  if (!next) return null;
+  state = { ...state, hook: Math.min(HOOKS.length - 1, state.hook + 1) };
   save();
   return next;
 }
@@ -80,14 +144,16 @@ export function baitWeight(value: number): number {
 function load(): TackleState {
   try {
     const raw = localStorage.getItem(KEY);
-    if (!raw) return { rod: 0, baitCasts: 0 };
+    if (!raw) return { rod: 0, line: 0, hook: 0, baitCasts: 0 };
     const parsed = JSON.parse(raw) as Partial<TackleState>;
     return {
       rod: clampInt(Number(parsed.rod ?? 0), 0, RODS.length - 1),
+      line: clampInt(Number(parsed.line ?? 0), 0, LINES.length - 1),
+      hook: clampInt(Number(parsed.hook ?? 0), 0, HOOKS.length - 1),
       baitCasts: clampInt(Number(parsed.baitCasts ?? 0), 0, 60),
     };
   } catch {
-    return { rod: 0, baitCasts: 0 };
+    return { rod: 0, line: 0, hook: 0, baitCasts: 0 };
   }
 }
 
