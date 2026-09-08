@@ -148,6 +148,15 @@ layar yang pakai display scaling.
 - **Shore landing.** Progress penuh belum langsung jadi tangkapan: ikan harus
   dibawa dekat tepi, line dipulihkan, lalu tekanan stabil sebentar untuk serok.
   Mengangkat terlalu keras dekat tepian bisa merusak hook hold.
+- **Cuaca benar-benar masuk ke mancing.** Hujan yang terlihat di world
+  mempercepat aktivitas ikan secara ringan, mengubah komposisi bite, menaikkan
+  arus terutama di sungai/muara, dan membuat air lebih keruh. Spot tenang tidak
+  mendadak berubah jadi sungai hanya karena hujan.
+- **Cast lane punya reward dan risiko.** Lemparan bisa jatuh di air terbuka,
+  tepi cover, jalur arus, atau drop-off dalam. Tepi cover/jalur arus cenderung
+  lebih cepat menghasilkan aktivitas tetapi menambah pressure setempat;
+  drop-off sedikit membantu peluang grade tanpa menjadikan cast jauh selalu
+  pilihan terbaik.
 - **Kebun bareng.** Petak-petaknya milik room, bukan milik orang. Tanaman
   temen bisa kamu siram, dan tumbuh terus walau kamu lagi ga main.
 - **Siklus hari 20 menit.** Server yang pegang jamnya, jadi semua orang di
