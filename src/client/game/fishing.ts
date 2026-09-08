@@ -570,7 +570,7 @@ function rollSpecies(
   return SPECIES[0];
 }
 
-export type FishState = 'idle' | 'aim' | 'cast' | 'wait' | 'bite' | 'reel' | 'card' | 'miss';
+export type FishState = 'idle' | 'aim' | 'cast' | 'wait' | 'nibble' | 'bite' | 'reel' | 'card' | 'miss';
 
 export interface Catch {
   species: Species;
@@ -600,6 +600,11 @@ export class Fishing {
   private flightT = 0;
   private flightDur = 0;
   private biteAt = 0;
+  /** The fish investigates the bait before committing. The little pre-bite
+   *  tells make waiting readable without turning fishing into a reflex test. */
+  private nibbleNext = 0;
+  private nibbleDone = 0;
+  private nibbleNeed = 2;
   private depth01 = 0;
   private spot: Spot = DEFAULT_SPOT;
   private district: District | null = null;
@@ -618,6 +623,11 @@ export class Fishing {
   private target = 0.5;
   private progress = 0;
   private slack = 0;
+  /** Staying on the fish builds momentum. It rewards a smooth reel without
+   *  adding another button or making one missed beat cost the whole catch. */
+  private momentum = 0;
+  private hookText = '';
+  private missText = 'lepas...';
   /** How this fish fights, chosen when it takes the hook. */
   private style: FightStyle = STYLES.tenang;
   private fight: FightState = newFight();
@@ -646,6 +656,9 @@ export class Fishing {
     this.t = 0;
     this.pending = null;
     this.baitedCast = false;
+    this.momentum = 0;
+    this.hookText = '';
+    this.missText = 'lepas...';
     p.locked = false;
     p.action = 'idle';
   }
@@ -653,11 +666,12 @@ export class Fishing {
   /** Exposed for the dev harness, which drives the reel to verify the
    *  whole catch flow without a human on the keyboard. */
   get reel(): {
-    tension: number; target: number; progress: number;
+    tension: number; target: number; progress: number; momentum: number;
     style: string; zone: number; veil: boolean;
   } {
     return {
       tension: this.tension, target: this.target, progress: this.progress,
+      momentum: this.momentum,
       style: this.style.id,
       zone: Math.max(0.12, this.style.zone * (1 - this.pendingGrade.tier * 0.075)),
       veil: this.fight.veil > 0,
@@ -730,29 +744,75 @@ export class Fishing {
           this.pendingGrade = rollGrade(
             luckFrom(this.depth01, this.spot.depth, nightness(time)),
           );
-          this.state = 'bite';
+
+          // Don't jump straight from silence to TARIK. The fish noses the bait
+          // first, with heavier/rarer fish tending to give one extra tell.
+          // The player gets anticipation and information, not a smaller window.
+          this.style = styleFor(this.pending);
+          this.nibbleDone = 0;
+          this.nibbleNeed = Math.min(
+            4,
+            2 + (this.pending.fight >= 1.35 ? 1 : 0) + (this.pendingGrade.tier >= 3 ? 1 : 0),
+          );
+          this.nibbleNext = 0.34 + Math.random() * 0.26;
+          this.state = 'nibble';
           this.t = 0;
-          particles.spawnSplash(this.bobX, this.bobY + 2, 5);
-          audio.bite();
+        }
+        break;
+      }
+
+      case 'nibble': {
+        // A tiny, nervous movement rather than the hard bite bounce.
+        this.bobY += Math.sin(this.t * 10) * dt * (2.2 + this.pendingGrade.tier * 0.25);
+
+        // Pulling on a nibble spooks the fish. This is the one new decision:
+        // watch the float, don't mash the button. The cost is still only a cast.
+        if (input.pressed(' ')) {
+          this.missText = 'terlalu cepat...';
+          this.state = 'miss';
+          this.t = 0;
+          audio.blip(210, 0.10, 0.12);
+          break;
+        }
+
+        if (this.t >= this.nibbleNext) {
+          this.nibbleDone++;
+          const heavy = Math.min(4, 1 + Math.floor(this.pending!.fight));
+          particles.spawnSplash(this.bobX, this.bobY + 3, 2 + heavy);
+          audio.blip(300 + this.nibbleDone * 34, 0.035, 0.08);
+
+          if (this.nibbleDone >= this.nibbleNeed) {
+            this.state = 'bite';
+            this.t = 0;
+            particles.spawnSplash(this.bobX, this.bobY + 2, 5 + heavy);
+            audio.bite();
+          } else {
+            this.nibbleNext += 0.30 + Math.random() * 0.42;
+          }
         }
         break;
       }
 
       case 'bite': {
         this.bobY += Math.sin(this.t * 22) * dt * 9;
-        // Two full seconds to react. Generous by design.
+        // The reaction window stays generous, but a cleaner hook gives you a
+        // little head start in the fight. Skill changes feel, not eligibility.
         if (input.pressed(' ')) {
+          const clean = this.t <= 0.65;
+          const steady = this.t <= 1.35;
+          this.hookText = clean ? 'hook mantap!' : steady ? 'kena.' : 'nyaris telat...';
           this.state = 'reel';
           this.t = 0;
           this.tension = 0.5;
           this.target = 0.5;
-          this.progress = 0.28;
+          this.progress = clean ? 0.36 : steady ? 0.31 : 0.25;
           this.slack = 0;
-          this.style = styleFor(this.pending!);
+          this.momentum = clean ? 0.16 : 0;
           this.fight = newFight();
           p.action = 'reel';
-          audio.blip(520, 0.06, 0.2);
-        } else if (this.t > 2.0) {
+          audio.blip(clean ? 610 : 520, 0.06, clean ? 0.24 : 0.2);
+        } else if (this.t > 2.1) {
+          this.missText = 'terlambat...';
           this.state = 'miss';
           this.t = 0;
         }
@@ -787,7 +847,15 @@ export class Fishing {
         // doing nothing at all counts as following it down.
         const pinned = this.tension <= 0.03 || this.tension >= 0.97;
         const inZone = off < tune.zone && !pinned;
-        this.progress += (inZone ? tune.gain : -tune.drain) * dt;
+
+        // Smooth tracking now has a payoff beyond simply "not losing".
+        // Momentum rises slowly enough that one correction does not erase it,
+        // then adds at most 35% reel speed once the player settles in.
+        this.momentum = inZone
+          ? Math.min(1, this.momentum + dt * 0.24)
+          : Math.max(0, this.momentum - dt * 0.52);
+        const reelGain = tune.gain * (1 + this.momentum * 0.35);
+        this.progress += (inZone ? reelGain : -tune.drain) * dt;
         this.slack = inZone ? Math.max(0, this.slack - dt * 0.6) : this.slack + dt * 0.5;
 
         this.bobX += (Math.random() - 0.5) * 12 * dt;
@@ -796,6 +864,7 @@ export class Fishing {
         if (this.progress >= 1) {
           this.land(fish, particles, audio, onCatch, p);
         } else if (this.progress <= -0.15 || this.slack > 4.0) {
+          this.missText = this.tension >= 0.97 ? 'senar putus...' : 'senar kendur...';
           this.state = 'miss';
           this.t = 0;
           audio.blip(180, 0.18, 0.16);
@@ -912,6 +981,8 @@ export class Fishing {
     this.target = 0.5;
     this.progress = 0.28;
     this.slack = 0;
+    this.momentum = 0;
+    this.hookText = 'debug hook';
     this.bobX = p.x;
     this.bobY = p.y - 8;
     p.locked = true;
@@ -976,6 +1047,10 @@ export class Fishing {
     const ring = Math.floor((time * 3) % 4);
     d.spriteFoot(`ripple${ring}`, this.bobX, this.bobY + 6, { alpha: 0.5 });
     d.spriteFoot('bobber', this.bobX, this.bobY + 3);
+    if (this.state === 'nibble') {
+      const twitch = Math.abs(Math.sin(this.t * 8)) * 1.5;
+      d.textCentered('·', this.bobX, this.bobY - 12 - twitch, C.Mist, C.InkDeep, 0.7);
+    }
     if (this.state === 'bite') {
       const bounce = Math.abs(Math.sin(this.t * 9)) * 3;
       d.textCentered('!', this.bobX, this.bobY - 16 - bounce, C.Lantern, C.InkDeep);
@@ -1006,6 +1081,11 @@ export class Fishing {
       if (this.baitedCast) {
         d.textCentered('umpan wangi', cx, view.h - 10, C.Grass, C.InkDeep, 0.65);
       }
+    }
+
+    if (this.state === 'nibble') {
+      d.textCentered('ada gerakan...', cx, view.h - 34, C.Mist, C.InkDeep, 0.85);
+      d.textCentered('tunggu sampai nyantol', cx, view.h - 22, C.Pale, C.InkDeep, 0.65);
     }
 
     if (this.state === 'bite') {
@@ -1073,13 +1153,22 @@ export class Fishing {
       // under the bar at first, where the slack-line warning landed on top of
       // it. Below the bar belongs to the warning.
       d.textCentered(
-        `${this.style.label}: ${this.style.hint}`,
-        cx, y - 11, C.Pale, C.InkDeep, 0.85,
+        this.t < 0.9 && this.hookText
+          ? this.hookText
+          : `${this.style.label}: ${this.style.hint}`,
+        cx, y - 11,
+        this.t < 0.9 && this.hookText ? C.Lantern : C.Pale,
+        C.InkDeep, 0.85,
       );
+
+      if (!stuck && this.momentum >= 0.45) {
+        const mul = (1 + this.momentum * 0.35).toFixed(1);
+        d.textCentered(`ritme bagus ×${mul}`, cx, y + 15, C.Grass, C.InkDeep, 0.8);
+      }
     }
 
     if (this.state === 'miss') {
-      d.textCentered('lepas...', cx, view.h - 34, C.Mist, C.InkDeep);
+      d.textCentered(this.missText, cx, view.h - 34, C.Mist, C.InkDeep);
     }
 
     if (this.state === 'card' && this.lastCatch) this.drawCard(d);
