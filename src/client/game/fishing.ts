@@ -27,7 +27,9 @@ import {
 import {
   STYLES, applyGrade, newFight, styleFor, type FightState, type FightStyle,
 } from './fight';
-import { baitWeight, consumeBaitCast, rodStats } from './shop';
+import {
+  baitWeight, consumeBaitCast, hookStats, lineStats, rodStats,
+} from './shop';
 
 export interface Species {
   id: string;
@@ -605,6 +607,10 @@ export class Fishing {
   private nibbleNext = 0;
   private nibbleDone = 0;
   private nibbleNeed = 2;
+  private nibbleGapMin = 0.30;
+  private nibbleGapMax = 0.72;
+  private nibbleMotion = 2.2;
+  private nibbleText = 'ada gerakan...';
   private depth01 = 0;
   private spot: Spot = DEFAULT_SPOT;
   private district: District | null = null;
@@ -659,6 +665,7 @@ export class Fishing {
     this.momentum = 0;
     this.hookText = '';
     this.missText = 'lepas...';
+    this.nibbleText = 'ada gerakan...';
     p.locked = false;
     p.action = 'idle';
   }
@@ -750,11 +757,58 @@ export class Fishing {
           // The player gets anticipation and information, not a smaller window.
           this.style = styleFor(this.pending);
           this.nibbleDone = 0;
-          this.nibbleNeed = Math.min(
-            4,
-            2 + (this.pending.fight >= 1.35 ? 1 : 0) + (this.pendingGrade.tier >= 3 ? 1 : 0),
-          );
-          this.nibbleNext = 0.34 + Math.random() * 0.26;
+
+          // The pre-bite now speaks the same language as the fight. A Wader
+          // taps fast, a Gurame pulls down, an eel seems to stop touching the
+          // bait before it finally commits. Players can start learning the
+          // fish before the reel bar even appears.
+          let need = 2 + (this.pending.fight >= 1.35 ? 1 : 0)
+            + (this.pendingGrade.tier >= 3 ? 1 : 0);
+          switch (this.style.id) {
+            case 'lincah':
+              need -= 1;
+              this.nibbleGapMin = 0.18;
+              this.nibbleGapMax = 0.34;
+              this.nibbleMotion = 3.1;
+              this.nibbleText = 'sentakan kecil cepat...';
+              break;
+            case 'menyelam':
+              need += 1;
+              this.nibbleGapMin = 0.34;
+              this.nibbleGapMax = 0.56;
+              this.nibbleMotion = 3.8;
+              this.nibbleText = 'pelampung ditarik turun...';
+              break;
+            case 'menggetar':
+              need += 1;
+              this.nibbleGapMin = 0.16;
+              this.nibbleGapMax = 0.30;
+              this.nibbleMotion = 4.2;
+              this.nibbleText = 'getaran rapat...';
+              break;
+            case 'mengendap':
+              this.nibbleGapMin = 0.52;
+              this.nibbleGapMax = 0.88;
+              this.nibbleMotion = 1.4;
+              this.nibbleText = 'sekali sentuh, lalu diam...';
+              break;
+            case 'lari':
+              need += 1;
+              this.nibbleGapMin = 0.22;
+              this.nibbleGapMax = 0.40;
+              this.nibbleMotion = 4.6;
+              this.nibbleText = 'tarikan berat bergerak...';
+              break;
+            default:
+              this.nibbleGapMin = 0.38;
+              this.nibbleGapMax = 0.66;
+              this.nibbleMotion = 2.0;
+              this.nibbleText = 'gerakan pelan...';
+              break;
+          }
+          this.nibbleNeed = Math.max(1, Math.min(5, need));
+          this.nibbleNext = this.nibbleGapMin
+            + Math.random() * (this.nibbleGapMax - this.nibbleGapMin);
           this.state = 'nibble';
           this.t = 0;
         }
@@ -763,7 +817,8 @@ export class Fishing {
 
       case 'nibble': {
         // A tiny, nervous movement rather than the hard bite bounce.
-        this.bobY += Math.sin(this.t * 10) * dt * (2.2 + this.pendingGrade.tier * 0.25);
+        this.bobY += Math.sin(this.t * 10) * dt
+          * (this.nibbleMotion + this.pendingGrade.tier * 0.25);
 
         // Pulling on a nibble spooks the fish. This is the one new decision:
         // watch the float, don't mash the button. The cost is still only a cast.
@@ -787,7 +842,8 @@ export class Fishing {
             particles.spawnSplash(this.bobX, this.bobY + 2, 5 + heavy);
             audio.bite();
           } else {
-            this.nibbleNext += 0.30 + Math.random() * 0.42;
+            this.nibbleNext += this.nibbleGapMin
+              + Math.random() * (this.nibbleGapMax - this.nibbleGapMin);
           }
         }
         break;
@@ -798,8 +854,9 @@ export class Fishing {
         // The reaction window stays generous, but a cleaner hook gives you a
         // little head start in the fight. Skill changes feel, not eligibility.
         if (input.pressed(' ')) {
-          const clean = this.t <= 0.65;
-          const steady = this.t <= 1.35;
+          const hook = hookStats();
+          const clean = this.t <= hook.cleanWindow;
+          const steady = this.t <= Math.min(hook.biteWindow - 0.45, hook.cleanWindow + 0.78);
           this.hookText = clean ? 'hook mantap!' : steady ? 'kena.' : 'nyaris telat...';
           this.state = 'reel';
           this.t = 0;
@@ -811,7 +868,7 @@ export class Fishing {
           this.fight = newFight();
           p.action = 'reel';
           audio.blip(clean ? 610 : 520, 0.06, clean ? 0.24 : 0.2);
-        } else if (this.t > 2.1) {
+        } else if (this.t > hookStats().biteWindow) {
           this.missText = 'terlambat...';
           this.state = 'miss';
           this.t = 0;
@@ -861,9 +918,13 @@ export class Fishing {
         this.bobX += (Math.random() - 0.5) * 12 * dt;
         this.bobY += (Math.random() - 0.5) * 8 * dt;
 
+        const line = lineStats();
         if (this.progress >= 1) {
           this.land(fish, particles, audio, onCatch, p);
-        } else if (this.progress <= -0.15 || this.slack > 4.0) {
+        } else if (
+          this.progress <= -0.15 - line.failGrace
+          || this.slack > 4.0 + line.slackGrace
+        ) {
           this.missText = this.tension >= 0.97 ? 'senar putus...' : 'senar kendur...';
           this.state = 'miss';
           this.t = 0;
@@ -1087,7 +1148,7 @@ export class Fishing {
     }
 
     if (this.state === 'nibble') {
-      d.textCentered('ada gerakan...', cx, view.h - 34, C.Mist, C.InkDeep, 0.85);
+      d.textCentered(this.nibbleText, cx, view.h - 34, C.Mist, C.InkDeep, 0.85);
       d.textCentered('tunggu sampai nyantol', cx, view.h - 22, C.Pale, C.InkDeep, 0.65);
     }
 
