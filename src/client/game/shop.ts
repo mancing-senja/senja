@@ -15,6 +15,10 @@ export interface RodStats {
   cost: number;
   waitMul: number;
   sizeBias: number;
+  /** Safe sustained pull. Above this the blank starts taking damage. */
+  strength: number;
+  /** How much of a sudden surge the rod absorbs before it reaches line/hook. */
+  shockAbsorb: number;
 }
 
 export interface LineStats {
@@ -24,6 +28,10 @@ export interface LineStats {
   slackGrace: number;
   /** Extra progress debt allowed before the fight is lost. */
   failGrace: number;
+  /** Safe pull before the line starts failing under tension. */
+  strength: number;
+  /** Protection against rock/wood rubbing while loaded, 0..1. */
+  abrasionResist: number;
 }
 
 export interface HookStats {
@@ -33,6 +41,8 @@ export interface HookStats {
   cleanWindow: number;
   /** Total reaction window before the fish spits the hook. */
   biteWindow: number;
+  /** Pull before the hook can open/straighten under sustained overload. */
+  strength: number;
 }
 
 export type BaitId = 'cacing' | 'serangga' | 'udang' | 'kilau';
@@ -45,30 +55,39 @@ export interface BaitStats {
   hint: string;
 }
 
+export type GearPart = 'rod' | 'line' | 'hook';
+
+export interface GearCondition {
+  rod: number;
+  line: number;
+  hook: number;
+}
+
 export interface TackleState {
   rod: number;
   line: number;
   hook: number;
+  condition: GearCondition;
   bait: BaitId;
   baits: Record<BaitId, number>;
 }
 
 export const RODS: readonly RodStats[] = [
-  { label: 'Joran Bambu', cost: 0, waitMul: 1, sizeBias: 0 },
-  { label: 'Joran Serat', cost: 90, waitMul: 0.90, sizeBias: 0.04 },
-  { label: 'Joran Danau', cost: 220, waitMul: 0.82, sizeBias: 0.08 },
+  { label: 'Joran Bambu', cost: 0, waitMul: 1, sizeBias: 0, strength: 1.10, shockAbsorb: 0.18 },
+  { label: 'Joran Serat', cost: 90, waitMul: 0.90, sizeBias: 0.04, strength: 1.62, shockAbsorb: 0.28 },
+  { label: 'Joran Danau', cost: 220, waitMul: 0.82, sizeBias: 0.08, strength: 2.30, shockAbsorb: 0.38 },
 ];
 
 export const LINES: readonly LineStats[] = [
-  { label: 'Senar Nilon', cost: 0, slackGrace: 0, failGrace: 0 },
-  { label: 'Senar Kepang', cost: 75, slackGrace: 0.45, failGrace: 0.04 },
-  { label: 'Senar Danau', cost: 185, slackGrace: 0.90, failGrace: 0.08 },
+  { label: 'Senar Nilon', cost: 0, slackGrace: 0, failGrace: 0, strength: 1.00, abrasionResist: 0.42 },
+  { label: 'Senar Kepang', cost: 75, slackGrace: 0.45, failGrace: 0.04, strength: 1.52, abrasionResist: 0.72 },
+  { label: 'Senar Danau', cost: 185, slackGrace: 0.90, failGrace: 0.08, strength: 2.18, abrasionResist: 0.90 },
 ];
 
 export const HOOKS: readonly HookStats[] = [
-  { label: 'Kail Biasa', cost: 0, cleanWindow: 0.65, biteWindow: 2.10 },
-  { label: 'Kail Tajam', cost: 65, cleanWindow: 0.78, biteWindow: 2.18 },
-  { label: 'Kail Lingkar', cost: 170, cleanWindow: 0.90, biteWindow: 2.28 },
+  { label: 'Kail Biasa', cost: 0, cleanWindow: 0.65, biteWindow: 2.10, strength: 0.98 },
+  { label: 'Kail Tajam', cost: 65, cleanWindow: 0.78, biteWindow: 2.18, strength: 1.42 },
+  { label: 'Kail Lingkar', cost: 170, cleanWindow: 0.90, biteWindow: 2.28, strength: 2.02 },
 ];
 
 export const BAITS: readonly BaitStats[] = [
@@ -84,6 +103,52 @@ let state = load();
 
 export function tackleState(): Readonly<TackleState> {
   return state;
+}
+
+export function gearCondition(): Readonly<GearCondition> {
+  return state.condition;
+}
+
+export function brokenPart(): GearPart | null {
+  if (state.condition.rod <= 0) return 'rod';
+  if (state.condition.line <= 0) return 'line';
+  if (state.condition.hook <= 0) return 'hook';
+  return null;
+}
+
+/** Worn gear loses only a small share of rated strength before it finally
+ * breaks. The warning/damage loop matters; condition is not a hidden stat
+ * that makes a 40% item suddenly half as strong. */
+export function conditionFactor(part: GearPart): number {
+  return 0.82 + clamp01(state.condition[part] / 100) * 0.18;
+}
+
+export function damageTackle(part: GearPart, amount: number): number {
+  const next = Math.max(0, state.condition[part] - Math.max(0, amount));
+  state = { ...state, condition: { ...state.condition, [part]: next } };
+  save();
+  return next;
+}
+
+export function repairCost(): number {
+  const missingRod = 100 - state.condition.rod;
+  const missingLine = 100 - state.condition.line;
+  const missingHook = 100 - state.condition.hook;
+  const rodBase = Math.max(18, Math.round((rodStats().cost || 35) * 0.28));
+  const lineBase = Math.max(12, Math.round((lineStats().cost || 24) * 0.25));
+  const hookBase = Math.max(8, Math.round((hookStats().cost || 18) * 0.22));
+  return Math.ceil(
+    rodBase * missingRod / 100
+    + lineBase * missingLine / 100
+    + hookBase * missingHook / 100
+  );
+}
+
+export function repairAll(): number {
+  const cost = repairCost();
+  state = { ...state, condition: { rod: 100, line: 100, hook: 100 } };
+  save();
+  return cost;
 }
 
 export function rodStats(): RodStats {
@@ -124,7 +189,11 @@ export function nextRod(): RodStats | null {
 export function upgradeRod(): RodStats | null {
   const next = nextRod();
   if (!next) return null;
-  state = { ...state, rod: Math.min(RODS.length - 1, state.rod + 1) };
+  state = {
+    ...state,
+    rod: Math.min(RODS.length - 1, state.rod + 1),
+    condition: { ...state.condition, rod: 100 },
+  };
   save();
   return next;
 }
@@ -136,7 +205,11 @@ export function nextLine(): LineStats | null {
 export function upgradeLine(): LineStats | null {
   const next = nextLine();
   if (!next) return null;
-  state = { ...state, line: Math.min(LINES.length - 1, state.line + 1) };
+  state = {
+    ...state,
+    line: Math.min(LINES.length - 1, state.line + 1),
+    condition: { ...state.condition, line: 100 },
+  };
   save();
   return next;
 }
@@ -148,7 +221,11 @@ export function nextHook(): HookStats | null {
 export function upgradeHook(): HookStats | null {
   const next = nextHook();
   if (!next) return null;
-  state = { ...state, hook: Math.min(HOOKS.length - 1, state.hook + 1) };
+  state = {
+    ...state,
+    hook: Math.min(HOOKS.length - 1, state.hook + 1),
+    condition: { ...state.condition, hook: 100 },
+  };
   save();
   return next;
 }
@@ -228,6 +305,10 @@ function emptyBaits(): Record<BaitId, number> {
   return { cacing: 0, serangga: 0, udang: 0, kilau: 0 };
 }
 
+function fullCondition(): GearCondition {
+  return { rod: 100, line: 100, hook: 100 };
+}
+
 function isBaitId(v: unknown): v is BaitId {
   return typeof v === 'string' && BAIT_IDS.includes(v as BaitId);
 }
@@ -235,12 +316,18 @@ function isBaitId(v: unknown): v is BaitId {
 function load(): TackleState {
   try {
     const raw = localStorage.getItem(KEY);
-    if (!raw) return { rod: 0, line: 0, hook: 0, bait: 'cacing', baits: emptyBaits() };
+    if (!raw) {
+      return {
+        rod: 0, line: 0, hook: 0, condition: fullCondition(),
+        bait: 'cacing', baits: emptyBaits(),
+      };
+    }
 
     const parsed = JSON.parse(raw) as {
       rod?: unknown;
       line?: unknown;
       hook?: unknown;
+      condition?: Partial<Record<GearPart, unknown>>;
       bait?: unknown;
       baits?: Partial<Record<BaitId, unknown>>;
       /** v1 migration: the old system only had one generic bait stack. */
@@ -259,11 +346,19 @@ function load(): TackleState {
       rod: clampInt(Number(parsed.rod ?? 0), 0, RODS.length - 1),
       line: clampInt(Number(parsed.line ?? 0), 0, LINES.length - 1),
       hook: clampInt(Number(parsed.hook ?? 0), 0, HOOKS.length - 1),
+      condition: {
+        rod: clampInt(Number(parsed.condition?.rod ?? 100), 0, 100),
+        line: clampInt(Number(parsed.condition?.line ?? 100), 0, 100),
+        hook: clampInt(Number(parsed.condition?.hook ?? 100), 0, 100),
+      },
       bait: isBaitId(parsed.bait) ? parsed.bait : 'cacing',
       baits,
     };
   } catch {
-    return { rod: 0, line: 0, hook: 0, bait: 'cacing', baits: emptyBaits() };
+    return {
+      rod: 0, line: 0, hook: 0, condition: fullCondition(),
+      bait: 'cacing', baits: emptyBaits(),
+    };
   }
 }
 
