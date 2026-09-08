@@ -18,7 +18,9 @@ import type { WorldMap } from '../world/map';
 import type { Catch } from './fishing';
 import type { LocalPlayer } from './player';
 import {
-  BAIT_CASTS, BAIT_COST, addBait, nextRod, tackleState, upgradeRod,
+  BAIT_CASTS, BAIT_COST, addBait,
+  nextHook, nextLine, nextRod,
+  tackleState, upgradeHook, upgradeLine, upgradeRod,
 } from './shop';
 
 export const CROPS = Object.keys(CROP_LOOKS);
@@ -41,7 +43,7 @@ export interface Prompt {
 export type FarmAction =
   | { kind: 'plot'; i: number; op: 'till' | 'plant' | 'water' | 'harvest'; crop?: string }
   | { kind: 'sell' }
-  | { kind: 'buy'; crop?: string; shop?: 'rod' | 'bait' };
+  | { kind: 'buy'; crop?: string; shop?: 'rod' | 'line' | 'hook' | 'bait' };
 
 const REACH = 22;
 
@@ -61,7 +63,7 @@ export class Farm {
   basket: Catch[] = [];
   harvested: Record<string, number> = {};
   selected = 0;
-  private shopSelected: 'rod' | 'bait' = 'rod';
+  private shopSelected: 'rod' | 'line' | 'hook' | 'bait' = 'rod';
   private promptMode: 'crop' | 'shop' = 'crop';
 
   /** Set each frame by `findPrompt`. */
@@ -74,7 +76,9 @@ export class Farm {
 
   cycleCrop(): void {
     if (this.promptMode === 'shop') {
-      this.shopSelected = this.shopSelected === 'rod' ? 'bait' : 'rod';
+      const tabs: Array<'rod' | 'line' | 'hook' | 'bait'> = ['rod', 'line', 'hook', 'bait'];
+      const i = tabs.indexOf(this.shopSelected);
+      this.shopSelected = tabs[(i + 1) % tabs.length];
       return;
     }
     this.selected = (this.selected + 1) % CROPS.length;
@@ -139,24 +143,43 @@ export class Farm {
         const next = nextRod();
         if (next) {
           this.prompt = {
-            text: `[E] ${next.label} ${next.cost} koin  [Q] umpan`,
+            text: `[E] ${next.label} ${next.cost} koin  [Q] berikut`,
             x: stall.x, y: stall.y - 30,
           };
           this.pendingAction = { kind: 'buy', shop: 'rod' };
         } else {
+          this.prompt = { text: 'joran maksimal  [Q] berikut', x: stall.x, y: stall.y - 30 };
+        }
+      } else if (this.shopSelected === 'line') {
+        const next = nextLine();
+        if (next) {
           this.prompt = {
-            text: 'joran sudah paling enak  [Q] umpan',
+            text: `[E] ${next.label} ${next.cost} koin  [Q] berikut`,
             x: stall.x, y: stall.y - 30,
           };
+          this.pendingAction = { kind: 'buy', shop: 'line' };
+        } else {
+          this.prompt = { text: 'senar maksimal  [Q] berikut', x: stall.x, y: stall.y - 30 };
+        }
+      } else if (this.shopSelected === 'hook') {
+        const next = nextHook();
+        if (next) {
+          this.prompt = {
+            text: `[E] ${next.label} ${next.cost} koin  [Q] berikut`,
+            x: stall.x, y: stall.y - 30,
+          };
+          this.pendingAction = { kind: 'buy', shop: 'hook' };
+        } else {
+          this.prompt = { text: 'kail maksimal  [Q] berikut', x: stall.x, y: stall.y - 30 };
         }
       } else if (gear.baitCasts >= 60) {
         this.prompt = {
-          text: `umpan penuh (${gear.baitCasts})  [Q] joran`,
+          text: `umpan penuh (${gear.baitCasts})  [Q] berikut`,
           x: stall.x, y: stall.y - 30,
         };
       } else {
         this.prompt = {
-          text: `[E] umpan ${BAIT_CASTS}x ${BAIT_COST} koin · sisa ${gear.baitCasts}  [Q] joran`,
+          text: `[E] umpan ${BAIT_CASTS}x ${BAIT_COST} koin · sisa ${gear.baitCasts}  [Q] berikut`,
           x: stall.x, y: stall.y - 30,
         };
         this.pendingAction = { kind: 'buy', shop: 'bait' };
@@ -232,6 +255,20 @@ export class Farm {
           if (!next || this.coins < next.cost) return false;
           this.coins -= next.cost;
           upgradeRod();
+          return true;
+        }
+        if (a.shop === 'line') {
+          const next = nextLine();
+          if (!next || this.coins < next.cost) return false;
+          this.coins -= next.cost;
+          upgradeLine();
+          return true;
+        }
+        if (a.shop === 'hook') {
+          const next = nextHook();
+          if (!next || this.coins < next.cost) return false;
+          this.coins -= next.cost;
+          upgradeHook();
           return true;
         }
         if (a.shop === 'bait') {
