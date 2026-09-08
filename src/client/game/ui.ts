@@ -698,6 +698,8 @@ export class Ui {
       ['q', 'ganti bibit / menu toko'],
       ['r', 'ganti umpan aktif'],
       ['f', 'atur drag reel'],
+      ['t', 'rod action light/medium/heavy'],
+      ['y', 'ukuran kail kecil/sedang/besar'],
       ['enter', 'ngobrol'],
       ['k', 'peta dunia'],
       ['j', 'catatan tangkapan'],
