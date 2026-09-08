@@ -697,6 +697,7 @@ export class Ui {
       ['e', 'cangkul, tanam, siram, panen, jual'],
       ['q', 'ganti bibit / menu toko'],
       ['r', 'ganti umpan aktif'],
+      ['f', 'atur drag reel'],
       ['enter', 'ngobrol'],
       ['k', 'peta dunia'],
       ['j', 'catatan tangkapan'],
