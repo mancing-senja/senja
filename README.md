@@ -139,6 +139,15 @@ layar yang pakai display scaling.
   bite/hook security tetapi tidak pernah mengunci spesies total.
 - **Escape phase per perilaku.** Ikan lari bisa first/second run, penyelam bisa
   dive kedua, ikan pengendap bisa memberi sentakan terakhir dekat landing.
+- **Line-out & spool capacity.** Drag yang slip dan ikan yang lari benar-benar
+  mengambil senar; tiap tipe senar punya kapasitas relatif, dan membiarkan ikan
+  sampai ujung reel bisa mengakhiri fight.
+- **Respons escape berbeda.** Jump/headshake/rolling lebih aman jika tekanan
+  diturunkan, dive jangan sampai slack, sedangkan run harus dibiarkan lewat drag
+  sambil perlahan mengambil kembali line.
+- **Shore landing.** Progress penuh belum langsung jadi tangkapan: ikan harus
+  dibawa dekat tepi, line dipulihkan, lalu tekanan stabil sebentar untuk serok.
+  Mengangkat terlalu keras dekat tepian bisa merusak hook hold.
 - **Kebun bareng.** Petak-petaknya milik room, bukan milik orang. Tanaman
   temen bisa kamu siram, dan tumbuh terus walau kamu lagi ga main.
 - **Siklus hari 20 menit.** Server yang pegang jamnya, jadi semua orang di
