@@ -729,6 +729,8 @@ export class Fishing {
     this.baitedCast = null;
     this.momentum = 0;
     this.resetGearStress();
+    this.hookHold = 1;
+    this.mouth = 'normal';
     this.hookText = '';
     this.missText = 'lepas...';
     this.nibbleText = 'ada gerakan...';
@@ -1331,6 +1333,7 @@ export class Fishing {
     this.slack = 0;
     this.momentum = 0;
     this.resetGearStress();
+    this.hookHold = 1;
     this.hookText = 'debug hook';
     this.bobX = p.x;
     this.bobY = p.y - 8;
@@ -1381,8 +1384,6 @@ export class Fishing {
     this.dragSlip = 0;
     this.snag = 0;
     this.snagged = false;
-    this.hookHold = 1;
-    this.mouth = 'normal';
     this.rodRisk = 0;
     this.lineRisk = 0;
     this.hookRisk = 0;
@@ -1410,6 +1411,8 @@ export class Fishing {
     this.baitedCast = null;
     this.momentum = 0;
     this.resetGearStress();
+    this.hookHold = 1;
+    this.mouth = 'normal';
     this.hookText = '';
     this.missText = 'lepas...';
     p.locked = false;
