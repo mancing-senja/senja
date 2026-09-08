@@ -18,8 +18,7 @@ import type { WorldMap } from '../world/map';
 import type { Catch } from './fishing';
 import type { LocalPlayer } from './player';
 import {
-  BAIT_CASTS, BAIT_COST, addBait,
-  nextHook, nextLine, nextRod,
+  addBait, baitCount, cycleBait, nextHook, nextLine, nextRod, selectedBait,
   tackleState, upgradeHook, upgradeLine, upgradeRod,
 } from './shop';
 
@@ -84,6 +83,14 @@ export class Farm {
     this.selected = (this.selected + 1) % CROPS.length;
   }
 
+  /** R only means something while the bait shelf is the active shop tab.
+   * Keeping it contextual avoids spending another global shortcut on a menu
+   * the player may never use. */
+  cycleBaitChoice(): void {
+    if (this.promptMode !== 'shop' || this.shopSelected !== 'bait') return;
+    cycleBait();
+  }
+
   /** What has been caught at least once, and the biggest of each. The log
    *  is the reason to keep casting once coins stop mattering. */
   log: Record<string, LogEntry> = {};
@@ -137,7 +144,7 @@ export class Farm {
     const stall = map.props.find((pr) => pr.kind === 'stall');
     if (stall && near(p, stall.x, stall.y, 30)) {
       this.promptMode = 'shop';
-      const gear = tackleState();
+      tackleState(); // ensure saved tackle is loaded before presenting the stall
 
       if (this.shopSelected === 'rod') {
         const next = nextRod();
@@ -172,17 +179,21 @@ export class Farm {
         } else {
           this.prompt = { text: 'kail maksimal  [Q] berikut', x: stall.x, y: stall.y - 30 };
         }
-      } else if (gear.baitCasts >= 60) {
-        this.prompt = {
-          text: `umpan penuh (${gear.baitCasts})  [Q] berikut`,
-          x: stall.x, y: stall.y - 30,
-        };
       } else {
-        this.prompt = {
-          text: `[E] umpan ${BAIT_CASTS}x ${BAIT_COST} koin · sisa ${gear.baitCasts}  [Q] berikut`,
-          x: stall.x, y: stall.y - 30,
-        };
-        this.pendingAction = { kind: 'buy', shop: 'bait' };
+        const bait = selectedBait();
+        const have = baitCount(bait.id);
+        if (have >= 60) {
+          this.prompt = {
+            text: `${bait.label} penuh (${have})  [R] jenis  [Q] berikut`,
+            x: stall.x, y: stall.y - 30,
+          };
+        } else {
+          this.prompt = {
+            text: `[E] ${bait.label} ${bait.casts}x ${bait.cost} · sisa ${have}  [R] jenis [Q] berikut`,
+            x: stall.x, y: stall.y - 30,
+          };
+          this.pendingAction = { kind: 'buy', shop: 'bait' };
+        }
       }
       return this.pendingAction;
     }
@@ -272,8 +283,9 @@ export class Farm {
           return true;
         }
         if (a.shop === 'bait') {
-          if (tackleState().baitCasts >= 60 || this.coins < BAIT_COST) return false;
-          this.coins -= BAIT_COST;
+          const bait = selectedBait();
+          if (baitCount(bait.id) >= 60 || this.coins < bait.cost) return false;
+          this.coins -= bait.cost;
           addBait();
           return true;
         }
