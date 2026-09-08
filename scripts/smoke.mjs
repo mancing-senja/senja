@@ -57,6 +57,15 @@ try {
   browser = await chromium.launch();
   const page = await browser.newPage();
 
+  // Migration fixture: players from fishing v1 can already have generic
+  // bait charges in localStorage. The new typed-bait inventory must preserve
+  // those casts instead of silently deleting a purchase.
+  await page.addInitScript(() => {
+    localStorage.setItem('senja.tackle', JSON.stringify({
+      rod: 1, line: 0, hook: 0, baitCasts: 7,
+    }));
+  });
+
   const problems = [];
   page.on('console', (msg) => {
     if (msg.type() === 'error') problems.push(`console.error: ${msg.text()}`);
@@ -85,12 +94,16 @@ try {
       props: map ? map.props.length : 0,
       spots: map ? map.spots.length : 0,
       net: dbg ? dbg.net : 'unknown',
+      bait: dbg ? dbg.bait : null,
     };
   });
 
   if (info.w < 64 || info.h < 64) problems.push(`canvas too small: ${info.w}x${info.h}`);
   if (info.props < 100) problems.push(`world looks empty: ${info.props} props`);
   if (info.spots < 1) problems.push('no fishing spots generated');
+  if (!info.bait || info.bait.id !== 'cacing' || info.bait.casts !== 7) {
+    problems.push(`legacy bait migration failed: ${JSON.stringify(info.bait)}`);
+  }
   // Multiplayer reaches the room server through the /room proxy. If this
   // regresses, solo play still works and nothing else in CI would notice.
   if (info.net !== 'online') problems.push(`room socket not connected (net=${info.net})`);
