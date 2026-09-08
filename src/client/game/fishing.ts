@@ -28,7 +28,8 @@ import {
   STYLES, applyGrade, newFight, styleFor, type FightState, type FightStyle,
 } from './fight';
 import {
-  baitWeight, consumeBaitCast, hookStats, lineStats, rodStats,
+  baitById, baitWeight, consumeBaitCast, hookStats, lineStats, rodStats,
+  type BaitId,
 } from './shop';
 
 export interface Species {
@@ -536,7 +537,7 @@ function nightness(time: number): number {
  *  that is what makes walking to the swamp at night worth doing. */
 function rollSpecies(
   time: number, depth01: number, spot: Spot, district: District | null,
-  season: Season, baited: boolean,
+  season: Season, baited: BaitId | null,
 ): Species {
   const p = phaseIndex(time);
   const weights = SPECIES.map((s) => {
@@ -560,7 +561,10 @@ function rollSpecies(
     w *= deep * season.deepBias + (1 - deep) * season.shallowBias;
     // Bait is deliberately last. It can tilt a roll that already makes sense
     // here, but it never overrides a spot or district that suppresses a fish.
-    if (baited) w *= baitWeight(s.value);
+    if (baited) {
+      const style = styleFor(s);
+      w *= baitWeight(baited, s.value, s.fight, s.maxCm, style.id);
+    }
     return w;
   });
   const total = weights.reduce((a, b) => a + b, 0);
@@ -617,7 +621,8 @@ export class Fishing {
   private spot: Spot = DEFAULT_SPOT;
   private district: District | null = null;
   private pending: Species | null = null;
-  private baitedCast = false;
+  /** Which bait was consumed by this cast. Null means bare hook. */
+  private baitedCast: BaitId | null = null;
   /** Set by the frame. Shifts what is biting without touching any species'
    *  own numbers. */
   season!: Season;
@@ -663,7 +668,7 @@ export class Fishing {
     this.state = 'idle';
     this.t = 0;
     this.pending = null;
-    this.baitedCast = false;
+    this.baitedCast = null;
     this.momentum = 0;
     this.hookText = '';
     this.missText = 'lepas...';
@@ -1127,7 +1132,7 @@ export class Fishing {
     this.state = 'idle';
     this.t = 0;
     this.pending = null;
-    this.baitedCast = false;
+    this.baitedCast = null;
     this.momentum = 0;
     this.hookText = '';
     this.missText = 'lepas...';
@@ -1177,7 +1182,8 @@ export class Fishing {
         d.textCentered(where, cx, view.h - 20, C.Amber, C.InkDeep, 0.6);
       }
       if (this.baitedCast) {
-        d.textCentered('umpan wangi', cx, view.h - 10, C.Grass, C.InkDeep, 0.65);
+        const bait = baitById(this.baitedCast);
+        d.textCentered(`${bait.label.toLowerCase()} · ${bait.hint}`, cx, view.h - 10, C.Grass, C.InkDeep, 0.65);
       }
     }
 
