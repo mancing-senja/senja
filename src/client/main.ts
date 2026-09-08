@@ -46,7 +46,7 @@ import { Npc, nearestNpc, villagerDefs } from './game/npc';
 import { loadMinds, saveMinds, witnessCatch } from './game/dialogue';
 import { LORE, loadRead, saveRead } from './game/lore';
 import { Audio } from './game/audio';
-import { baitCount, cycleBait, selectedBait } from './game/shop';
+import { baitCount, cycleBait, gearCondition, selectedBait } from './game/shop';
 
 /** How much of the sprite shading the normal maps do. Under a half the
  *  effect is invisible; over about 0.75 the palette starts banding, because
@@ -450,6 +450,7 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
     basket: farm.basketCount,
     caught: player.caught,
     bait: { id: selectedBait().id, label: selectedBait().label, casts: baitCount() },
+    gear: gearCondition(),
     net: net.status,
     peers: net.players.size,
     room: net.room,
