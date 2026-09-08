@@ -95,6 +95,8 @@ try {
       spots: map ? map.spots.length : 0,
       net: dbg ? dbg.net : 'unknown',
       bait: dbg ? dbg.bait : null,
+      gear: dbg ? dbg.gear : null,
+      hazardSpot: map ? map.spots.find((s) => s.id === 'tanjung') : null,
     };
   });
 
@@ -103,6 +105,17 @@ try {
   if (info.spots < 1) problems.push('no fishing spots generated');
   if (!info.bait || info.bait.id !== 'cacing' || info.bait.casts !== 7) {
     problems.push(`legacy bait migration failed: ${JSON.stringify(info.bait)}`);
+  }
+  if (!info.gear || info.gear.rod !== 100 || info.gear.line !== 100 || info.gear.hook !== 100) {
+    problems.push(`legacy tackle condition migration failed: ${JSON.stringify(info.gear)}`);
+  }
+  if (
+    !info.hazardSpot
+    || typeof info.hazardSpot.abrasion !== 'number'
+    || typeof info.hazardSpot.cover !== 'number'
+    || typeof info.hazardSpot.current !== 'number'
+  ) {
+    problems.push(`fishing spot hazard model missing: ${JSON.stringify(info.hazardSpot)}`);
   }
   // Multiplayer reaches the room server through the /room proxy. If this
   // regresses, solo play still works and nothing else in CI would notice.
