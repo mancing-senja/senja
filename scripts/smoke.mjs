@@ -64,6 +64,11 @@ try {
     localStorage.setItem('senja.tackle', JSON.stringify({
       rod: 1, line: 0, hook: 0, baitCasts: 7,
     }));
+    // Gameplay smoke should boot as a returning player. With no saved face
+    // the first-run character creator intentionally pauses world updates,
+    // which would make keyboard fight checks test the creator instead.
+    localStorage.setItem('senja.face', '0');
+    localStorage.setItem('senja.name', 'CI Pemancing');
   });
 
   const problems = [];
