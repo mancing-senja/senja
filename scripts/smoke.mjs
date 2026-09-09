@@ -147,6 +147,9 @@ try {
     || typeof fightInfo.reel.recovery !== 'number'
     || typeof fightInfo.reel.rodAngle !== 'number'
     || typeof fightInfo.reel.counter !== 'number'
+    || typeof fightInfo.reel.hookFit !== 'number'
+    || !(fightInfo.reel.hookFit > 0)
+    || typeof fightInfo.reel.habitat !== 'number'
     || typeof fightInfo.reel.rain !== 'number'
     || typeof fightInfo.reel.waterCurrent !== 'number'
     || typeof fightInfo.reel.turbidity !== 'number'
