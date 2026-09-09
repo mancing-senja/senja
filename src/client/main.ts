@@ -621,7 +621,9 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
           speciesCount: Object.keys(farm.log).length,
         });
         net.send({ t: 'reel' });
-        ui.say(`${c.species.label} ${c.cm} cm  +${c.coins}`);
+        ui.say(
+          `${c.species.label} ${c.cm} cm · ${c.quality}  +${c.coins}`,
+        );
       },
       (x, y) => net.send({ t: 'cast', bx: x, by: y }),
     );
@@ -768,10 +770,14 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
       ui.say(`${bait.label} · ${baitCount(bait.id)} lempar`);
       audio.blip(560, 0.05, 0.1);
     }
-    if (input.pressed('f') && !fishing.busy && !ui.chatOpen) {
+    if (
+      input.pressed('f')
+      && (!fishing.busy || fishing.state === 'reel')
+      && !ui.chatOpen
+    ) {
       const drag = cycleDrag();
       ui.say(`${drag.label} · ${Math.round(drag.hold * 100)}% tahan`);
-      audio.blip(510, 0.05, 0.1);
+      audio.blip(fishing.state === 'reel' ? 470 : 510, 0.05, 0.1);
     }
     if (input.pressed('t') && !fishing.busy && !ui.chatOpen) {
       const action = cycleRodAction();
