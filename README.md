@@ -175,6 +175,14 @@ layar yang pakai display scaling.
   struktur, ikan di current seam memanfaatkan arus untuk mengambil line, dan
   ikan dari drop-off mencoba turun lagi. Arah ini konsisten dari titik cast,
   sehingga pemain bisa belajar risiko lokasi, bukan menebak RNG.
+- **Ikan sekarang menarik dunia, bukan cuma HUD.** Run, jump, headshake, roll,
+  dive, counter-surge, line-out dan habitat intent memberi displacement kecil
+  pada bobber. Renderer joran/senar yang sudah ada otomatis mengikuti posisi
+  tersebut, jadi lari ikan terbaca langsung di air.
+- **Senar punya visual pressure.** Tension tinggi meluruskan line, slack
+  menambah sag, drag slip memberi getaran, dan rod angle mengikuti lift/recover
+  pump-and-reel. Dive membuat bobber tampak lebih tenggelam; run/roll/headshake
+  meninggalkan wake kecil tanpa menambah tombol atau overlay baru.
 - **Kebun bareng.** Petak-petaknya milik room, bukan milik orang. Tanaman
   temen bisa kamu siram, dan tumbuh terus walau kamu lagi ga main.
 - **Siklus hari 20 menit.** Server yang pegang jamnya, jadi semua orang di
