@@ -534,12 +534,35 @@ function nightness(time: number): number {
   return phaseIndex(time) === 3 ? 1 : phaseIndex(time) === 2 ? 0.5 : 0;
 }
 
+type FeedingId = 'normal' | 'hatch' | 'drizzle' | 'runoff' | 'deep-calm';
+
+interface FeedingCondition {
+  id: FeedingId;
+  label: string;
+  waitMul: number;
+  surfaceMul: number;
+  currentMul: number;
+  deepMul: number;
+  preferredBait: BaitId | null;
+}
+
+const NORMAL_FEEDING: FeedingCondition = {
+  id: 'normal',
+  label: 'aktivitas normal',
+  waitMul: 1,
+  surfaceMul: 1,
+  currentMul: 1,
+  deepMul: 1,
+  preferredBait: null,
+};
+
 /** Three things decide what bites: the hour, how far out the bobber landed,
  *  and which spot it landed in. The spot is the strongest of the three —
  *  that is what makes walking to the swamp at night worth doing. */
 function rollSpecies(
   time: number, depth01: number, spot: Spot, district: District | null,
   season: Season, baited: BaitId | null, rain: number,
+  feeding: FeedingCondition,
 ): Species {
   const p = phaseIndex(time);
   const weights = SPECIES.map((s) => {
@@ -575,6 +598,13 @@ function rollSpecies(
     if (surfaceActive) w *= 1 + rain01 * 0.28;
     if (currentFish) w *= 1 + rain01 * 0.18;
     if (deep > 0.72 && rain01 > 0.65) w *= 0.96;
+
+    // Feeding windows are readable combinations of conditions already in the
+    // world. They bend an already-valid pool; they never bypass spot/district.
+    if (surfaceActive) w *= feeding.surfaceMul;
+    if (currentFish) w *= feeding.currentMul;
+    if (deep > 0.68) w *= feeding.deepMul;
+    if (baited && feeding.preferredBait === baited) w *= 1.10;
 
     // Bait is deliberately last. It can tilt a roll that already makes sense
     // here, but it never overrides a spot or district that suppresses a fish.
@@ -698,6 +728,41 @@ const OPEN_LANE: CastLane = {
   id: 'open', label: 'air terbuka', waitMul: 1, coverMul: 1, currentMul: 1, luckBonus: 0,
 };
 
+function feedingCondition(
+  time: number, rain: number, spot: Spot, lane: CastLane, depth: number,
+): FeedingCondition {
+  const phase = phaseIndex(time);
+  if (rain >= 0.55 && spot.current >= 0.35) {
+    return {
+      id: 'runoff', label: 'runoff · arus bawa makanan',
+      waitMul: 0.86, surfaceMul: 0.96, currentMul: 1.24, deepMul: 1.04,
+      preferredBait: 'udang',
+    };
+  }
+  if ((phase === 0 || phase === 2) && rain < 0.35 && depth < 0.68) {
+    return {
+      id: 'hatch', label: 'hatch serangga · permukaan aktif',
+      waitMul: 0.84, surfaceMul: 1.22, currentMul: 1.02, deepMul: 0.95,
+      preferredBait: 'serangga',
+    };
+  }
+  if (rain >= 0.12) {
+    return {
+      id: 'drizzle', label: 'gerimis · ikan naik makan',
+      waitMul: 0.92, surfaceMul: 1.12, currentMul: 1.06, deepMul: 0.99,
+      preferredBait: 'cacing',
+    };
+  }
+  if (phase === 1 && rain < 0.08 && depth >= 0.74 && lane.id === 'dropoff') {
+    return {
+      id: 'deep-calm', label: 'air tenang · ikan turun dalam',
+      waitMul: 1.02, surfaceMul: 0.92, currentMul: 1, deepMul: 1.14,
+      preferredBait: 'kilau',
+    };
+  }
+  return NORMAL_FEEDING;
+}
+
 function castLaneFor(spot: Spot, depth: number): CastLane {
   if (spot.cover >= 0.62 && depth <= 0.58) {
     return {
@@ -754,6 +819,7 @@ export class Fishing {
   private nibbleText = 'ada gerakan...';
   private depth01 = 0;
   private castLane: CastLane = OPEN_LANE;
+  private feeding: FeedingCondition = NORMAL_FEEDING;
   private spot: Spot = DEFAULT_SPOT;
   private district: District | null = null;
   private pending: Species | null = null;
@@ -894,6 +960,7 @@ export class Fishing {
     dragSlip: number; stretch: number; lineOut: number;
     landing: number; snag: number;
     rain: number; waterCurrent: number; turbidity: number; castLane: string;
+    feeding: string;
     hookFit: number; habitat: number; fishX: number; fishY: number;
     hookHold: number; escape: string; warning: string;
     style: string; zone: number; veil: boolean;
@@ -918,6 +985,7 @@ export class Fishing {
       waterCurrent: this.waterCurrent,
       turbidity: this.turbidity,
       castLane: this.castLane.id,
+      feeding: this.feeding.id,
       hookFit: this.hookFit,
       habitat: this.habitatIntent,
       fishX: this.fishOffsetX,
@@ -993,11 +1061,15 @@ export class Fishing {
           this.t = 0;
           // Better rods are a comfort upgrade, not a different game. Even
           // the top tier still leaves enough quiet to look at the lake.
+          this.feeding = feedingCondition(
+            time, this.rain, this.spot, this.castLane, this.depth01,
+          );
           const rainActivity = 1 - this.rain * 0.16;
           this.biteAt = (2.4 + Math.random() * 7.5)
             * rodStats().waitMul
             * rainActivity
-            * this.castLane.waitMul;
+            * this.castLane.waitMul
+            * this.feeding.waitMul;
         }
         break;
       }
@@ -1012,7 +1084,7 @@ export class Fishing {
         if (this.t >= this.biteAt) {
           this.pending = rollSpecies(
             time, this.depth01, this.spot, this.district, this.season,
-            this.baitedCast, this.rain,
+            this.baitedCast, this.rain, this.feeding,
           );
           // Deep water, a good spot and the small hours all improve the
           // odds, so chasing a rare fish means going somewhere for it
@@ -2150,6 +2222,12 @@ export class Fishing {
       const hazard = spotHazardHint(this.spot);
       if (hazard) info(hazard, C.Mist, 0.62);
       if (this.castLane.id !== 'open') info(`lemparan: ${this.castLane.label}`, C.GrassLt);
+      if (this.feeding.id !== 'normal') {
+        const baitMatch = this.feeding.preferredBait === this.baitedCast
+          ? ' · umpan cocok'
+          : '';
+        info(`${this.feeding.label}${baitMatch}`, C.GrassLt, 0.68);
+      }
 
       if (this.rain >= 0.12) {
         const weather = this.rain >= 0.62
