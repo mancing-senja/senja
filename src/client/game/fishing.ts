@@ -630,11 +630,15 @@ export type FishState =
   | 'idle' | 'aim' | 'cast' | 'wait' | 'nibble' | 'omen'
   | 'bite' | 'reel' | 'card' | 'miss';
 
+export type CatchQualityId = 'kasar' | 'rapi' | 'mulus';
+
 export interface Catch {
   species: Species;
   cm: number;
   coins: number;
   perfect: boolean;
+  quality: CatchQualityId;
+  qualityScore: number;
   grade: Grade;
 }
 
@@ -882,6 +886,7 @@ export class Fishing {
   private lineOut = 0;
   private spoolRisk = 0;
   private landingT = 0;
+  private landingControl = 0.35;
   private escapeT = 0;
   private escapeUsed = 0;
   private escapeName = '';
@@ -958,7 +963,7 @@ export class Fishing {
     pump: number; recovery: number; rodAngle: number; counter: number;
     load: number; stamina: number; phase: FishEnergyPhase; reserve: number;
     dragSlip: number; stretch: number; lineOut: number;
-    landing: number; snag: number;
+    landing: number; landingControl: number; snag: number;
     rain: number; waterCurrent: number; turbidity: number; castLane: string;
     feeding: string;
     hookFit: number; habitat: number; fishX: number; fishY: number;
@@ -980,6 +985,7 @@ export class Fishing {
       stretch: this.lineStretch,
       lineOut: this.lineOut,
       landing: this.landingT,
+      landingControl: this.landingControl,
       snag: this.snag,
       rain: this.rain,
       waterCurrent: this.waterCurrent,
@@ -1758,6 +1764,24 @@ export class Fishing {
         this.landingT = nearBank && inZone && landingPressure && landingSafe
           ? Math.min(1, this.landingT + dt * 0.75)
           : Math.max(0, this.landingT - dt * (this.escapeT > 0 ? 0.90 : 0.45));
+
+        // Landing quality is earned in the final metres. It does not decide
+        // whether the catch is allowed; it only rewards controlled pressure.
+        if (nearBank) {
+          const cleanLanding = inZone
+            && landingPressure
+            && landingSafe
+            && this.tension <= 0.78
+            && this.dragSlip < 0.18;
+          this.landingControl = cleanLanding
+            ? Math.min(1, this.landingControl + dt * 0.62)
+            : Math.max(
+                0,
+                this.landingControl - dt * (
+                  this.tension > 0.86 || this.dragSlip > 0.32 ? 0.88 : 0.42
+                ),
+              );
+        }
         if (nearBank && this.tension > 0.86) {
           this.hookHold = Math.max(
             0,
@@ -1976,6 +2000,9 @@ export class Fishing {
     this.pendingGrade = gradeById(gradeId as GradeId);
     this.pendingCm = rollCatchSize(fish, this.pendingGrade);
     this.slack = 0;
+    this.hookHold = 1;
+    this.gearLoad = 0;
+    this.landingControl = 1;
     this.bobX = p.x;
     this.bobY = p.y - 8;
     this.land(fish, particles, audio, onCatch, p);
@@ -2034,12 +2061,24 @@ export class Fishing {
     // physical fight. Debug/direct catches fall back to rolling here.
     const cm = this.pendingCm > 0 ? this.pendingCm : rollCatchSize(fish, grade);
     const sizeK = (cm - fish.minCm) / Math.max(1, fish.maxCm - fish.minCm);
-    const perfect = this.slack < 0.35;
+    const slackScore = 1 - clamp01(this.slack / 1.4);
+    const loadScore = 1 - clamp01((this.gearLoad - 0.72) / 0.80);
+    const qualityScore = clamp01(
+      this.landingControl * 0.45
+      + this.hookHold * 0.25
+      + slackScore * 0.20
+      + loadScore * 0.10,
+    );
+    const quality: CatchQualityId = qualityScore >= 0.80
+      ? 'mulus'
+      : qualityScore >= 0.58 ? 'rapi' : 'kasar';
+    const qualityMul = quality === 'mulus' ? 1.25 : quality === 'rapi' ? 1.10 : 1;
+    const perfect = quality === 'mulus';
     const coins = Math.max(1, Math.round(
-      fish.value * (0.6 + sizeK * 0.9) * (perfect ? 1.25 : 1) * grade.valueMul,
+      fish.value * (0.6 + sizeK * 0.9) * qualityMul * grade.valueMul,
     ));
 
-    this.lastCatch = { species: fish, cm, coins, perfect, grade };
+    this.lastCatch = { species: fish, cm, coins, perfect, quality, qualityScore, grade };
     this.state = 'card';
     this.cardT = 0;
     p.action = 'idle';
@@ -2084,6 +2123,7 @@ export class Fishing {
     this.lineStretch = 0;
     this.spoolRisk = 0;
     this.landingT = 0;
+    this.landingControl = 0.35;
     this.escapeT = 0;
     this.escapeUsed = 0;
     this.escapeName = '';
@@ -2522,8 +2562,13 @@ export class Fishing {
     d.text(coinTxt, x + 54, y + 41, C.Lantern, line(3));
     d.text('koin', x + 54 + textWidth(coinTxt) + 3, y + 41, C.SunGlow, line(3) * 0.8);
 
-    if (c.perfect) d.text('mulus!', x + 54, y + 52, C.Grass, line(4));
-    else d.text(c.species.blurb.slice(0, 22), x + 8, y + 52, C.Mist, line(4) * 0.8);
+    if (c.quality === 'mulus') {
+      d.text('landing mulus!', x + 54, y + 52, C.Grass, line(4));
+    } else if (c.quality === 'rapi') {
+      d.text('landing rapi', x + 54, y + 52, C.GrassLt, line(4));
+    } else {
+      d.text('landing kasar', x + 54, y + 52, C.Amber, line(4));
+    }
 
     d.textCentered('spasi', view.w / 2, y + h + 5, C.Mist, C.InkDeep, a * 0.7);
   }
