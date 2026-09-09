@@ -1,0 +1,75 @@
+name: Build Vercel deployment bundle
+
+on:
+  push:
+    branches:
+      - feat/fishing-gameplay-v2
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: vercel-bundle-fishing-v2
+  cancel-in-progress: true
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Use Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck and build
+        run: npm run build
+
+      - name: Bundle Vercel API functions
+        run: |
+          rm -rf /tmp/senja-vercel
+          mkdir -p /tmp/senja-vercel/api
+          cp dist/index.html /tmp/senja-vercel/index.html
+          if [ -d dist/assets ]; then cp -R dist/assets /tmp/senja-vercel/assets; fi
+
+          npx --yes esbuild@0.25.9 api/room.ts \
+            --bundle --platform=node --target=node22 --format=esm \
+            --outfile=/tmp/senja-vercel/api/room.mjs
+          npx --yes esbuild@0.25.9 api/npc-talk.ts \
+            --bundle --platform=node --target=node22 --format=esm \
+            --outfile=/tmp/senja-vercel/api/npc-talk.mjs
+          npx --yes esbuild@0.25.9 api/npc-thought.ts \
+            --bundle --platform=node --target=node22 --format=esm \
+            --outfile=/tmp/senja-vercel/api/npc-thought.mjs
+
+          cat > /tmp/senja-vercel/vercel.json <<'JSON'
+          {
+            "$schema": "https://openapi.vercel.sh/vercel.json",
+            "rewrites": [
+              { "source": "/room", "destination": "/api/room" }
+            ]
+          }
+          JSON
+
+          printf '%s\n' "${GITHUB_SHA}" > /tmp/senja-vercel/COMMIT_SHA.txt
+
+      - name: Publish deployment bundle branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch --orphan deploy/vercel-fishing-v2
+          git rm -rf . || true
+          git clean -fdx
+          cp -R /tmp/senja-vercel/. .
+          git add -A
+          git commit -m "deploy: Vercel bundle ${GITHUB_SHA}"
+          git push --force origin HEAD:deploy/vercel-fishing-v2
