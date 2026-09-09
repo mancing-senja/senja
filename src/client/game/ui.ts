@@ -412,7 +412,7 @@ export class Ui {
     // blurb run under the whole panel width and it landed straight across
     // the bite-time bars — the two halves have to own their own space.
     const w = 224;
-    const h = 174;
+    const h = 180;
     const x = Math.round(view.w / 2 - w / 2);
     const y = Math.round(view.h / 2 - h / 2);
     const tier = e ? (e.bestGrade ?? 0) : 0;
@@ -515,6 +515,13 @@ export class Ui {
     row('sudah dapat', `${e.count}x`, C.Pale);
     row('harga dasar', `${sp.value}`, C.Lantern);
     row('perlawanan', fightWord(sp.fight), C.Pale);
+
+    const reserve = sp.maxCm >= 65 && sp.fight >= 1.30 ? 'ada' : 'tidak';
+    row('tenaga akhir', reserve, reserve === 'ada' ? C.Amber : C.Mist);
+    const bestQuality = e.bestQuality ?? 0;
+    const qualityLabel = bestQuality >= 2 ? 'mulus' : bestQuality >= 1 ? 'rapi' : 'kasar';
+    row('landing terbaik', qualityLabel, bestQuality >= 2 ? C.Grass : C.Pale);
+    row('landing mulus', `${e.cleanCount ?? 0}x`, C.GrassLt);
 
     // --- right: when it bites. Four bars beat four numbers — the shape of
     // the day is the actual answer to "when should I be out here".
