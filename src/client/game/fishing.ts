@@ -1247,9 +1247,8 @@ export class Fishing {
         // Only genuinely large/strong fish keep a reserve. Once they are near
         // beaten and already fairly close to landing they spend it in one last
         // deterministic surge. Small fish never get this extra beat.
-        const reserveEligible = (size01 >= 0.64 || this.pendingCm >= 58)
-          && fish.fight >= 1.15
-          && this.pendingGrade.tier >= 1;
+        const reserveEligible = (size01 >= 0.72 || this.pendingCm >= 65)
+          && fish.fight >= 1.30;
         if (
           reserveEligible
           && !this.reserveBurstUsed
@@ -2103,6 +2102,12 @@ export class Fishing {
       const bounce = Math.abs(Math.sin(this.t * 9)) * 3;
       d.textCentered('!', bx, by - 16 - bounce, C.Lantern, C.InkDeep);
     }
+    if (this.state === 'reel' && this.reserveBurstT > 0) {
+      const pulse = 0.35 + 0.45 * Math.abs(Math.sin(this.reserveBurstT * 8));
+      d.textCentered('!', bx, by - 18, C.Lantern, C.InkDeep, pulse);
+      d.rect(bx - 5, by + 7, 3, 1, C.WaterBr, pulse * 0.6);
+      d.rect(bx + 3, by + 7, 3, 1, C.WaterBr, pulse * 0.6);
+    }
     if (this.state === 'reel' && this.escapeT > 0) {
       if (this.escapeKind === 'jump') {
         const hop = Math.abs(Math.sin(this.escapeT * 8)) * 4;
@@ -2288,8 +2293,10 @@ export class Fishing {
           `senar keluar ${Math.round(this.lineOut / Math.max(0.1, lineStats().capacity) * 100)}%`,
           cx, y + 15, C.Mist, C.InkDeep, 0.74,
         );
-      } else if (this.fishStamina < 0.48) {
-        d.textCentered('ikan mulai lelah · tekan stabil', cx, y + 15, C.Grass, C.InkDeep, 0.78);
+      } else if (this.energyPhase === 'spent') {
+        d.textCentered('ikan habis tenaga · bawa ke tepi', cx, y + 15, C.Grass, C.InkDeep, 0.82);
+      } else if (this.energyPhase === 'tired') {
+        d.textCentered('ikan mulai berat · ambil line pelan', cx, y + 15, C.Grass, C.InkDeep, 0.78);
       } else if (this.gearLoad > 0.72) {
         d.textCentered(
           `beban alat ${Math.round(this.gearLoad * 100)}%`,
