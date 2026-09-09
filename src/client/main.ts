@@ -458,6 +458,7 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
     action: rodActionStats(),
     hookSize: hookSizeStats(),
     weather: { rain: Number(rain.toFixed(3)) },
+    lineFeel: fishing.lineFeel,
     net: net.status,
     peers: net.players.size,
     room: net.room,
