@@ -1,7 +1,8 @@
-/** Vercel Function entrypoint for the existing Senja room server.
+/** Vercel Function entrypoint for Senja's room WebSocket server.
  *
- * Vercel's Node runtime captures the HTTP server started by index.ts. The
- * public /room path is rewritten here by vercel.json so the browser can keep
- * using the same same-origin WebSocket URL in development and production.
+ * The shared server module exports the same Node HTTP server used locally.
+ * Vercel captures that server and handles HTTP/WebSocket upgrades for /room.
  */
-import '../src/server/index.js';
+import server from '../src/server/index.js';
+
+export default server;
