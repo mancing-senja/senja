@@ -157,6 +157,16 @@ layar yang pakai display scaling.
   lebih cepat menghasilkan aktivitas tetapi menambah pressure setempat;
   drop-off sedikit membantu peluang grade tanpa menjadikan cast jauh selalu
   pilihan terbaik.
+- **Pump-and-reel satu tombol.** Menahan Space dengan tension stabil mengangkat
+  joran dan menyimpan pump charge. Melepas setelah lift yang terkendali membuka
+  recovery window: line lebih cepat masuk dan pressure lebih efisien tanpa
+  tombol tambahan. Menahan terus tetap valid, hanya kurang efisien.
+- **Rod angle sekarang fisik.** Light action bergerak cepat dan lembut, Heavy
+  lebih lambat tetapi mentransfer pressure lebih besar. Pump yang tinggi juga
+  sedikit menaikkan load alat, jadi tenaga ekstra punya konsekuensi nyata.
+- **Ikan membalas tekanan berlebihan.** Menahan tension tinggi terlalu lama
+  memicu counter-surge pendek yang telegraphed. Ini bukan RNG; respons muncul
+  karena pemain terus memaksa dan bisa dihindari dengan cadence lift/recover.
 - **Kebun bareng.** Petak-petaknya milik room, bukan milik orang. Tanaman
   temen bisa kamu siram, dan tumbuh terus walau kamu lagi ga main.
 - **Siklus hari 20 menit.** Server yang pegang jamnya, jadi semua orang di
