@@ -188,6 +188,21 @@ layar yang pakai display scaling.
   terasa berat dan lebih mudah mengambil line. Ikan besar/kuat yang memang
   memenuhi ukuran aktual bisa menyimpan satu reserve burst terakhir; ikan
   kecil tidak mendapat lonjakan buatan.
+- **Feeding window yang terbaca.** Dawn/senja bisa memunculkan hatch serangga,
+  hujan deras di spot berarus menjadi runoff, gerimis menaikkan surface feeding,
+  dan siang tenang di drop-off memberi deep-calm window. Kondisi ini memengaruhi
+  wait time, komposisi ikan dan tempo nibble; umpan yang cocok mendapat bonus
+  kecil tanpa pernah memanggil spesies yang salah habitat.
+- **Landing punya kualitas.** Final shore control dinilai dari landing pressure,
+  hook security, slack dan overload alat menjadi kasar / rapi / mulus. Hasil
+  yang lebih bersih memberi bonus koin, bukan hard gate, dan catch card memberi
+  feedback visual berbeda.
+- **Jurnal menyimpan mastery.** Per spesies tersimpan landing terbaik dan jumlah
+  landing mulus, plus catatan apakah jenis itu cukup besar/kuat untuk punya
+  tenaga akhir. Save lama otomatis dibaca dengan nilai mastery nol.
+- **Drag bisa disetel saat fight.** Tombol F tetap tombol drag yang sama, tetapi
+  sekarang bisa dipakai saat reel untuk longgar/seimbang/kencang mengikuti run,
+  reserve burst, atau fase ikan yang sudah tired.
 - **Kebun bareng.** Petak-petaknya milik room, bukan milik orang. Tanaman
   temen bisa kamu siram, dan tumbuh terus walau kamu lagi ga main.
 - **Siklus hari 20 menit.** Server yang pegang jamnya, jadi semua orang di
