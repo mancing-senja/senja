@@ -131,6 +131,22 @@ try {
   ) {
     problems.push(`fishing spot hazard model missing: ${JSON.stringify(info.hazardSpot)}`);
   }
+  // A direct catch uses the real landing/card callback. It should record the
+  // new landing mastery fields in the journal without needing a long manual fight.
+  const masteryInfo = await page.evaluate(() => {
+    const start = window.__catch ? window.__catch('wader', 'biasa') : 'missing';
+    const dbg = window.__dbg ? window.__dbg() : null;
+    return { start, journal: dbg ? dbg.journal : null, fishing: dbg ? dbg.fishing : null };
+  });
+  const waderLog = masteryInfo.journal ? masteryInfo.journal.wader : null;
+  if (
+    !waderLog
+    || waderLog.bestQuality !== 2
+    || !(waderLog.cleanCount >= 1)
+  ) {
+    problems.push(`landing mastery journal invalid: ${JSON.stringify(masteryInfo)}`);
+  }
+
   // Exercise the richer reel state, not just boot. A chosen fight should
   // start with real line off the spool and expose the new landing/run state.
   const fightInfo = await page.evaluate(() => {
@@ -150,6 +166,8 @@ try {
     || typeof fightInfo.reel.counter !== 'number'
     || typeof fightInfo.reel.phase !== 'string'
     || typeof fightInfo.reel.reserve !== 'number'
+    || typeof fightInfo.reel.landingControl !== 'number'
+    || typeof fightInfo.reel.feeding !== 'string'
     || typeof fightInfo.reel.hookFit !== 'number'
     || !(fightInfo.reel.hookFit > 0)
     || typeof fightInfo.reel.habitat !== 'number'
@@ -162,6 +180,16 @@ try {
     || typeof fightInfo.reel.escape !== 'string'
   ) {
     problems.push(`advanced fight state invalid: ${JSON.stringify(fightInfo)}`);
+  }
+
+  // F is the existing drag key. During a fight it should now cycle the reel
+  // preset live rather than being ignored until the fish is gone.
+  const dragBefore = await page.evaluate(() => window.__dbg ? window.__dbg().drag?.id : null);
+  await page.keyboard.press('f');
+  await page.waitForTimeout(80);
+  const dragAfter = await page.evaluate(() => window.__dbg ? window.__dbg().drag?.id : null);
+  if (!dragBefore || !dragAfter || dragBefore === dragAfter) {
+    problems.push(`live drag adjustment failed: ${dragBefore} -> ${dragAfter}`);
   }
 
   // Multiplayer reaches the room server through the /room proxy. If this
