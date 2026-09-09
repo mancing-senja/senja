@@ -86,7 +86,14 @@ export interface ProfileData {
   coins: number;
   caught: number;
   day: number;
-  log: Record<string, { count: number; best: number; bestGrade: number }>;
+  log: Record<string, {
+    count: number;
+    best: number;
+    bestGrade: number;
+    /** Optional for wire compatibility with profiles saved before landing quality. */
+    bestQuality?: number;
+    cleanCount?: number;
+  }>;
   lore: string[];
   /** NPC relationship state follows the player rather than the browser.
    * Optional keeps older servers/clients wire-compatible during deploys. */
