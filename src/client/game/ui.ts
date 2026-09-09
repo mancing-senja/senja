@@ -711,7 +711,7 @@ export class Ui {
       ['e', 'cangkul, tanam, siram, panen, jual'],
       ['q', 'ganti bibit / menu toko'],
       ['r', 'ganti umpan aktif'],
-      ['f', 'atur drag reel'],
+      ['f', 'atur drag · bisa saat fight'],
       ['t', 'rod action light/medium/heavy'],
       ['y', 'ukuran kail kecil/sedang/besar'],
       ['enter', 'ngobrol'],
