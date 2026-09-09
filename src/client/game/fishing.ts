@@ -1963,6 +1963,19 @@ export class Fishing {
       d.rect(mx - 1, y - 2, 3, 12, stuck ? C.Red : C.White);
       if (stuck) d.textCentered('senar lepas!', cx, y + 15, C.Red, C.InkDeep, 0.95);
 
+      // Tiny rod-action meter: amber fills while lifting, green drains while
+      // lowering/recovering. It teaches pump-and-reel visually without adding
+      // another full HUD row or another control.
+      const pumpValue = this.pumpRecovery > 0 ? this.pumpBonus : this.pumpCharge;
+      d.rect(x + w + 4, y, 3, 8, C.Slate, 0.8);
+      const pumpH = Math.max(0, Math.round(8 * clamp01(pumpValue)));
+      if (pumpH > 0) {
+        d.rect(
+          x + w + 4, y + 8 - pumpH, 3, pumpH,
+          this.pumpRecovery > 0 ? C.Grass : C.Amber, 0.95,
+        );
+      }
+
       // Progress toward landing it, in the grade's colour.
       //
       // Knowing something good is on the line *while you are fighting it*
