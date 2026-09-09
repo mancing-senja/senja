@@ -410,7 +410,7 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
   ) => fishing.debugCatch(speciesId, gradeId, particles, audio, (c) => {
     farm.addCatch(c);
     player.caught++;
-    ui.say(`${c.species.label} ${c.cm} cm  +${c.coins}`);
+    ui.say(`${c.species.label} ${c.cm} cm · ${c.quality}  +${c.coins}`);
   }, player);
   /** Jumps the world clock, so the moving key light can be compared at
    *  four times of day without waiting out a real day cycle. */
