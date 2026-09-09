@@ -183,6 +183,11 @@ layar yang pakai display scaling.
   menambah sag, drag slip memberi getaran, dan rod angle mengikuti lift/recover
   pump-and-reel. Dive membuat bobber tampak lebih tenggelam; run/roll/headshake
   meninggalkan wake kecil tanpa menambah tombol atau overlay baru.
+- **Fight punya fase energi.** Ikan bergerak dari fresh → working → tired →
+  spent. Fase awal lebih eksplosif, sedangkan ikan yang capek benar-benar mulai
+  terasa berat dan lebih mudah mengambil line. Ikan besar/kuat yang memang
+  memenuhi ukuran aktual bisa menyimpan satu reserve burst terakhir; ikan
+  kecil tidak mendapat lonjakan buatan.
 - **Kebun bareng.** Petak-petaknya milik room, bukan milik orang. Tanaman
   temen bisa kamu siram, dan tumbuh terus walau kamu lagi ga main.
 - **Siklus hari 20 menit.** Server yang pegang jamnya, jadi semua orang di
