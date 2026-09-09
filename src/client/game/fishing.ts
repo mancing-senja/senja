@@ -853,6 +853,13 @@ export class Fishing {
     return this.state !== 'idle';
   }
 
+  /** Minimal live values for the world-space rod/line renderer. */
+  get lineFeel(): { tension: number; rodAngle: number; dragSlip: number } {
+    return this.state === 'reel'
+      ? { tension: this.tension, rodAngle: this.rodAngle, dragSlip: this.dragSlip }
+      : { tension: 0.35, rodAngle: 0.35, dragSlip: 0 };
+  }
+
   /** Abandons whatever is in progress. Used when the player walks through a
    *  door — a rod still cast into a lake you are no longer standing beside
    *  would leave a bobber floating in another map. */
