@@ -775,6 +775,13 @@ export class Fishing {
   /** Staying on the fish builds momentum. It rewards a smooth reel without
    *  adding another button or making one missed beat cost the whole catch. */
   private momentum = 0;
+  /** Optional one-button pump-and-reel mastery. Holding steady raises the rod;
+   * releasing after a controlled lift opens a short recovery window. */
+  private pumpCharge = 0;
+  private pumpRecovery = 0;
+  private pumpBonus = 0;
+  private rodAngle = 0.35;
+  private lastPullHeld = false;
   /** Physical load model. Risk meters rise only under sustained overload, so
    * one bad correction is a warning rather than an instant broken item. */
   private gearLoad = 0;
@@ -854,6 +861,7 @@ export class Fishing {
    *  whole catch flow without a human on the keyboard. */
   get reel(): {
     tension: number; target: number; progress: number; momentum: number;
+    pump: number; recovery: number; rodAngle: number;
     load: number; stamina: number; dragSlip: number; stretch: number; lineOut: number;
     landing: number; snag: number;
     rain: number; waterCurrent: number; turbidity: number; castLane: string;
@@ -863,6 +871,9 @@ export class Fishing {
     return {
       tension: this.tension, target: this.target, progress: this.progress,
       momentum: this.momentum,
+      pump: this.pumpCharge,
+      recovery: this.pumpRecovery,
+      rodAngle: this.rodAngle,
       load: this.gearLoad,
       stamina: this.fishStamina,
       dragSlip: this.dragSlip,
@@ -1185,8 +1196,18 @@ export class Fishing {
         this.target = f.target;
 
         const action = rodActionStats();
-        const pull = input.held(' ') ? 1 : -1;
+        const pulling = input.held(' ');
+        const pull = pulling ? 1 : -1;
         this.tension = clamp01(this.tension + pull * dt * 0.7 * action.control);
+
+        // Rod angle follows pressure gradually rather than snapping with the
+        // key. A light action responds quickly; a heavy action carries more
+        // authority but takes longer to lower for the reel-down phase.
+        const angleTarget = pulling ? 1 : 0.12;
+        const angleSpeed = pulling
+          ? (action.id === 'light' ? 3.6 : action.id === 'heavy' ? 2.4 : 3.0)
+          : (action.id === 'light' ? 4.1 : action.id === 'heavy' ? 2.7 : 3.4);
+        this.rodAngle += (angleTarget - this.rodAngle) * Math.min(1, dt * angleSpeed);
 
         // --- realistic tackle load ---------------------------------------
         // Species/grade give the fish's power; actual rolled size, depth and
@@ -1336,6 +1357,38 @@ export class Fishing {
         const pinned = this.tension <= 0.03 || this.tension >= 0.97;
         const inZone = off < tune.zone && !pinned;
 
+        // --- pump-and-reel ------------------------------------------------
+        // A controlled lift stores pressure. Releasing the key after enough
+        // charge does not ask for a timed second button; it simply creates a
+        // forgiving window where lowering the rod recovers line efficiently.
+        // Continuous holding remains valid, just less efficient.
+        const pumpSafe = inZone
+          && this.tension >= 0.30
+          && this.tension <= 0.84
+          && this.escapeT <= 0
+          && !this.snagged;
+        if (pulling && pumpSafe) {
+          const chargeRate = action.id === 'light' ? 0.80 : action.id === 'heavy' ? 0.58 : 0.68;
+          this.pumpCharge = Math.min(1, this.pumpCharge + dt * chargeRate);
+        } else if (pulling) {
+          this.pumpCharge = Math.max(0, this.pumpCharge - dt * 0.22);
+        }
+
+        if (!pulling && this.lastPullHeld && this.pumpCharge >= 0.28) {
+          this.pumpBonus = this.pumpCharge;
+          this.pumpRecovery = 0.42 + this.pumpCharge * 0.58;
+          this.pumpCharge = 0;
+        }
+        if (this.pumpRecovery > 0) {
+          this.pumpRecovery = Math.max(0, this.pumpRecovery - dt);
+          if (pulling || this.tension <= 0.10 || !inZone) {
+            this.pumpRecovery = Math.max(0, this.pumpRecovery - dt * 1.6);
+          }
+        } else {
+          this.pumpBonus = Math.max(0, this.pumpBonus - dt * 1.8);
+        }
+        this.lastPullHeld = pulling;
+
         // Smooth tracking now has a payoff beyond simply "not losing".
         // Momentum rises slowly enough that one correction does not erase it,
         // then adds at most 35% reel speed once the player settles in.
@@ -1345,12 +1398,26 @@ export class Fishing {
 
         // Steady pressure tires the fish. Giving it a lot of slack lets it
         // recover a little, but never all the way back to fresh in one fight.
+        const pumpFatigue = pulling && pumpSafe
+          ? this.pumpCharge * (action.id === 'heavy' ? 0.010 : 0.007)
+          : 0;
         this.fishStamina = inZone
-          ? Math.max(0.28, this.fishStamina - dt * (0.022 + this.momentum * 0.018))
+          ? Math.max(
+              0.28,
+              this.fishStamina - dt * (0.022 + this.momentum * 0.018 + pumpFatigue),
+            )
           : Math.min(1, this.fishStamina + dt * 0.008);
 
         const fatigueBonus = 1 + (1 - this.fishStamina) * 0.16;
-        const reelGain = tune.gain * (1 + this.momentum * 0.35) * fatigueBonus;
+        const recoveryActive = this.pumpRecovery > 0
+          && !pulling
+          && inZone
+          && this.tension > 0.10;
+        const recoveryMul = recoveryActive ? 1 + this.pumpBonus * 0.28 : 1;
+        const reelGain = tune.gain
+          * (1 + this.momentum * 0.35)
+          * fatigueBonus
+          * recoveryMul;
         const dragLoss = this.dragSlip * 0.48;
         const stretchLoss = this.lineStretch * 0.12;
         const snagMul = this.snagged ? 0.18 : 1;
@@ -1368,7 +1435,8 @@ export class Fishing {
           : 0;
         this.lineOut += dt * (this.dragSlip * 0.085 + runTake);
         if (inZone && !this.snagged) {
-          this.lineOut -= dt * reelGain * (0.56 + this.momentum * 0.24);
+          const pumpRetrieve = recoveryActive ? 0.20 * this.pumpBonus : 0;
+          this.lineOut -= dt * reelGain * (0.56 + this.momentum * 0.24 + pumpRetrieve);
         }
         const spoolLimit = line.capacity;
         this.lineOut = Math.max(0, Math.min(spoolLimit * 1.35, this.lineOut));
@@ -1421,6 +1489,10 @@ export class Fishing {
           this.tackleWarning = this.tension > 0.82
             ? 'dekat tepi — jangan angkat paksa'
             : 'dekat tepi — tahan stabil, serok pelan';
+        } else if (recoveryActive && this.pumpBonus >= 0.42) {
+          this.tackleWarning = 'joran turun — gulung senar';
+        } else if (this.pumpCharge >= 0.72 && pulling) {
+          this.tackleWarning = 'angkat stabil — siap turunkan joran';
         } else if (this.dragSlip > 0.28) {
           this.tackleWarning = `${drag.label.toLowerCase()} bunyi — ikan ambil senar`;
         } else if (this.lineRisk > 0.28) {
@@ -1668,6 +1740,11 @@ export class Fishing {
   private resetGearStress(): void {
     this.gearLoad = 0;
     this.fishStamina = 1;
+    this.pumpCharge = 0;
+    this.pumpRecovery = 0;
+    this.pumpBonus = 0;
+    this.rodAngle = 0.35;
+    this.lastPullHeld = false;
     this.dragSlip = 0;
     this.lineStretch = 0;
     this.spoolRisk = 0;
