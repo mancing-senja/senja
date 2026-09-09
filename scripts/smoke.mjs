@@ -186,7 +186,9 @@ try {
   // preset live rather than being ignored until the fish is gone.
   const dragBefore = await page.evaluate(() => window.__dbg ? window.__dbg().drag?.id : null);
   await page.keyboard.press('f');
-  await page.waitForTimeout(80);
+  await page.evaluate(() => {
+    if (window.__step) window.__step(1);
+  });
   const dragAfter = await page.evaluate(() => window.__dbg ? window.__dbg().drag?.id : null);
   if (!dragBefore || !dragAfter || dragBefore === dragAfter) {
     problems.push(`live drag adjustment failed: ${dragBefore} -> ${dragAfter}`);
