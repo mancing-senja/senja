@@ -185,11 +185,12 @@ try {
   // F is the existing drag key. During a fight it should now cycle the reel
   // preset live rather than being ignored until the fish is gone.
   const dragBefore = await page.evaluate(() => window.__dbg ? window.__dbg().drag?.id : null);
-  await page.keyboard.press('f');
-  await page.evaluate(() => {
+  const dragAfter = await page.evaluate(() => {
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'f' }));
     if (window.__step) window.__step(1);
+    window.dispatchEvent(new KeyboardEvent('keyup', { key: 'f' }));
+    return window.__dbg ? window.__dbg().drag?.id : null;
   });
-  const dragAfter = await page.evaluate(() => window.__dbg ? window.__dbg().drag?.id : null);
   if (!dragBefore || !dragAfter || dragBefore === dragAfter) {
     problems.push(`live drag adjustment failed: ${dragBefore} -> ${dragAfter}`);
   }
