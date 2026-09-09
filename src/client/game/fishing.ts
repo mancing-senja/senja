@@ -1136,7 +1136,14 @@ export class Fishing {
           const action = rodActionStats();
           const size = hookSizeStats();
           this.hookFit = hookSizeFit(this.pendingCm);
-          this.hookText = clean ? 'hook mantap!' : steady ? 'kena.' : 'nyaris telat...';
+          const fitHint = this.hookFit < 0.84
+            ? (size.id === 'kecil' ? 'kail kekecilan'
+              : size.id === 'besar' ? 'kail kebesaran'
+                : 'ukuran kail kurang pas')
+            : '';
+          this.hookText = fitHint
+            ? `${clean ? 'hook mantap!' : steady ? 'kena.' : 'nyaris telat...'} · ${fitHint}`
+            : (clean ? 'hook mantap!' : steady ? 'kena.' : 'nyaris telat...');
           const timing = this.mouth === 'keras'
             ? (clean ? 1 : steady ? 0.86 : 0.68)
             : this.mouth === 'lunak'
@@ -1778,6 +1785,7 @@ export class Fishing {
     if (grade.id !== gradeId) return `tidak ada grade ${gradeId}`;
     this.pendingGrade = grade;
     this.pendingCm = rollCatchSize(fish, grade);
+    this.hookFit = hookSizeFit(this.pendingCm);
     this.style = styleFor(fish);
     this.mouth = mouthType(fish, this.style);
     this.fight = newFight();
