@@ -50,9 +50,12 @@ const REACH = 22;
 export interface LogEntry {
   count: number;
   best: number;
-  /** Highest grade tier ever landed of this species. Optional on read:
-   *  a log saved before grades existed has no such field. */
+  /** Highest grade tier ever landed of this species. */
   bestGrade: number;
+  /** Landing quality tier: kasar 0, rapi 1, mulus 2. */
+  bestQuality: number;
+  /** Number of genuinely controlled "mulus" shore landings. */
+  cleanCount: number;
 }
 
 export class Farm {
@@ -92,12 +95,17 @@ export class Farm {
 
   addCatch(c: Catch): void {
     this.basket.push(c);
-    const e = this.log[c.species.id] ?? { count: 0, best: 0, bestGrade: 0 };
+    const e = this.log[c.species.id] ?? {
+      count: 0, best: 0, bestGrade: 0, bestQuality: 0, cleanCount: 0,
+    };
     e.count++;
     e.best = Math.max(e.best, c.cm);
     // The best grade ever landed, so the journal can show the species at
     // its finest rather than always at its plainest.
     e.bestGrade = Math.max(e.bestGrade ?? 0, c.grade.tier);
+    const qualityTier = c.quality === 'mulus' ? 2 : c.quality === 'rapi' ? 1 : 0;
+    e.bestQuality = Math.max(e.bestQuality ?? 0, qualityTier);
+    if (c.quality === 'mulus') e.cleanCount = (e.cleanCount ?? 0) + 1;
     this.log[c.species.id] = e;
   }
 
