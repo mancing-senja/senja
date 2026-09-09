@@ -22,8 +22,8 @@ export interface Profile {
     count: number;
     best: number;
     bestGrade: number;
-    bestQuality: number;
-    cleanCount: number;
+    bestQuality?: number;
+    cleanCount?: number;
   }>;
   /** Lore fragment ids already read. */
   lore: string[];
