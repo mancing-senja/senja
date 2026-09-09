@@ -782,6 +782,9 @@ export class Fishing {
   private pumpBonus = 0;
   private rodAngle = 0.35;
   private lastPullHeld = false;
+  private pressureT = 0;
+  private counterT = 0;
+  private counterCooldown = 0;
   /** Physical load model. Risk meters rise only under sustained overload, so
    * one bad correction is a warning rather than an instant broken item. */
   private gearLoad = 0;
@@ -861,7 +864,7 @@ export class Fishing {
    *  whole catch flow without a human on the keyboard. */
   get reel(): {
     tension: number; target: number; progress: number; momentum: number;
-    pump: number; recovery: number; rodAngle: number;
+    pump: number; recovery: number; rodAngle: number; counter: number;
     load: number; stamina: number; dragSlip: number; stretch: number; lineOut: number;
     landing: number; snag: number;
     rain: number; waterCurrent: number; turbidity: number; castLane: string;
@@ -874,6 +877,7 @@ export class Fishing {
       pump: this.pumpCharge,
       recovery: this.pumpRecovery,
       rodAngle: this.rodAngle,
+      counter: this.counterT,
       load: this.gearLoad,
       stamina: this.fishStamina,
       dragSlip: this.dragSlip,
@@ -1159,6 +1163,8 @@ export class Fishing {
       case 'reel': {
         const fish = this.pending!;
 
+        this.counterT = Math.max(0, this.counterT - dt);
+        this.counterCooldown = Math.max(0, this.counterCooldown - dt);
         this.escapeT = Math.max(0, this.escapeT - dt);
         if (this.escapeT <= 0) {
           const beat = escapeBeat(this.style.id, this.escapeUsed);
@@ -1183,7 +1189,8 @@ export class Fishing {
         const baseFight = fish.fight * this.pendingGrade.fightMul;
         const fight = baseFight
           * (0.72 + this.fishStamina * 0.28)
-          * (this.escapeT > 0 ? this.escapeMul : 1);
+          * (this.escapeT > 0 ? this.escapeMul : 1)
+          * (this.counterT > 0 ? 1.12 : 1);
 
         // The species decides the pattern, the grade decides the teeth.
         // Everything that used to live here — one smooth wander plus a surge
@@ -1209,6 +1216,29 @@ export class Fishing {
           : (action.id === 'light' ? 4.1 : action.id === 'heavy' ? 2.7 : 3.4);
         this.rodAngle += (angleTarget - this.rodAngle) * Math.min(1, dt * angleSpeed);
 
+        // Fish react to sustained hard pressure. This is deterministic and
+        // player-caused: keeping the rod pinned high for too long invites a
+        // short counter-surge. A normal pump/recovery cadence never triggers it.
+        const hardPressure = pulling
+          && this.tension > 0.82
+          && this.escapeT <= 0
+          && !this.snagged;
+        this.pressureT = hardPressure
+          ? this.pressureT + dt
+          : Math.max(0, this.pressureT - dt * 0.85);
+        if (
+          this.pressureT >= 1.25
+          && this.counterCooldown <= 0
+          && this.fishStamina > 0.45
+        ) {
+          this.counterT = 0.90;
+          this.counterCooldown = 3.8;
+          this.pressureT = 0;
+          this.momentum = Math.max(0, this.momentum - 0.20);
+          particles.spawnSplash(this.bobX, this.bobY + 3, 5);
+          audio.blip(235, 0.07, 0.11);
+        }
+
         // --- realistic tackle load ---------------------------------------
         // Species/grade give the fish's power; actual rolled size, depth and
         // current turn it into line load. Rod flex absorbs part of sudden
@@ -1224,11 +1254,16 @@ export class Fishing {
         const environment = 1
           + this.depth01 * 0.10
           + this.waterCurrent * this.castLane.currentMul * 0.18;
+        const liftPressure = 1 + this.rodAngle * (
+          0.025 + this.pumpCharge
+            * (action.id === 'heavy' ? 0.065 : action.id === 'light' ? 0.040 : 0.052)
+        );
         const rawLoad = fight
           * (0.68 + size01 * 0.42)
           * environment
           * styleShock
-          * (0.64 + this.tension * 0.48);
+          * (0.64 + this.tension * 0.48)
+          * liftPressure;
 
         const rod = rodStats();
         const line = lineStats();
@@ -1485,6 +1520,8 @@ export class Fishing {
             : 'nyangkut — tekan sedang, arahkan keluar';
         } else if (this.escapeT > 0) {
           this.tackleWarning = this.escapeName;
+        } else if (this.counterT > 0) {
+          this.tackleWarning = 'ikan melawan tekanan — turunkan joran';
         } else if (this.landingT > 0.05 || (nearBank && landingSafe)) {
           this.tackleWarning = this.tension > 0.82
             ? 'dekat tepi — jangan angkat paksa'
@@ -1745,6 +1782,9 @@ export class Fishing {
     this.pumpBonus = 0;
     this.rodAngle = 0.35;
     this.lastPullHeld = false;
+    this.pressureT = 0;
+    this.counterT = 0;
+    this.counterCooldown = 0;
     this.dragSlip = 0;
     this.lineStretch = 0;
     this.spoolRisk = 0;
