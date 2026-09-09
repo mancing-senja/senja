@@ -100,6 +100,7 @@ try {
       action: dbg ? dbg.action : null,
       hookSize: dbg ? dbg.hookSize : null,
       weather: dbg ? dbg.weather : null,
+      lineFeel: dbg ? dbg.lineFeel : null,
       hazardSpot: map ? map.spots.find((s) => s.id === 'tanjung') : null,
     };
   });
@@ -150,6 +151,8 @@ try {
     || typeof fightInfo.reel.hookFit !== 'number'
     || !(fightInfo.reel.hookFit > 0)
     || typeof fightInfo.reel.habitat !== 'number'
+    || !Number.isFinite(fightInfo.reel.fishX)
+    || !Number.isFinite(fightInfo.reel.fishY)
     || typeof fightInfo.reel.rain !== 'number'
     || typeof fightInfo.reel.waterCurrent !== 'number'
     || typeof fightInfo.reel.turbidity !== 'number'
@@ -163,6 +166,14 @@ try {
   // regresses, solo play still works and nothing else in CI would notice.
   if (!info.weather || typeof info.weather.rain !== 'number') {
     problems.push(`weather debug state missing: ${JSON.stringify(info.weather)}`);
+  }
+  if (
+    !info.lineFeel
+    || typeof info.lineFeel.tension !== 'number'
+    || typeof info.lineFeel.rodAngle !== 'number'
+    || typeof info.lineFeel.dragSlip !== 'number'
+  ) {
+    problems.push(`line feel debug state missing: ${JSON.stringify(info.lineFeel)}`);
   }
   if (info.net !== 'online') problems.push(`room socket not connected (net=${info.net})`);
 
