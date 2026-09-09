@@ -226,6 +226,26 @@ export function hookSizeWeight(maxCm: number): number {
   return small ? h.smallFit : big ? h.bigFit : 1;
 }
 
+/** Actual hooked-fish fit, evaluated after the bite when the rolled centimetres
+ * are known. This is deliberately smooth and never a hard gate: a mismatched
+ * hook still catches fish, it just starts with less secure penetration. */
+export function hookSizeFit(cm: number): number {
+  const h = hookSizeStats();
+  if (h.id === 'kecil') {
+    if (cm <= 35) return 1.06;
+    return 1.06 - clamp01((cm - 35) / 70) * 0.34;
+  }
+  if (h.id === 'besar') {
+    if (cm >= 45) return 1.08;
+    return 1.08 - clamp01((45 - cm) / 35) * 0.36;
+  }
+  // Medium is the forgiving default: best through the everyday middle,
+  // slightly compromised only at the extremes.
+  if (cm < 22) return 0.90 + clamp01((cm - 8) / 14) * 0.10;
+  if (cm > 72) return 1 - clamp01((cm - 72) / 65) * 0.18;
+  return 1;
+}
+
 export function brokenPart(): GearPart | null {
   if (state.condition.rod <= 0) return 'rod';
   if (state.condition.line <= 0) return 'line';
