@@ -161,7 +161,7 @@ const MIME: Record<string, string> = {
   '.webmanifest': 'application/manifest+json',
 };
 
-const httpServer = createServer((req, res) => {
+export const httpServer = createServer((req, res) => {
   const url = new URL(req.url ?? '/', 'http://localhost');
   let rel = decodeURIComponent(url.pathname);
   if (rel === '/' || rel === '') rel = '/index.html';
@@ -204,7 +204,11 @@ const httpServer = createServer((req, res) => {
 });
 
 const wss = new WebSocketServer({ server: httpServer, path: '/room' });
-httpServer.listen(PORT);
+// Vercel Functions capture the exported Node server themselves. Local/dev/CI
+// still need a real listening socket.
+if (!process.env.VERCEL) httpServer.listen(PORT);
+
+export default httpServer;
 
 wss.on('connection', (ws) => {
   const client: Client = {
