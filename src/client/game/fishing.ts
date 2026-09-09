@@ -29,7 +29,7 @@ import {
 } from './fight';
 import {
   baitById, baitWeight, brokenPart, conditionFactor, consumeBaitCast,
-  damageTackle, dragStats, gearCondition, hookSizeStats, hookSizeWeight,
+  damageTackle, dragStats, gearCondition, hookSizeFit, hookSizeStats, hookSizeWeight,
   hookStats, lineStats, rodActionStats, rodStats,
   type BaitId, type GearPart,
 } from './shop';
@@ -757,6 +757,10 @@ export class Fishing {
   private district: District | null = null;
   private pending: Species | null = null;
   private pendingCm = 0;
+  private hookFit = 1;
+  private habitatIntent = 0;
+  private habitatDir: -1 | 1 = 1;
+  private habitatText = '';
   /** Which bait was consumed by this cast. Null means bare hook. */
   private baitedCast: BaitId | null = null;
   /** Set by the frame. Shifts what is biting without touching any species'
@@ -868,6 +872,7 @@ export class Fishing {
     load: number; stamina: number; dragSlip: number; stretch: number; lineOut: number;
     landing: number; snag: number;
     rain: number; waterCurrent: number; turbidity: number; castLane: string;
+    hookFit: number; habitat: number;
     hookHold: number; escape: string; warning: string;
     style: string; zone: number; veil: boolean;
   } {
@@ -889,6 +894,8 @@ export class Fishing {
       waterCurrent: this.waterCurrent,
       turbidity: this.turbidity,
       castLane: this.castLane.id,
+      hookFit: this.hookFit,
+      habitat: this.habitatIntent,
       hookHold: this.hookHold,
       escape: this.escapeT > 0 ? this.escapeName : '',
       warning: this.tackleWarning,
@@ -1128,6 +1135,7 @@ export class Fishing {
           const steady = this.t <= Math.min(hook.biteWindow - 0.45, hook.cleanWindow + 0.78);
           const action = rodActionStats();
           const size = hookSizeStats();
+          this.hookFit = hookSizeFit(this.pendingCm);
           this.hookText = clean ? 'hook mantap!' : steady ? 'kena.' : 'nyaris telat...';
           const timing = this.mouth === 'keras'
             ? (clean ? 1 : steady ? 0.86 : 0.68)
@@ -1140,7 +1148,7 @@ export class Fishing {
             : this.mouth === 'keras'
               ? action.hookSet * size.hookSet
               : 1;
-          this.hookHold = clamp01(timing * mouthFit);
+          this.hookHold = clamp01(timing * mouthFit * this.hookFit);
           this.state = 'reel';
           this.t = 0;
           this.tension = 0.5;
@@ -1200,7 +1208,39 @@ export class Fishing {
         f.gainMul = 1;
         this.style.step(f, dt, fight);
         const tune = applyGrade(this.style, f, dt, this.pendingGrade.tier);
-        this.target = f.target;
+
+        // Microhabitat now has an actual direction in the fight. Fish hooked
+        // beside cover try to get back into it; current-seam fish use the flow;
+        // deep-water fish try to regain the drop-off. The pull is gentle until
+        // a run/counter, so it reads as intent rather than a second random bar.
+        const habitatActive = this.escapeT > 0 || this.counterT > 0;
+        const habitatTarget = this.habitatDir > 0 ? 0.91 : 0.09;
+        let habitatRate = 0;
+        this.habitatText = '';
+        if (this.castLane.id === 'cover-edge') {
+          const suited = this.style.id === 'mengendap'
+            || this.style.id === 'lari'
+            || this.style.id === 'lincah';
+          habitatRate = suited ? (habitatActive ? 2.4 : 0.38) : (habitatActive ? 1.2 : 0.16);
+          this.habitatText = 'ikan cari cover';
+        } else if (this.castLane.id === 'current-seam') {
+          const suited = this.style.id === 'lari'
+            || this.style.id === 'menyelam'
+            || fish.fight >= 1.25;
+          habitatRate = suited ? (habitatActive ? 1.9 : 0.30) : (habitatActive ? 0.9 : 0.12);
+          this.habitatText = 'ikan pakai arus';
+        } else if (this.castLane.id === 'dropoff') {
+          const suited = this.style.id === 'menyelam' || fish.maxCm >= 55;
+          habitatRate = suited ? (habitatActive ? 1.6 : 0.22) : (habitatActive ? 0.7 : 0.08);
+          this.habitatText = 'ikan turun ke dalam';
+        }
+        const habitatGoal = habitatRate > 0 ? 1 : 0;
+        this.habitatIntent += (habitatGoal - this.habitatIntent)
+          * Math.min(1, dt * (habitatActive ? 3.2 : 1.2));
+        if (habitatRate > 0) {
+          f.target += (habitatTarget - f.target) * Math.min(1, dt * habitatRate);
+        }
+        this.target = clamp01(f.target);
 
         const action = rodActionStats();
         const pulling = input.held(' ');
@@ -1300,9 +1340,10 @@ export class Fishing {
         this.lineStretch += (stretchTarget - this.lineStretch) * Math.min(1, dt * 3.4);
         const elasticCushion = this.lineStretch * 0.30;
         const lineLoad = rawLineLoad * (1 - elasticCushion);
+        const hookLeverage = 1 + Math.max(0, 1 - this.hookFit) * 0.34;
         const hookLoad = transmitted * (1 - elasticCushion * 0.75) * (
           1 + (this.style.id === 'lincah' || this.style.id === 'menggetar' ? 0.08 : 0)
-        );
+        ) * hookLeverage;
 
         // Reel drag protects the weakest link by letting line leave the spool
         // before the line itself reaches full failure load. Tighter drag lands
@@ -1346,7 +1387,13 @@ export class Fishing {
         // Cover is now something the fish can actually reach rather than only
         // a hidden load multiplier. Falling behind near weeds/roots builds a
         // snag; tracking the fish with moderate pressure clears it.
-        const snagBuild = this.spot.cover * clamp01(offForGear * 2.4) * (0.5 + this.fishStamina * 0.5);
+        const habitatSnag = this.castLane.id === 'cover-edge'
+          ? 1 + this.habitatIntent * 0.32
+          : 1;
+        const snagBuild = this.spot.cover
+          * habitatSnag
+          * clamp01(offForGear * 2.4)
+          * (0.5 + this.fishStamina * 0.5);
         const safePressure = this.tension > 0.22 && this.tension < 0.82 && offForGear < tune.zone * 1.35;
         this.snag = Math.max(
           0,
@@ -1468,7 +1515,12 @@ export class Fishing {
         const runTake = this.escapeT > 0 && this.escapeKind === 'run'
           ? 0.038 * (0.7 + this.fishStamina * 0.3)
           : 0;
-        this.lineOut += dt * (this.dragSlip * 0.085 + runTake);
+        const habitatTake = this.castLane.id === 'current-seam'
+          && this.habitatIntent > 0.35
+          && habitatActive
+          ? 0.012 * this.waterCurrent * this.habitatIntent
+          : 0;
+        this.lineOut += dt * (this.dragSlip * 0.085 + runTake + habitatTake);
         if (inZone && !this.snagged) {
           const pumpRetrieve = recoveryActive ? 0.20 * this.pumpBonus : 0;
           this.lineOut -= dt * reelGain * (0.56 + this.momentum * 0.24 + pumpRetrieve);
@@ -1522,6 +1574,12 @@ export class Fishing {
           this.tackleWarning = this.escapeName;
         } else if (this.counterT > 0) {
           this.tackleWarning = 'ikan melawan tekanan — turunkan joran';
+        } else if (habitatActive && this.habitatIntent > 0.48 && this.habitatText) {
+          this.tackleWarning = this.castLane.id === 'cover-edge'
+            ? 'ikan lari ke cover — arahkan keluar'
+            : this.castLane.id === 'current-seam'
+              ? 'ikan ikut arus — ambil sudut pelan'
+              : 'ikan turun ke drop-off — jaga tekanan';
         } else if (this.landingT > 0.05 || (nearBank && landingSafe)) {
           this.tackleWarning = this.tension > 0.82
             ? 'dekat tepi — jangan angkat paksa'
@@ -1669,6 +1727,9 @@ export class Fishing {
     const fromShore = shoreCol * TILE - ty;
     this.depth01 = clamp01(this.spot.depth + clamp01(fromShore / 200) * 0.45);
     this.castLane = castLaneFor(this.spot, this.depth01);
+    this.habitatDir = this.spot.id === 'kolam'
+      ? (tx >= hand.x ? 1 : -1)
+      : (tx >= this.spot.x ? 1 : -1);
     // Long casts start with more line in the water. Capacity is deliberately
     // not filled by a normal cast; only a hooked fish can threaten the spool.
     const line = lineStats();
@@ -1780,6 +1841,8 @@ export class Fishing {
     this.pumpCharge = 0;
     this.pumpRecovery = 0;
     this.pumpBonus = 0;
+    this.habitatIntent = 0;
+    this.habitatText = '';
     this.rodAngle = 0.35;
     this.lastPullHeld = false;
     this.pressureT = 0;
