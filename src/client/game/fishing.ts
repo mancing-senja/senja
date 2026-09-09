@@ -1984,32 +1984,61 @@ export class Fishing {
     p.action = 'idle';
   }
 
-  /** World-space bits: the bobber and its ripples. */
+  /** World-space bits: the bobber, wake and escape cues. */
   drawWorld(d: Draw, time: number): void {
-    if (!this.bobber) return;
+    const visual = this.bobber;
+    if (!visual) return;
+    const bx = visual.x;
+    const by = visual.y;
     const ring = Math.floor((time * 3) % 4);
-    d.spriteFoot(`ripple${ring}`, this.bobX, this.bobY + 6, { alpha: 0.5 });
-    d.spriteFoot('bobber', this.bobX, this.bobY + 3);
+
+    // During a fight the logical cast point stays put, but the hooked fish can
+    // pull the float several pixels away. A short dotted wake makes that
+    // displacement readable without drawing the fish itself through the water.
+    if (this.state === 'reel') {
+      const dx = bx - this.bobX;
+      const dy = by - this.bobY;
+      const dist = Math.hypot(dx, dy);
+      if (dist > 1.5) {
+        const dots = Math.min(5, Math.max(2, Math.ceil(dist / 2.5)));
+        for (let i = 1; i <= dots; i++) {
+          const k = i / (dots + 1);
+          d.rect(
+            this.bobX + dx * k,
+            this.bobY + dy * k + 5,
+            1, 1, C.WaterBr,
+            0.18 + k * 0.28,
+          );
+        }
+      }
+    }
+
+    const diving = this.state === 'reel'
+      && this.escapeT > 0
+      && this.escapeKind === 'dive';
+    d.spriteFoot(`ripple${ring}`, bx, by + 6, { alpha: diving ? 0.28 : 0.5 });
+    d.spriteFoot('bobber', bx, by + (diving ? 5 : 3), { alpha: diving ? 0.62 : 1 });
+
     if (this.state === 'nibble') {
       const twitch = Math.abs(Math.sin(this.t * 8)) * 1.5;
-      d.textCentered('·', this.bobX, this.bobY - 12 - twitch, C.Mist, C.InkDeep, 0.7);
+      d.textCentered('·', bx, by - 12 - twitch, C.Mist, C.InkDeep, 0.7);
     }
     if (this.state === 'omen') {
       const pulse = 0.35 + 0.4 * Math.abs(Math.sin(this.t * 2.5));
-      d.textCentered('…', this.bobX, this.bobY - 15, this.pendingGrade.colour, C.InkDeep, pulse);
+      d.textCentered('…', bx, by - 15, this.pendingGrade.colour, C.InkDeep, pulse);
     }
     if (this.state === 'bite') {
       const bounce = Math.abs(Math.sin(this.t * 9)) * 3;
-      d.textCentered('!', this.bobX, this.bobY - 16 - bounce, C.Lantern, C.InkDeep);
+      d.textCentered('!', bx, by - 16 - bounce, C.Lantern, C.InkDeep);
     }
     if (this.state === 'reel' && this.escapeT > 0) {
       if (this.escapeKind === 'jump') {
         const hop = Math.abs(Math.sin(this.escapeT * 8)) * 4;
-        d.textCentered('^', this.bobX, this.bobY - 14 - hop, C.Pale, C.InkDeep, 0.9);
+        d.textCentered('^', bx, by - 14 - hop, C.Pale, C.InkDeep, 0.9);
       } else if (this.escapeKind === 'dive') {
-        d.textCentered('v', this.bobX, this.bobY - 12, C.WaterBr, C.InkDeep, 0.82);
+        d.textCentered('v', bx, by - 12, C.WaterBr, C.InkDeep, 0.82);
       } else if (this.escapeKind === 'headshake' || this.escapeKind === 'roll') {
-        d.textCentered('~', this.bobX, this.bobY - 13, C.Mist, C.InkDeep, 0.82);
+        d.textCentered('~', bx, by - 13, C.Mist, C.InkDeep, 0.82);
       }
     }
   }
