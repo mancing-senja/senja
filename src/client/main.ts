@@ -217,11 +217,15 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
     // Journals merge rather than replace: a catch landed offline a minute
     // ago must not be thrown away by a profile that predates it.
     for (const [id, e] of Object.entries(p.log ?? {})) {
-      const cur = farm.log[id] ?? { count: 0, best: 0, bestGrade: 0 };
+      const cur = farm.log[id] ?? {
+        count: 0, best: 0, bestGrade: 0, bestQuality: 0, cleanCount: 0,
+      };
       farm.log[id] = {
         count: Math.max(cur.count, e.count ?? 0),
         best: Math.max(cur.best, e.best ?? 0),
         bestGrade: Math.max(cur.bestGrade ?? 0, e.bestGrade ?? 0),
+        bestQuality: Math.max(cur.bestQuality ?? 0, e.bestQuality ?? 0),
+        cleanCount: Math.max(cur.cleanCount ?? 0, e.cleanCount ?? 0),
       };
     }
     for (const id of p.lore ?? []) loreRead.add(id);
@@ -459,6 +463,7 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
     hookSize: hookSizeStats(),
     weather: { rain: Number(rain.toFixed(3)) },
     lineFeel: fishing.lineFeel,
+    journal: farm.log,
     net: net.status,
     peers: net.players.size,
     room: net.room,
