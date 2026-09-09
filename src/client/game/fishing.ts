@@ -761,6 +761,13 @@ export class Fishing {
   private habitatIntent = 0;
   private habitatDir: -1 | 1 = 1;
   private habitatText = '';
+  /** World-space fish pull. The logical cast point stays stable while this
+   * small offset lets the line/bobber show where the hooked fish is driving. */
+  private fishOffsetX = 0;
+  private fishOffsetY = 0;
+  private fishTravel = 0;
+  private castUx = 0;
+  private castUy = -1;
   /** Which bait was consumed by this cast. Null means bare hook. */
   private baitedCast: BaitId | null = null;
   /** Set by the frame. Shifts what is biting without touching any species'
@@ -832,10 +839,13 @@ export class Fishing {
   /** Set for one frame when a catch lands, so main can flash the screen. */
   flash = 0;
 
-  /** Where the bobber currently is, for the network and the line renderer. */
+  /** Where the bobber currently is, for the network and the line renderer.
+   * During a hooked fight this includes the fish's small world displacement,
+   * so the existing rod/line renderer visibly follows runs and habitat pulls. */
   get bobber(): { x: number; y: number } | null {
-    return this.state === 'idle' || this.state === 'card' || this.state === 'aim'
-      ? null
+    if (this.state === 'idle' || this.state === 'card' || this.state === 'aim') return null;
+    return this.state === 'reel'
+      ? { x: this.bobX + this.fishOffsetX, y: this.bobY + this.fishOffsetY }
       : { x: this.bobX, y: this.bobY };
   }
 
@@ -872,7 +882,7 @@ export class Fishing {
     load: number; stamina: number; dragSlip: number; stretch: number; lineOut: number;
     landing: number; snag: number;
     rain: number; waterCurrent: number; turbidity: number; castLane: string;
-    hookFit: number; habitat: number;
+    hookFit: number; habitat: number; fishX: number; fishY: number;
     hookHold: number; escape: string; warning: string;
     style: string; zone: number; veil: boolean;
   } {
@@ -896,6 +906,8 @@ export class Fishing {
       castLane: this.castLane.id,
       hookFit: this.hookFit,
       habitat: this.habitatIntent,
+      fishX: this.fishOffsetX,
+      fishY: this.fishOffsetY,
       hookHold: this.hookHold,
       escape: this.escapeT > 0 ? this.escapeName : '',
       warning: this.tackleWarning,
@@ -1535,6 +1547,62 @@ export class Fishing {
         const spoolLimit = line.capacity;
         this.lineOut = Math.max(0, Math.min(spoolLimit * 1.35, this.lineOut));
 
+        // Translate fight intent into a restrained world-space pull. This is
+        // visual feedback, not a second collision system: logical spot/depth
+        // stay at the cast point, while the bobber and existing fishing line
+        // visibly follow the hooked fish.
+        this.fishTravel += dt * (2.4 + fight * 0.9);
+        const sideX = -this.castUy;
+        const sideY = this.castUx;
+        const spoolOut = clamp01(
+          (this.lineOut / Math.max(0.1, spoolLimit) - 0.42) / 0.58,
+        );
+        let wantX = this.castUx * spoolOut * 6;
+        let wantY = this.castUy * spoolOut * 6;
+
+        if (this.castLane.id === 'cover-edge') {
+          wantX += sideX * this.habitatDir * this.habitatIntent * 7;
+          wantY += sideY * this.habitatDir * this.habitatIntent * 7;
+        } else if (this.castLane.id === 'current-seam') {
+          wantX += this.castUx * this.habitatIntent * 5;
+          wantY += this.castUy * this.habitatIntent * 5;
+        } else if (this.castLane.id === 'dropoff') {
+          wantX += this.castUx * this.habitatIntent * 4;
+          wantY += this.castUy * this.habitatIntent * 4;
+        }
+
+        if (this.escapeT > 0) {
+          if (this.escapeKind === 'run') {
+            wantX += this.castUx * 8 + sideX * this.habitatDir * 3;
+            wantY += this.castUy * 8 + sideY * this.habitatDir * 3;
+          } else if (this.escapeKind === 'jump') {
+            const snap = Math.sin(this.fishTravel * 5.8) * 5;
+            wantX += sideX * snap;
+            wantY += sideY * snap;
+          } else if (this.escapeKind === 'headshake') {
+            const shake = Math.sin(this.fishTravel * 9.5) * 6;
+            wantX += sideX * shake;
+            wantY += sideY * shake;
+          } else if (this.escapeKind === 'roll') {
+            const rollX = Math.cos(this.fishTravel * 5.2) * 5;
+            const rollY = Math.sin(this.fishTravel * 5.2) * 3;
+            wantX += sideX * rollX + this.castUx * rollY;
+            wantY += sideY * rollX + this.castUy * rollY;
+          } else if (this.escapeKind === 'dive') {
+            wantX += this.castUx * 3;
+            wantY += this.castUy * 3;
+          }
+        }
+        if (this.counterT > 0) {
+          const kick = Math.sin(this.fishTravel * 7.2) * 4;
+          wantX += sideX * kick;
+          wantY += sideY * kick;
+        }
+
+        const visualRate = this.escapeT > 0 || this.counterT > 0 ? 8 : 4.5;
+        this.fishOffsetX += (wantX - this.fishOffsetX) * Math.min(1, dt * visualRate);
+        this.fishOffsetY += (wantY - this.fishOffsetY) * Math.min(1, dt * visualRate);
+
         const nearSpool = this.lineOut / Math.max(0.1, spoolLimit);
         this.spoolRisk = nearSpool >= 0.96
           ? this.spoolRisk + dt * (0.42 + (nearSpool - 0.96) * 5)
@@ -1718,6 +1786,11 @@ export class Fishing {
     this.fromY = hand.y;
     this.targetX = tx;
     this.targetY = ty;
+    const castDx = tx - hand.x;
+    const castDy = ty - hand.y;
+    const castLen = Math.max(1, Math.hypot(castDx, castDy));
+    this.castUx = castDx / castLen;
+    this.castUy = castDy / castLen;
     this.bobX = hand.x;
     this.bobY = hand.y;
     this.flightT = 0;
@@ -1800,6 +1873,11 @@ export class Fishing {
     this.resetGearStress();
     this.hookHold = 1;
     this.hookText = 'debug hook';
+    const hand = handPos(p);
+    this.fromX = hand.x;
+    this.fromY = hand.y;
+    this.castUx = 0;
+    this.castUy = -1;
     this.bobX = p.x;
     this.bobY = p.y - 8;
     p.locked = true;
@@ -1851,6 +1929,9 @@ export class Fishing {
     this.pumpBonus = 0;
     this.habitatIntent = 0;
     this.habitatText = '';
+    this.fishOffsetX = 0;
+    this.fishOffsetY = 0;
+    this.fishTravel = 0;
     this.rodAngle = 0.35;
     this.lastPullHeld = false;
     this.pressureT = 0;
