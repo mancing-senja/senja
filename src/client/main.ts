@@ -620,6 +620,10 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
       (x, y) => net.send({ t: 'cast', bx: x, by: y }),
     );
     player.bobber = fishing.bobber;
+    const lineFeel = fishing.lineFeel;
+    player.fishingTension = lineFeel.tension;
+    player.fishingRodAngle = lineFeel.rodAngle;
+    player.fishingDragSlip = lineFeel.dragSlip;
 
     if (indoors) for (const n of peopleIn(indoors)) n.updateIn(dt, indoors);
     else for (const n of npcs) n.update(dt, map);
