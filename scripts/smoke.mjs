@@ -148,6 +148,8 @@ try {
     || typeof fightInfo.reel.recovery !== 'number'
     || typeof fightInfo.reel.rodAngle !== 'number'
     || typeof fightInfo.reel.counter !== 'number'
+    || typeof fightInfo.reel.phase !== 'string'
+    || typeof fightInfo.reel.reserve !== 'number'
     || typeof fightInfo.reel.hookFit !== 'number'
     || !(fightInfo.reel.hookFit > 0)
     || typeof fightInfo.reel.habitat !== 'number'
