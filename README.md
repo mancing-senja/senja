@@ -167,6 +167,14 @@ layar yang pakai display scaling.
 - **Ikan membalas tekanan berlebihan.** Menahan tension tinggi terlalu lama
   memicu counter-surge pendek yang telegraphed. Ini bukan RNG; respons muncul
   karena pemain terus memaksa dan bisa dihindari dengan cadence lift/recover.
+- **Ukuran kail memakai panjang ikan aktual.** Species roll masih memakai
+  preferensi ukuran secara ringan, tetapi setelah bite nilai cm yang benar-benar
+  ter-roll menentukan hook fit. Kail terlalu kecil/besar mengurangi hook hold
+  dan mismatch menambah leverage pada kail tanpa pernah hard-gate tangkapan.
+- **Microhabitat ikut melawan.** Ikan dari tepi cover mencoba kembali ke
+  struktur, ikan di current seam memanfaatkan arus untuk mengambil line, dan
+  ikan dari drop-off mencoba turun lagi. Arah ini konsisten dari titik cast,
+  sehingga pemain bisa belajar risiko lokasi, bukan menebak RNG.
 - **Kebun bareng.** Petak-petaknya milik room, bukan milik orang. Tanaman
   temen bisa kamu siram, dan tumbuh terus walau kamu lagi ga main.
 - **Siklus hari 20 menit.** Server yang pegang jamnya, jadi semua orang di
