@@ -639,6 +639,7 @@ function mouthHint(mouth: MouthType): string {
 }
 
 type EscapeKind = 'run' | 'jump' | 'dive' | 'headshake' | 'roll';
+type FishEnergyPhase = 'fresh' | 'working' | 'tired' | 'spent';
 
 interface EscapeBeat {
   at: number;
@@ -802,6 +803,9 @@ export class Fishing {
   /** Fish tire under steady pressure and recover a little when given slack.
    * This makes a long, clean fight calm down instead of only escalating. */
   private fishStamina = 1;
+  private energyPhase: FishEnergyPhase = 'fresh';
+  private reserveBurstT = 0;
+  private reserveBurstUsed = false;
   private dragSlip = 0;
   private lineStretch = 0;
   private rain = 0;
@@ -886,7 +890,8 @@ export class Fishing {
   get reel(): {
     tension: number; target: number; progress: number; momentum: number;
     pump: number; recovery: number; rodAngle: number; counter: number;
-    load: number; stamina: number; dragSlip: number; stretch: number; lineOut: number;
+    load: number; stamina: number; phase: FishEnergyPhase; reserve: number;
+    dragSlip: number; stretch: number; lineOut: number;
     landing: number; snag: number;
     rain: number; waterCurrent: number; turbidity: number; castLane: string;
     hookFit: number; habitat: number; fishX: number; fishY: number;
@@ -902,6 +907,8 @@ export class Fishing {
       counter: this.counterT,
       load: this.gearLoad,
       stamina: this.fishStamina,
+      phase: this.energyPhase,
+      reserve: this.reserveBurstT,
       dragSlip: this.dragSlip,
       stretch: this.lineStretch,
       lineOut: this.lineOut,
@@ -1197,6 +1204,7 @@ export class Fishing {
       case 'reel': {
         const fish = this.pending!;
 
+        this.reserveBurstT = Math.max(0, this.reserveBurstT - dt);
         this.counterT = Math.max(0, this.counterT - dt);
         this.counterCooldown = Math.max(0, this.counterCooldown - dt);
         this.escapeT = Math.max(0, this.escapeT - dt);
@@ -1220,11 +1228,50 @@ export class Fishing {
           }
         }
 
+        const size01 = clamp01(
+          (this.pendingCm - fish.minCm) / Math.max(1, fish.maxCm - fish.minCm),
+        );
+        this.energyPhase = this.fishStamina > 0.78 ? 'fresh'
+          : this.fishStamina > 0.52 ? 'working'
+            : this.fishStamina > 0.34 ? 'tired'
+              : 'spent';
+
+        // Energy falls in readable phases rather than one invisible linear
+        // multiplier. Fresh fish feel explosive; tired/spent fish still pull,
+        // but the angler can finally feel that steady pressure has paid off.
+        const phasePower = this.energyPhase === 'fresh' ? 1.07
+          : this.energyPhase === 'working' ? 1
+            : this.energyPhase === 'tired' ? 0.91
+              : 0.83;
+
+        // Only genuinely large/strong fish keep a reserve. Once they are near
+        // beaten and already fairly close to landing they spend it in one last
+        // deterministic surge. Small fish never get this extra beat.
+        const reserveEligible = (size01 >= 0.64 || this.pendingCm >= 58)
+          && fish.fight >= 1.15
+          && this.pendingGrade.tier >= 1;
+        if (
+          reserveEligible
+          && !this.reserveBurstUsed
+          && this.fishStamina <= 0.44
+          && this.progress >= 0.62
+          && this.escapeT <= 0
+          && this.counterT <= 0
+        ) {
+          this.reserveBurstUsed = true;
+          this.reserveBurstT = 1.35 + size01 * 0.45;
+          this.momentum = Math.max(0, this.momentum - 0.24);
+          this.lineOut += 0.025 + size01 * 0.025;
+          particles.spawnSplash(this.bobX, this.bobY + 3, 7 + Math.round(size01 * 5));
+          audio.blip(205, 0.10, 0.14);
+        }
+
         const baseFight = fish.fight * this.pendingGrade.fightMul;
         const fight = baseFight
-          * (0.72 + this.fishStamina * 0.28)
+          * phasePower
           * (this.escapeT > 0 ? this.escapeMul : 1)
-          * (this.counterT > 0 ? 1.12 : 1);
+          * (this.counterT > 0 ? 1.12 : 1)
+          * (this.reserveBurstT > 0 ? 1.16 + size01 * 0.08 : 1);
 
         // The species decides the pattern, the grade decides the teeth.
         // Everything that used to live here — one smooth wander plus a surge
@@ -1309,9 +1356,6 @@ export class Fishing {
         // Species/grade give the fish's power; actual rolled size, depth and
         // current turn it into line load. Rod flex absorbs part of sudden
         // shock before it reaches the line and hook.
-        const size01 = clamp01(
-          (this.pendingCm - fish.minCm) / Math.max(1, fish.maxCm - fish.minCm),
-        );
         const styleShock = this.style.id === 'lari' ? 1.12
           : this.style.id === 'menggetar' ? 1.08
           : this.style.id === 'menyelam' ? 1.06
@@ -1516,7 +1560,10 @@ export class Fishing {
             )
           : Math.min(1, this.fishStamina + dt * 0.008);
 
-        const fatigueBonus = 1 + (1 - this.fishStamina) * 0.16;
+        const fatigueBonus = this.energyPhase === 'spent' ? 1.25
+          : this.energyPhase === 'tired' ? 1.18
+            : this.energyPhase === 'working' ? 1.08
+              : 1;
         const recoveryActive = this.pumpRecovery > 0
           && !pulling
           && inZone
@@ -1541,12 +1588,17 @@ export class Fishing {
         const runTake = this.escapeT > 0 && this.escapeKind === 'run'
           ? 0.038 * (0.7 + this.fishStamina * 0.3)
           : 0;
+        const reserveTake = this.reserveBurstT > 0
+          ? 0.026 * (0.75 + size01 * 0.45)
+          : 0;
         const habitatTake = this.castLane.id === 'current-seam'
           && this.habitatIntent > 0.35
           && habitatActive
           ? 0.012 * this.waterCurrent * this.habitatIntent
           : 0;
-        this.lineOut += dt * (this.dragSlip * 0.085 + runTake + habitatTake);
+        this.lineOut += dt * (
+          this.dragSlip * 0.085 + runTake + reserveTake + habitatTake
+        );
         if (inZone && !this.snagged) {
           const pumpRetrieve = recoveryActive ? 0.20 * this.pumpBonus : 0;
           this.lineOut -= dt * reelGain * (0.56 + this.momentum * 0.24 + pumpRetrieve);
@@ -1605,8 +1657,16 @@ export class Fishing {
           wantX += sideX * kick;
           wantY += sideY * kick;
         }
+        if (this.reserveBurstT > 0) {
+          const reserveKick = 6 + size01 * 5;
+          wantX += this.castUx * reserveKick
+            + sideX * this.habitatDir * Math.sin(this.fishTravel * 6.4) * 3;
+          wantY += this.castUy * reserveKick
+            + sideY * this.habitatDir * Math.sin(this.fishTravel * 6.4) * 3;
+        }
 
-        const visualRate = this.escapeT > 0 || this.counterT > 0 ? 8 : 4.5;
+        const visualRate = this.escapeT > 0 || this.counterT > 0 || this.reserveBurstT > 0
+          ? 8 : 4.5;
         this.fishOffsetX += (wantX - this.fishOffsetX) * Math.min(1, dt * visualRate);
         this.fishOffsetY += (wantY - this.fishOffsetY) * Math.min(1, dt * visualRate);
 
@@ -1656,6 +1716,8 @@ export class Fishing {
           this.tackleWarning = this.escapeName;
         } else if (this.counterT > 0) {
           this.tackleWarning = 'ikan melawan tekanan — turunkan joran';
+        } else if (this.reserveBurstT > 0) {
+          this.tackleWarning = 'tenaga terakhir — biarkan drag kerja';
         } else if (habitatActive && this.habitatIntent > 0.48 && this.habitatText) {
           this.tackleWarning = this.castLane.id === 'cover-edge'
             ? 'ikan lari ke cover — arahkan keluar'
@@ -1931,6 +1993,9 @@ export class Fishing {
   private resetGearStress(): void {
     this.gearLoad = 0;
     this.fishStamina = 1;
+    this.energyPhase = 'fresh';
+    this.reserveBurstT = 0;
+    this.reserveBurstUsed = false;
     this.pumpCharge = 0;
     this.pumpRecovery = 0;
     this.pumpBonus = 0;
