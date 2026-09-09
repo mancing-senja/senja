@@ -143,6 +143,10 @@ try {
     || !(fightInfo.reel.lineOut > 0)
     || fightInfo.reel.landing !== 0
     || !(fightInfo.reel.hookHold > 0)
+    || typeof fightInfo.reel.pump !== 'number'
+    || typeof fightInfo.reel.recovery !== 'number'
+    || typeof fightInfo.reel.rodAngle !== 'number'
+    || typeof fightInfo.reel.counter !== 'number'
     || typeof fightInfo.reel.rain !== 'number'
     || typeof fightInfo.reel.waterCurrent !== 'number'
     || typeof fightInfo.reel.turbidity !== 'number'
