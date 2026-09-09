@@ -1158,6 +1158,19 @@ export class Fishing {
               this.nibbleText = 'gerakan pelan...';
               break;
           }
+          // Feeding activity changes the *feel* of the take as well as the
+          // odds. Hatch fish inspect faster, runoff bites are heavier, while
+          // a deep calm take is slower and subtler.
+          const feedTempo = this.feeding.id === 'hatch' ? 0.84
+            : this.feeding.id === 'runoff' ? 0.90
+              : this.feeding.id === 'drizzle' ? 0.94
+                : this.feeding.id === 'deep-calm' ? 1.08 : 1;
+          this.nibbleGapMin *= feedTempo;
+          this.nibbleGapMax *= feedTempo;
+          if (this.feeding.id === 'runoff') this.nibbleMotion += 0.55;
+          else if (this.feeding.id === 'hatch') this.nibbleMotion += 0.35;
+          else if (this.feeding.id === 'deep-calm') this.nibbleMotion = Math.max(1, this.nibbleMotion - 0.25);
+
           this.nibbleNeed = Math.max(1, Math.min(5, need));
           this.nibbleNext = this.nibbleGapMin
             + Math.random() * (this.nibbleGapMax - this.nibbleGapMin);
@@ -2088,9 +2101,10 @@ export class Fishing {
     // rare catch that looks exactly like a common one is a rare catch the
     // player never finds out about.
     const f = grade.fanfare;
-    this.flash = 0.35 + f * 0.16;
-    particles.spawnSplash(this.bobX, this.bobY, 14 + f * 6);
-    particles.spawnSpark(this.bobX, this.bobY - 6, 12 + f * 14);
+    const q = quality === 'mulus' ? 2 : quality === 'rapi' ? 1 : 0;
+    this.flash = 0.35 + f * 0.16 + q * 0.035;
+    particles.spawnSplash(this.bobX, this.bobY, 14 + f * 6 + q * 2);
+    particles.spawnSpark(this.bobX, this.bobY - 6, 12 + f * 14 + q * 3);
     // Rings for the top grades — a second, slower wave so the burst has a
     // beat to it rather than being one puff.
     for (let i = 0; i < f - 1; i++) {
@@ -2479,7 +2493,9 @@ export class Fishing {
       }
     }
 
-    d.panel(x, y, w, h, a, g.tier > 0 ? g.colour : c.perfect ? C.Lantern : C.Slate);
+    const qualityAccent = c.quality === 'mulus' ? C.Grass
+      : c.quality === 'rapi' ? C.WaterBr : C.Slate;
+    d.panel(x, y, w, h, a, g.tier > 0 ? g.colour : qualityAccent);
 
     // --- glow behind the fish, breathing.
     if (g.glow > 0) {
