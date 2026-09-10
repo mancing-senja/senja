@@ -227,7 +227,7 @@ export const STYLES: Record<StyleId, FightStyle> = {
           // fish's one move; it does not spend it going nowhere.
           s.vel = (s.target < 0.5 ? 1 : -1) * (0.7 + 0.5 * fight);
         } else {
-          s.phase = 1.9 + Math.random() * 1.4;        // playing dead
+          s.phase = 1.6 + Math.random() * 1.4;        // playing dead
           s.vel = 0;
         }
       }
@@ -256,7 +256,7 @@ export const STYLES: Record<StyleId, FightStyle> = {
         // Alternate ends so an open-water run can never choose its current
         // side twice and pretend to be a meaningful burst.
         s.beat = s.beat === 0 ? 1 : 0;
-        s.phase = 1.6 + Math.random() * 1.4;
+        s.phase = 1.9 + Math.random() * 1.4;
       }
       const goal = s.beat === 0 ? 0.04 : 0.96;
       const away = Math.abs(goal - s.target);
