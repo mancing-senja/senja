@@ -1,0 +1,47 @@
+name: Tune runner fight balance once
+
+on:
+  push:
+    branches:
+      - "feat/fishing-gameplay-v2"
+    paths:
+      - ".github/workflows/lari-balance-once.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  tune:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/fishing-gameplay-v2
+          fetch-depth: 0
+
+      - name: Tune runner cadence
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('src/client/game/fight.ts')
+          s = p.read_text()
+          changes = {
+            "zone: 0.22, gain: 0.125, drain: 0.26,": "zone: 0.22, gain: 0.13, drain: 0.25,",
+            "s.phase = 1.6 + Math.random() * 1.4;": "s.phase = 1.9 + Math.random() * 1.4;",
+            "s.gainMul = away > 0.20 ? 0.78 : 1.06;": "s.gainMul = away > 0.20 ? 0.88 : 1.10;",
+            "dt * (0.7 + 0.5 * fight)": "dt * (0.62 + 0.40 * fight)",
+          }
+          for old, new in changes.items():
+              if old not in s:
+                  raise SystemExit('anchor missing: ' + old)
+              s = s.replace(old, new, 1)
+          p.write_text(s)
+          PY
+
+      - name: Commit tuning
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/client/game/fight.ts
+          git commit -m "balance: restore readable runner recovery windows"
+          git push origin HEAD:feat/fishing-gameplay-v2
