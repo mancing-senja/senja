@@ -1,4 +1,4 @@
-name: Tune runner fight balance once
+name: Correct runner fight balance once
 
 on:
   push:
@@ -19,29 +19,49 @@ jobs:
           ref: feat/fishing-gameplay-v2
           fetch-depth: 0
 
-      - name: Tune runner cadence
+      - name: Correct runner cadence scope
         run: |
           python - <<'PY'
           from pathlib import Path
           p = Path('src/client/game/fight.ts')
           s = p.read_text()
-          changes = {
-            "zone: 0.22, gain: 0.125, drain: 0.26,": "zone: 0.22, gain: 0.13, drain: 0.25,",
-            "s.phase = 1.6 + Math.random() * 1.4;": "s.phase = 1.9 + Math.random() * 1.4;",
-            "s.gainMul = away > 0.20 ? 0.78 : 1.06;": "s.gainMul = away > 0.20 ? 0.88 : 1.10;",
-            "dt * (0.7 + 0.5 * fight)": "dt * (0.62 + 0.40 * fight)",
-          }
-          for old, new in changes.items():
-              if old not in s:
-                  raise SystemExit('anchor missing: ' + old)
-              s = s.replace(old, new, 1)
+
+          wrong = """        } else {
+          s.phase = 1.9 + Math.random() * 1.4;        // playing dead
+          s.vel = 0;
+"""
+          fixed = """        } else {
+          s.phase = 1.6 + Math.random() * 1.4;        // playing dead
+          s.vel = 0;
+"""
+          if wrong not in s:
+              raise SystemExit('mengendap correction anchor missing')
+          s = s.replace(wrong, fixed, 1)
+
+          old_runner = """      if (s.phase <= 0) {
+        // Alternate ends so an open-water run can never choose its current
+        // side twice and pretend to be a meaningful burst.
+        s.beat = s.beat === 0 ? 1 : 0;
+        s.phase = 1.6 + Math.random() * 1.4;
+      }
+"""
+          new_runner = """      if (s.phase <= 0) {
+        // Alternate ends so an open-water run can never choose its current
+        // side twice and pretend to be a meaningful burst.
+        s.beat = s.beat === 0 ? 1 : 0;
+        s.phase = 1.9 + Math.random() * 1.4;
+      }
+"""
+          if old_runner not in s:
+              raise SystemExit('runner recovery anchor missing')
+          s = s.replace(old_runner, new_runner, 1)
           p.write_text(s)
           PY
 
-      - name: Commit tuning
+      - name: Commit correction
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src/client/game/fight.ts
-          git commit -m "balance: restore readable runner recovery windows"
+          git commit -m "fix: scope recovery cadence to runner fish"
           git push origin HEAD:feat/fishing-gameplay-v2
