@@ -227,7 +227,7 @@ export const STYLES: Record<StyleId, FightStyle> = {
           // fish's one move; it does not spend it going nowhere.
           s.vel = (s.target < 0.5 ? 1 : -1) * (0.7 + 0.5 * fight);
         } else {
-          s.phase = 1.6 + Math.random() * 1.4;        // playing dead
+          s.phase = 1.9 + Math.random() * 1.4;        // playing dead
           s.vel = 0;
         }
       }
@@ -249,7 +249,7 @@ export const STYLES: Record<StyleId, FightStyle> = {
   lari: {
     id: 'lari', label: 'lari',
     hint: 'ikut terus, jangan berhenti',
-    zone: 0.22, gain: 0.125, drain: 0.26,
+    zone: 0.22, gain: 0.13, drain: 0.25,
     step(s, dt, fight) {
       s.phase -= dt;
       if (s.phase <= 0) {
@@ -260,8 +260,8 @@ export const STYLES: Record<StyleId, FightStyle> = {
       }
       const goal = s.beat === 0 ? 0.04 : 0.96;
       const away = Math.abs(goal - s.target);
-      s.gainMul = away > 0.20 ? 0.78 : 1.06;
-      s.target += (goal - s.target) * Math.min(1, dt * (0.7 + 0.5 * fight));
+      s.gainMul = away > 0.20 ? 0.88 : 1.10;
+      s.target += (goal - s.target) * Math.min(1, dt * (0.62 + 0.40 * fight));
       s.target += (Math.random() - 0.5) * dt * 0.6;
       s.target = clamp01(s.target);
     },
