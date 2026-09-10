@@ -1,0 +1,177 @@
+name: Apply fight cadence polish once
+
+on:
+  push:
+    branches: [feat/fishing-gameplay-v2]
+    paths: [.github/workflows/fight-polish-once.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/fishing-gameplay-v2
+          fetch-depth: 0
+
+      - name: Patch fight engine
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('src/client/game/fight.ts')
+          s = p.read_text()
+
+          def rep(old, new):
+              global s
+              if old not in s:
+                  raise SystemExit('anchor missing: ' + old[:100])
+              s = s.replace(old, new, 1)
+
+          rep(
+          """  /** >0 hides the zone this frame. Only the top grades ever set it. */
+  veil: number;
+}""",
+          """  /** >0 hides the zone this frame. Only the top grades ever set it. */
+  veil: number;
+  /** Grade-level burst cadence. Rare fish surge hard, then expose a short
+   * recovery window instead of applying an opaque continuous difficulty tax. */
+  gradePulse: number;
+  gradeRecover: number;
+  gradeCooldown: number;
+  surgeDir: -1 | 1;
+}""")
+
+          rep(
+          """    home: 0.5, homeVel: 0, gainMul: 1, veil: 0,
+  };""",
+          """    home: 0.5, homeVel: 0, gainMul: 1, veil: 0,
+    gradePulse: 0, gradeRecover: 0, gradeCooldown: 0, surgeDir: 1,
+  };""")
+
+          rep(
+          """      s.target += (s.home - s.target) * Math.min(1, dt * 11);
+      // Barely breathes between jumps, so the jump is the whole event.
+      s.vel += (Math.random() - 0.5) * dt * 1.4;""",
+          """      s.target += (s.home - s.target) * Math.min(1, dt * 11);
+      // A jump costs reel efficiency while it is travelling, then gives a
+      // tiny catch-up window once the angler has matched the new position.
+      s.gainMul = Math.abs(s.home - s.target) > 0.12 ? 0.82 : 1.08;
+      // Barely breathes between jumps, so the jump is the whole event.
+      s.vel += (Math.random() - 0.5) * dt * 1.4;""")
+
+          rep(
+          """      if (s.beat === 1) {
+        // Driving for whichever end it set off toward, then pinning.""",
+          """      if (s.beat === 1) {
+        s.gainMul = 0.72;
+        // Driving for whichever end it set off toward, then pinning.""")
+
+          rep(
+          """      } else {
+        // Between dives it recovers toward a resting spot that is itself""",
+          """      } else {
+        s.gainMul = 1.10;
+        // Between dives it recovers toward a resting spot that is itself""")
+
+          rep(
+          """      const shake = Math.sin(s.phase) * 0.06 + Math.sin(s.phase * 2.3) * 0.025;
+      s.target = clamp01(s.home + shake);""",
+          """      const amp = 1 + Math.min(0.35, Math.max(0, fight - 1) * 0.22);
+      const shake = (Math.sin(s.phase) * 0.06 + Math.sin(s.phase * 2.3) * 0.025) * amp;
+      s.target = clamp01(s.home + shake);""")
+
+          rep(
+          """      if (s.phase <= 0) {
+        s.beat = Math.random() < 0.5 ? 0 : 1;
+        s.phase = 1.6 + Math.random() * 1.4;
+      }
+      const goal = s.beat === 0 ? 0.04 : 0.96;
+      s.target += (goal - s.target) * Math.min(1, dt * (0.7 + 0.5 * fight));""",
+          """      if (s.phase <= 0) {
+        // Alternate ends instead of occasionally choosing the same end twice.
+        // Big open-water fish should sweep the lake, not fake a run in place.
+        s.beat = s.beat === 0 ? 1 : 0;
+        s.phase = 1.6 + Math.random() * 1.4;
+      }
+      const goal = s.beat === 0 ? 0.04 : 0.96;
+      const away = Math.abs(goal - s.target);
+      s.gainMul = away > 0.20 ? 0.78 : 1.06;
+      s.target += (goal - s.target) * Math.min(1, dt * (0.7 + 0.5 * fight));""")
+
+          start = s.index('export function applyGrade(')
+          if start < 0:
+              raise SystemExit('applyGrade missing')
+          prefix = s[:start]
+          new_apply = r'''export function applyGrade(
+  style: FightStyle, s: FightState, dt: number, tier: number,
+): { zone: number; gain: number; drain: number } {
+  // A grade surge is now a discrete, frame-rate-independent beat. The old
+  // sine shove accumulated every frame while the sine stayed high, which was
+  // readable as random extra force. A surge now has a start, a duration and a
+  // short recovery window the player can learn and exploit.
+  const wasPulse = s.gradePulse > 0;
+  s.gradePulse = Math.max(0, s.gradePulse - dt);
+  s.gradeRecover = Math.max(0, s.gradeRecover - dt);
+  s.gradeCooldown = Math.max(0, s.gradeCooldown - dt);
+  if (wasPulse && s.gradePulse <= 0) {
+    s.gradeRecover = 0.52 + tier * 0.045;
+  }
+
+  if (
+    tier >= 2
+    && s.t > 1.5
+    && s.gradeCooldown <= 0
+    && Math.sin(s.t * 1.7 + tier) > 0.91
+  ) {
+    s.gradePulse = 0.26 + tier * 0.035;
+    s.gradeCooldown = 2.6 + tier * 0.28;
+    s.surgeDir = s.target < 0.5 ? 1 : -1;
+    s.vel += s.surgeDir * (0.55 + tier * 0.12);
+  }
+
+  if (s.gradePulse > 0) {
+    s.vel += s.surgeDir * dt * (1.1 + tier * 0.22);
+    s.target = clamp01(
+      s.target + s.surgeDir * dt * (0.10 + tier * 0.025),
+    );
+  }
+
+  // Out of sight. Legenda/Mitos still get the memory beat, but never on top
+  // of a surge or its recovery. Difficulty layers should sequence, not stack.
+  if (
+    tier >= 4
+    && s.t > 2.5
+    && s.gradePulse <= 0
+    && s.gradeRecover <= 0
+  ) {
+    const c = Math.sin(s.t * 0.9 + 1.3);
+    s.veil = c > 0.62 ? 1 : 0;
+  } else {
+    s.veil = 0;
+  }
+
+  const recoveryBonus = s.gradeRecover > 0 ? 1.10 + tier * 0.015 : 1;
+  const pulseDrain = s.gradePulse > 0 ? 1.08 : 1;
+  const pulseZone = s.gradePulse > 0 ? 0.96 : 1;
+
+  return {
+    zone: Math.max(0.12, style.zone * (1 - tier * 0.075) * pulseZone),
+    gain: style.gain * s.gainMul * (1 - tier * 0.05) * recoveryBonus,
+    drain: style.drain * (1 + tier * 0.10) * pulseDrain,
+  };
+}
+'''
+          s = prefix + new_apply
+          p.write_text(s)
+          PY
+
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/client/game/fight.ts
+          git commit -m "feat: add readable surge and recovery fight cadence"
+          git push origin HEAD:feat/fishing-gameplay-v2
