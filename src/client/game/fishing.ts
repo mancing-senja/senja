@@ -559,6 +559,32 @@ const NORMAL_FEEDING: FeedingCondition = {
 /** Three things decide what bites: the hour, how far out the bobber landed,
  *  and which spot it landed in. The spot is the strongest of the three —
  *  that is what makes walking to the swamp at night worth doing. */
+interface SpeciesWeatherResponse {
+  mul: number;
+  surfaceActive: boolean;
+  currentFish: boolean;
+}
+
+function weatherResponse(fish: Species, spot: Spot, rain: number): SpeciesWeatherResponse {
+  const rain01 = clamp01(rain);
+  const weatherStyle = styleFor(fish);
+  const deep = Math.min(1, fish.maxCm / 90);
+  const surfaceActive = fish.maxCm <= 42
+    && (weatherStyle.id === 'lincah' || weatherStyle.id === 'menggetar');
+  const currentFish = spot.current >= 0.45
+    && (weatherStyle.id === 'lari' || weatherStyle.id === 'menyelam' || fish.fight >= 1.25);
+  let mul = 1;
+  if (surfaceActive) mul *= 1 + rain01 * 0.28;
+  if (currentFish) mul *= 1 + rain01 * 0.18;
+  if (deep > 0.72 && rain01 > 0.65) mul *= 0.96;
+  return { mul, surfaceActive, currentFish };
+}
+
+/** Public notebook seam: exactly the same weather multiplier used by RNG. */
+export function weatherWeightForSpecies(fish: Species, spot: Spot, rain: number): number {
+  return weatherResponse(fish, spot, rain).mul;
+}
+
 function rollSpecies(
   time: number, depth01: number, spot: Spot, district: District | null,
   season: Season, baited: BaitId | null, rain: number,
@@ -587,17 +613,12 @@ function rollSpecies(
 
     // Rain is part of the same world the player can see. It never summons an
     // impossible fish; it only reshapes the pool that this spot/time already
-    // allows. Light-active fish wake up in rain, while strong current fish get
-    // a smaller bonus where runoff is actually moving water.
-    const rain01 = clamp01(rain);
-    const weatherStyle = styleFor(s);
-    const surfaceActive = s.maxCm <= 42
-      && (weatherStyle.id === 'lincah' || weatherStyle.id === 'menggetar');
-    const currentFish = spot.current >= 0.45
-      && (weatherStyle.id === 'lari' || weatherStyle.id === 'menyelam' || s.fight >= 1.25);
-    if (surfaceActive) w *= 1 + rain01 * 0.28;
-    if (currentFish) w *= 1 + rain01 * 0.18;
-    if (deep > 0.72 && rain01 > 0.65) w *= 0.96;
+    // allows. The helper is shared with the field journal so learned weather
+    // notes can never drift away from the actual roll.
+    const weather = weatherResponse(s, spot, rain);
+    const surfaceActive = weather.surfaceActive;
+    const currentFish = weather.currentFish;
+    w *= weather.mul;
 
     // Feeding windows are readable combinations of conditions already in the
     // world. They bend an already-valid pool; they never bypass spot/district.
@@ -821,6 +842,9 @@ export class Fishing {
   private nibbleGapMax = 0.72;
   private nibbleMotion = 2.2;
   private nibbleText = 'ada gerakan...';
+  /** Rain/turbidity can mask tiny surface tells, but never the committed bite. */
+  private nibbleClarity = 1;
+  private weatherCue = '';
   private depth01 = 0;
   private castLane: CastLane = OPEN_LANE;
   private feeding: FeedingCondition = NORMAL_FEEDING;
@@ -980,6 +1004,7 @@ export class Fishing {
     hookFit: number; habitat: number; fishX: number; fishY: number;
     hookHold: number; escape: string; warning: string;
     dragAdvice: string; highStick: number; sideLoad: number;
+    nibbleClarity: number; weatherCue: string;
     style: string; zone: number; veil: boolean;
   } {
     return {
@@ -1014,6 +1039,8 @@ export class Fishing {
       dragAdvice: this.dragAdvice,
       highStick: this.highStick,
       sideLoad: this.sideLoad,
+      nibbleClarity: this.nibbleClarity,
+      weatherCue: this.weatherCue,
       style: this.style.id,
       zone: Math.max(0.12, this.style.zone * (1 - this.pendingGrade.tier * 0.075)),
       veil: this.fight.veil > 0,
@@ -1186,6 +1213,17 @@ export class Fishing {
           else if (this.feeding.id === 'hatch') this.nibbleMotion += 0.35;
           else if (this.feeding.id === 'deep-calm') this.nibbleMotion = Math.max(1, this.nibbleMotion - 0.25);
 
+          // Rough water masks only the tiny investigative tells. Text and audio
+          // remain explicit, and the final committed bite is made stronger, so
+          // bad weather changes atmosphere/readability without shrinking the
+          // reaction window or creating an accessibility trap.
+          const weatherMask = clamp01(this.rain * 0.52 + this.turbidity * 0.62);
+          this.nibbleClarity = Math.max(0.62, 1 - weatherMask * 0.38);
+          this.weatherCue = weatherMask >= 0.58
+            ? 'hujan nutup riak'
+            : this.turbidity >= 0.34 ? 'air mulai keruh'
+              : this.rain >= 0.16 ? 'gerimis di pelampung' : '';
+
           this.nibbleNeed = Math.max(1, Math.min(5, need));
           this.nibbleNext = this.nibbleGapMin
             + Math.random() * (this.nibbleGapMax - this.nibbleGapMin);
@@ -1198,7 +1236,8 @@ export class Fishing {
       case 'nibble': {
         // A tiny, nervous movement rather than the hard bite bounce.
         this.bobY += Math.sin(this.t * 10) * dt
-          * (this.nibbleMotion + this.pendingGrade.tier * 0.25);
+          * (this.nibbleMotion + this.pendingGrade.tier * 0.25)
+          * this.nibbleClarity;
 
         // Pulling on a nibble spooks the fish. This is the one new decision:
         // watch the float, don't mash the button. The cost is still only a cast.
@@ -1213,8 +1252,12 @@ export class Fishing {
         if (this.t >= this.nibbleNext) {
           this.nibbleDone++;
           const heavy = Math.min(4, 1 + Math.floor(this.pending!.fight));
-          particles.spawnSplash(this.bobX, this.bobY + 3, 2 + heavy);
-          audio.blip(300 + this.nibbleDone * 34, 0.035, 0.08);
+          const visibleSplash = Math.max(2, Math.round((2 + heavy) * this.nibbleClarity));
+          particles.spawnSplash(this.bobX, this.bobY + 3, visibleSplash);
+          // As visual noise rises, the tiny audio tick becomes slightly easier
+          // to hear. Players never have to rely on vision alone in heavy rain.
+          const cueVolume = 0.08 + (1 - this.nibbleClarity) * 0.07;
+          audio.blip(300 + this.nibbleDone * 34, 0.035, cueVolume);
 
           if (this.nibbleDone >= this.nibbleNeed) {
             if (this.pendingGrade.tier >= 5) {
@@ -1228,7 +1271,8 @@ export class Fishing {
             } else {
               this.state = 'bite';
               this.t = 0;
-              particles.spawnSplash(this.bobX, this.bobY + 2, 5 + heavy);
+              const commitSplash = 5 + heavy + Math.round((1 - this.nibbleClarity) * 4);
+              particles.spawnSplash(this.bobX, this.bobY + 2, commitSplash);
               audio.bite();
             }
           } else {
@@ -1258,7 +1302,8 @@ export class Fishing {
       }
 
       case 'bite': {
-        this.bobY += Math.sin(this.t * 22) * dt * 9;
+        const commitClarity = 1 + (1 - this.nibbleClarity) * 0.38;
+        this.bobY += Math.sin(this.t * 22) * dt * 9 * commitClarity;
         // The reaction window stays generous, but a cleaner hook gives you a
         // little head start in the fight. Skill changes feel, not eligibility.
         if (input.pressed(' ')) {
@@ -2236,6 +2281,8 @@ export class Fishing {
     this.lineWear = 0;
     this.hookWear = 0;
     this.tackleWarning = '';
+    this.nibbleClarity = 1;
+    this.weatherCue = '';
     this.dragAdvice = '';
     this.highStick = 0;
     this.sideLoad = 0;
@@ -2393,7 +2440,10 @@ export class Fishing {
 
     if (this.state === 'nibble') {
       d.textCentered(this.nibbleText, cx, view.h - 34, C.Mist, C.InkDeep, 0.85);
-      d.textCentered('tunggu sampai nyantol', cx, view.h - 22, C.Pale, C.InkDeep, 0.65);
+      const read = this.weatherCue
+        ? `${this.weatherCue} · tunggu tarik jelas`
+        : 'tunggu sampai nyantol';
+      d.textCentered(read, cx, view.h - 22, C.Pale, C.InkDeep, 0.68);
     }
 
     if (this.state === 'omen') {

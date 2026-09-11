@@ -297,3 +297,12 @@ Ga bisa ngoding tapi ngerti pixel art? Tetap kepake — buka issue label
 - **Tarikan lateral ikut bekerja di kail:** run/headshake/cover pull memberi leverage kecil pada hook tanpa menambah kontrol arah baru.
 - **F tetap satu tombol drag:** game hanya memberi saran preset berikutnya (Longgar → Seimbang → Kencang) sesuai shock, spool, stamina, dan load. Drag tidak pernah berubah otomatis.
 - **Coaching tidak mengganti failure model:** senar/joran/kail tetap gagal karena overload berkelanjutan yang sudah diberi warning, bukan RNG instan.
+
+
+## Weather-readable bites & learned field notes
+
+- Hujan/air keruh sekarang sedikit menutupi riak nibble kecil, sementara committed bite justru dibuat lebih kuat.
+- Audio nibble naik sedikit saat visual surface cue tertutup cuaca; reaction window tidak dipendekkan.
+- Catatan Tangkapan membuka observasi cuaca setelah 3 tangkapan spesies yang sama.
+- Catatan cuaca memakai weather multiplier yang sama persis dengan RNG fishing, bukan flavour text terpisah.
+- Baris mulut + kail diringkas supaya informasi baru masuk tanpa memperbesar panel 320x180.

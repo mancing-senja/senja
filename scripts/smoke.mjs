@@ -186,6 +186,8 @@ try {
     || typeof fightInfo.reel.dragAdvice !== 'string'
     || typeof fightInfo.reel.highStick !== 'number'
     || typeof fightInfo.reel.sideLoad !== 'number'
+    || typeof fightInfo.reel.nibbleClarity !== 'number'
+    || typeof fightInfo.reel.weatherCue !== 'string'
   ) {
     problems.push(`advanced fight state invalid: ${JSON.stringify(fightInfo)}`);
   }

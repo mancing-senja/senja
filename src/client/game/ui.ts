@@ -12,7 +12,7 @@ import type { Draw } from '../render/draw';
 import type { Lighting } from '../world/lighting';
 import type { Input } from '../engine/input';
 import { CROP_INFO } from './farm';
-import { mouthTypeForSpecies, SPECIES } from './fishing';
+import { mouthTypeForSpecies, SPECIES, weatherWeightForSpecies } from './fishing';
 import { styleFor } from './fight';
 import { GRADES } from './grade';
 import { BAITS, baitWeight } from './shop';
@@ -496,12 +496,28 @@ export class Ui {
     d.text(`cari: ${clipTo(habitat, 67)}`, LEFT, y + 120, C.GrassLt, 0.88);
     d.text(`umpan: ${clipTo(bestBait.label, 61)}`, LEFT, y + 131, C.Amber, 0.88);
 
+    // Weather notes unlock through repetition, not spoilers. The multiplier
+    // comes from fishing.ts itself, so this notebook always describes the same
+    // rain response the species roll actually uses.
+    let weatherNote = 'belum terbaca';
+    if (e.count >= 3 && ctx.spots.length > 0) {
+      let drizzleMul = -Infinity;
+      let heavyMul = -Infinity;
+      for (const spot of ctx.spots) {
+        drizzleMul = Math.max(drizzleMul, weatherWeightForSpecies(sp, spot, 0.45));
+        heavyMul = Math.max(heavyMul, weatherWeightForSpecies(sp, spot, 0.82));
+      }
+      weatherNote = heavyMul >= 1.17 ? 'hujan: aktif'
+        : drizzleMul >= 1.10 ? 'gerimis: aktif'
+          : heavyMul < 0.99 ? 'deras: turun' : 'hujan: netral';
+    }
+    d.text(clipTo(`cuaca: ${weatherNote}`, 92), LEFT, y + 142, C.WaterBr, 0.84);
+
     const mouth = mouthTypeForSpecies(sp);
     const hookAdvice = mouth === 'lunak' || sp.maxCm <= 30
       ? 'kecil'
       : mouth === 'keras' || sp.maxCm >= 55 ? 'besar' : 'sedang';
-    d.text(`mulut: ${mouth}`, LEFT, y + 142, C.Pale, 0.84);
-    d.text(`kail: ${hookAdvice}`, LEFT, y + 153, C.WaterBr, 0.84);
+    d.text(clipTo(`${mouth} · kail ${hookAdvice}`, 92), LEFT, y + 153, C.Pale, 0.84);
 
     // --- right: the numbers that say where to go looking for a bigger one.
     let ry = y + 24;
