@@ -289,3 +289,11 @@ Ga bisa ngoding tapi ngerti pixel art? Tetap kepake — buka issue label
 ## Lisensi
 
 [MIT](LICENSE).
+
+
+## Drag coaching & rod leverage
+
+- **High-stick sekarang fisik:** joran yang hampir tegak saat tension tinggi menambah beban blank, terutama Action Heavy. Turunkan joran untuk melepas leverage buruk.
+- **Tarikan lateral ikut bekerja di kail:** run/headshake/cover pull memberi leverage kecil pada hook tanpa menambah kontrol arah baru.
+- **F tetap satu tombol drag:** game hanya memberi saran preset berikutnya (Longgar → Seimbang → Kencang) sesuai shock, spool, stamina, dan load. Drag tidak pernah berubah otomatis.
+- **Coaching tidak mengganti failure model:** senar/joran/kail tetap gagal karena overload berkelanjutan yang sudah diberi warning, bukan RNG instan.

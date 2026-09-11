@@ -183,6 +183,9 @@ try {
     || typeof fightInfo.reel.turbidity !== 'number'
     || typeof fightInfo.reel.castLane !== 'string'
     || typeof fightInfo.reel.escape !== 'string'
+    || typeof fightInfo.reel.dragAdvice !== 'string'
+    || typeof fightInfo.reel.highStick !== 'number'
+    || typeof fightInfo.reel.sideLoad !== 'number'
   ) {
     problems.push(`advanced fight state invalid: ${JSON.stringify(fightInfo)}`);
   }
@@ -210,6 +213,8 @@ try {
     || typeof info.lineFeel.tension !== 'number'
     || typeof info.lineFeel.rodAngle !== 'number'
     || typeof info.lineFeel.dragSlip !== 'number'
+    || typeof info.lineFeel.highStick !== 'number'
+    || typeof info.lineFeel.sideLoad !== 'number'
   ) {
     problems.push(`line feel debug state missing: ${JSON.stringify(info.lineFeel)}`);
   }

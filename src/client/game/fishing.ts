@@ -903,6 +903,11 @@ export class Fishing {
   private lineWear = 0;
   private hookWear = 0;
   private tackleWarning = '';
+  /** Live coaching only; never changes drag automatically. */
+  private dragAdvice = '';
+  /** High-stick and lateral leverage are readable physical load, not RNG. */
+  private highStick = 0;
+  private sideLoad = 0;
   private hookText = '';
   private missText = 'lepas...';
   /** How this fish fights, chosen when it takes the hook. */
@@ -929,10 +934,16 @@ export class Fishing {
   }
 
   /** Minimal live values for the world-space rod/line renderer. */
-  get lineFeel(): { tension: number; rodAngle: number; dragSlip: number } {
+  get lineFeel(): {
+    tension: number; rodAngle: number; dragSlip: number;
+    highStick: number; sideLoad: number;
+  } {
     return this.state === 'reel'
-      ? { tension: this.tension, rodAngle: this.rodAngle, dragSlip: this.dragSlip }
-      : { tension: 0.35, rodAngle: 0.35, dragSlip: 0 };
+      ? {
+          tension: this.tension, rodAngle: this.rodAngle, dragSlip: this.dragSlip,
+          highStick: this.highStick, sideLoad: this.sideLoad,
+        }
+      : { tension: 0.35, rodAngle: 0.35, dragSlip: 0, highStick: 0, sideLoad: 0 };
   }
 
   /** Abandons whatever is in progress. Used when the player walks through a
@@ -968,6 +979,7 @@ export class Fishing {
     feeding: string;
     hookFit: number; habitat: number; fishX: number; fishY: number;
     hookHold: number; escape: string; warning: string;
+    dragAdvice: string; highStick: number; sideLoad: number;
     style: string; zone: number; veil: boolean;
   } {
     return {
@@ -999,6 +1011,9 @@ export class Fishing {
       hookHold: this.hookHold,
       escape: this.escapeT > 0 ? this.escapeName : '',
       warning: this.tackleWarning,
+      dragAdvice: this.dragAdvice,
+      highStick: this.highStick,
+      sideLoad: this.sideLoad,
       style: this.style.id,
       zone: Math.max(0.12, this.style.zone * (1 - this.pendingGrade.tier * 0.075)),
       veil: this.fight.veil > 0,
@@ -1499,11 +1514,34 @@ export class Fishing {
         ) * line.elasticity;
         this.lineStretch += (stretchTarget - this.lineStretch) * Math.min(1, dt * 3.4);
         const elasticCushion = this.lineStretch * 0.30;
+
+        // High-sticking is a real setup mistake now. Holding a loaded rod near
+        // vertical bends the blank at a worse leverage angle; a stiff Heavy
+        // action feels it most. Lowering the rod transfers pressure back into
+        // the line instead of silently giving the player free lift power.
+        this.highStick = clamp01((this.rodAngle - 0.74) / 0.26)
+          * clamp01((this.tension - 0.68) / 0.32);
+        const highStickPenalty = action.id === 'heavy' ? 0.22
+          : action.id === 'light' ? 0.12 : 0.17;
+        const rawRodLoad = rawLoad * (1 + this.highStick * highStickPenalty);
+
+        // A fish pulling sideways also works the hook as a lever. The effect
+        // stays modest because the player has no separate left/right control;
+        // it exists to make violent lateral runs/headshakes physically distinct,
+        // not to add an invisible punishment.
+        const sideXLoad = -this.castUy;
+        const sideYLoad = this.castUx;
+        const lateralOffset = Math.abs(
+          this.fishOffsetX * sideXLoad + this.fishOffsetY * sideYLoad,
+        );
+        this.sideLoad = clamp01(lateralOffset / 10);
+
         const lineLoad = rawLineLoad * (1 - elasticCushion);
         const hookLeverage = 1 + Math.max(0, 1 - this.hookFit) * 0.34;
+        const sideHookLeverage = 1 + this.sideLoad * 0.08 + this.highStick * 0.05;
         const hookLoad = transmitted * (1 - elasticCushion * 0.75) * (
           1 + (this.style.id === 'lincah' || this.style.id === 'menggetar' ? 0.08 : 0)
-        ) * hookLeverage;
+        ) * hookLeverage * sideHookLeverage;
 
         // Reel drag protects the weakest link by letting line leave the spool
         // before the line itself reaches full failure load. Tighter drag lands
@@ -1513,7 +1551,7 @@ export class Fishing {
         const overDrag = Math.max(0, lineLoad - dragLimit);
         this.dragSlip = clamp01(overDrag / Math.max(0.12, dragLimit * 0.55));
         const slippedLineLoad = lineLoad - overDrag * drag.slip;
-        const slippedRodLoad = rawLoad - overDrag * drag.slip * 0.55;
+        const slippedRodLoad = rawRodLoad - overDrag * drag.slip * 0.55;
         const slippedHookLoad = hookLoad - overDrag * drag.slip * 0.45;
 
         const rodRatio = slippedRodLoad / Math.max(0.1, rodCap);
@@ -1808,6 +1846,42 @@ export class Fishing {
         // softer shore prompt; landing advice must never hide a real failure.
         this.tackleWarning = '';
         const spoolPct = this.lineOut / Math.max(0.1, line.capacity);
+
+        // Contextual drag coaching never moves the reel for the player. It
+        // only recommends the *next* F preset, so every suggestion is one tap:
+        // Kencang -> Longgar under shock, Longgar -> Seimbang once stable,
+        // Seimbang -> Kencang only when the fish is tired or spool is urgent.
+        const overload = Math.max(rodRatio, lineRatio, hookRatio);
+        const shockActive = this.escapeT > 0 || this.counterT > 0 || this.reserveBurstT > 0;
+        const safeRecovery = !shockActive
+          && !this.snagged
+          && this.hookHold > 0.56
+          && overload < 0.98
+          && this.tension >= 0.24
+          && this.tension <= 0.80;
+        const finishWindow = !nearBank
+          && safeRecovery
+          && this.progress >= 0.70
+          && this.fishStamina <= 0.50
+          && spoolPct < 0.64;
+        const spoolUrgent = spoolPct >= 0.84
+          && !shockActive
+          && this.hookHold > 0.58
+          && overload < 1.02;
+        this.dragAdvice = '';
+        if (
+          drag.id === 'kencang'
+          && (shockActive || this.hookHold < 0.56 || overload >= 1.03)
+        ) {
+          this.dragAdvice = 'F: drag longgar · redam hentakan';
+        } else if (drag.id === 'longgar' && safeRecovery && this.progress >= 0.46) {
+          this.dragAdvice = 'F: drag seimbang · mulai ambil line';
+        } else if (drag.id === 'seimbang' && (finishWindow || spoolUrgent)) {
+          this.dragAdvice = spoolUrgent
+            ? 'F: drag kencang · spool menipis'
+            : 'F: drag kencang · ikan sudah lelah';
+        }
+
         if (this.hookHold < 0.38) {
           this.tackleWarning = this.mouth === 'lunak'
             ? 'kail hampir sobek — kurangi tekanan'
@@ -1821,17 +1895,27 @@ export class Fishing {
             ? 'nyangkut — jangan ditarik paksa'
             : 'nyangkut — tekan sedang, arahkan keluar';
         } else if (this.escapeT > 0) {
-          this.tackleWarning = this.escapeName;
+          this.tackleWarning = this.dragAdvice
+            ? `${this.escapeName} · ${this.dragAdvice}`
+            : this.escapeName;
         } else if (this.counterT > 0) {
-          this.tackleWarning = 'ikan melawan tekanan — turunkan joran';
+          this.tackleWarning = this.dragAdvice
+            ? `ikan melawan tekanan · ${this.dragAdvice}`
+            : 'ikan melawan tekanan — turunkan joran';
         } else if (this.reserveBurstT > 0) {
-          this.tackleWarning = 'tenaga terakhir — biarkan drag kerja';
+          this.tackleWarning = this.dragAdvice
+            ? `tenaga terakhir · ${this.dragAdvice}`
+            : 'tenaga terakhir — biarkan drag kerja';
         } else if (habitatActive && this.habitatIntent > 0.48 && this.habitatText) {
           this.tackleWarning = this.castLane.id === 'cover-edge'
             ? 'ikan lari ke cover — arahkan keluar'
             : this.castLane.id === 'current-seam'
               ? 'ikan ikut arus — ambil sudut pelan'
               : 'ikan turun ke drop-off — jaga tekanan';
+        } else if (this.highStick > 0.52 && rodRatio > 0.82) {
+          this.tackleWarning = 'high-stick — turunkan joran, jangan tegakkan penuh';
+        } else if (this.dragAdvice) {
+          this.tackleWarning = this.dragAdvice;
         } else if (this.landingT > 0.05 || (nearBank && landingSafe)) {
           this.tackleWarning = this.tension > 0.82
             ? 'dekat tepi — jangan angkat paksa'
@@ -2152,6 +2236,9 @@ export class Fishing {
     this.lineWear = 0;
     this.hookWear = 0;
     this.tackleWarning = '';
+    this.dragAdvice = '';
+    this.highStick = 0;
+    this.sideLoad = 0;
   }
 
   /** Persist accumulated wear once per fight, never once per frame. */
