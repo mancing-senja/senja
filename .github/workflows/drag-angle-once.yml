@@ -1,0 +1,35 @@
+name: Apply drag coaching and rod leverage pass
+
+on:
+  push:
+    branches:
+      - "feat/fishing-gameplay-v2"
+    paths:
+      - ".github/workflows/drag-angle-once.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/fishing-gameplay-v2
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Apply gameplay patch
+        run: node tools/apply-drag-angle-pass.mjs
+
+      - name: Commit gameplay pass
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/client/game/fishing.ts scripts/smoke.mjs README.md
+          git commit -m "feat: add contextual drag coaching and rod leverage"
+          git push origin HEAD:feat/fishing-gameplay-v2
