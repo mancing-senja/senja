@@ -61,6 +61,10 @@ export interface Actor {
   bubbleKind?: 'chat' | 'thought';
   /** NPCs can opt into line rendering without changing the main render loop. */
   autoFishingLine?: boolean;
+  /** Optional live line feel. Remote/NPC anglers fall back to a relaxed line. */
+  fishingTension?: number;
+  fishingRodAngle?: number;
+  fishingDragSlip?: number;
   boat?: boolean;
 }
 
@@ -72,6 +76,9 @@ export class LocalPlayer implements Actor {
   animT = 0;
   idleSeed = Math.random() * 10;
   bobber: { x: number; y: number } | null = null;
+  fishingTension = 0.35;
+  fishingRodAngle = 0.35;
+  fishingDragSlip = 0;
   bubbleText = '';
   bubbleT = 0;
   bubbleKind: 'chat' | 'thought' = 'chat';
@@ -492,15 +499,22 @@ export function drawFishingLine(d: Draw, a: Actor, time: number): void {
   const bx = a.bobber.x;
   const by = a.bobber.y;
 
-  // Rod: a short stiff segment out of the hand toward the bobber.
+  const tension = Math.max(0, Math.min(1, a.fishingTension ?? 0.35));
+  const rodAngle = Math.max(0, Math.min(1, a.fishingRodAngle ?? 0.35));
+  const dragSlip = Math.max(0, Math.min(1, a.fishingDragSlip ?? 0));
+
+  // Rod follows live pressure. A lifted rod reaches a little farther and the
+  // tip rises; lowering for reel recovery visibly drops it again.
   const ang = Math.atan2(by - hand.y, bx - hand.x);
-  const rodLen = 12;
+  const rodLen = 11 + rodAngle * 2.5;
   const rx = hand.x + Math.cos(ang) * rodLen;
-  const ry = hand.y + Math.sin(ang) * rodLen - 4;
+  const ry = hand.y + Math.sin(ang) * rodLen - (2.5 + rodAngle * 3.5);
   plot(d, hand.x, hand.y, rx, ry, C.WoodDk);
 
-  // Line: a slack catenary, wobbling very slightly.
-  const sag = 4 + Math.sin(time * 1.7) * 0.8;
+  // Tight line straightens; slack bows. Drag slip adds a tiny travelling
+  // vibration so the reel can be read in-world before the warning text lands.
+  const sag = 5.8 - tension * 4.2 + dragSlip * 1.4
+    + Math.sin(time * (1.7 + dragSlip * 4)) * (0.55 + dragSlip * 0.9);
   const steps = 10;
   for (let i = 0; i <= steps; i++) {
     const t = i / steps;

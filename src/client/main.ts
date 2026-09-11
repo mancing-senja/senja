@@ -46,6 +46,10 @@ import { Npc, nearestNpc, villagerDefs } from './game/npc';
 import { loadMinds, saveMinds, witnessCatch } from './game/dialogue';
 import { LORE, loadRead, saveRead } from './game/lore';
 import { Audio } from './game/audio';
+import {
+  baitCount, cycleBait, cycleDrag, cycleHookSize, cycleRodAction,
+  dragStats, gearCondition, hookSizeStats, rodActionStats, selectedBait,
+} from './game/shop';
 
 /** How much of the sprite shading the normal maps do. Under a half the
  *  effect is invisible; over about 0.75 the palette starts banding, because
@@ -213,11 +217,15 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
     // Journals merge rather than replace: a catch landed offline a minute
     // ago must not be thrown away by a profile that predates it.
     for (const [id, e] of Object.entries(p.log ?? {})) {
-      const cur = farm.log[id] ?? { count: 0, best: 0, bestGrade: 0 };
+      const cur = farm.log[id] ?? {
+        count: 0, best: 0, bestGrade: 0, bestQuality: 0, cleanCount: 0,
+      };
       farm.log[id] = {
         count: Math.max(cur.count, e.count ?? 0),
         best: Math.max(cur.best, e.best ?? 0),
         bestGrade: Math.max(cur.bestGrade ?? 0, e.bestGrade ?? 0),
+        bestQuality: Math.max(cur.bestQuality ?? 0, e.bestQuality ?? 0),
+        cleanCount: Math.max(cur.cleanCount ?? 0, e.cleanCount ?? 0),
       };
     }
     for (const id of p.lore ?? []) loreRead.add(id);
@@ -402,7 +410,7 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
   ) => fishing.debugCatch(speciesId, gradeId, particles, audio, (c) => {
     farm.addCatch(c);
     player.caught++;
-    ui.say(`${c.species.label} ${c.cm} cm  +${c.coins}`);
+    ui.say(`${c.species.label} ${c.cm} cm · ${c.quality}  +${c.coins}`);
   }, player);
   /** Jumps the world clock, so the moving key light can be compared at
    *  four times of day without waiting out a real day cycle. */
@@ -448,6 +456,14 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
     coins: farm.coins,
     basket: farm.basketCount,
     caught: player.caught,
+    bait: { id: selectedBait().id, label: selectedBait().label, casts: baitCount() },
+    gear: gearCondition(),
+    drag: dragStats(),
+    action: rodActionStats(),
+    hookSize: hookSizeStats(),
+    weather: { rain: Number(rain.toFixed(3)) },
+    lineFeel: fishing.lineFeel,
+    journal: farm.log,
     net: net.status,
     peers: net.players.size,
     room: net.room,
@@ -585,7 +601,7 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
 
     fishing.season = season;
     fishing.update(
-      dt, input, player, map, time, particles, audio,
+      dt, input, player, map, time, rain, particles, audio,
       (c) => {
         const prevBest = farm.log[c.species.id]?.best ?? 0;
         const isRecord = c.cm > prevBest && c.cm >= Math.max(20, prevBest);
@@ -605,11 +621,17 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
           speciesCount: Object.keys(farm.log).length,
         });
         net.send({ t: 'reel' });
-        ui.say(`${c.species.label} ${c.cm} cm  +${c.coins}`);
+        ui.say(
+          `${c.species.label} ${c.cm} cm · ${c.quality}  +${c.coins}`,
+        );
       },
       (x, y) => net.send({ t: 'cast', bx: x, by: y }),
     );
     player.bobber = fishing.bobber;
+    const lineFeel = fishing.lineFeel;
+    player.fishingTension = lineFeel.tension;
+    player.fishingRodAngle = lineFeel.rodAngle;
+    player.fishingDragSlip = lineFeel.dragSlip;
 
     if (indoors) for (const n of peopleIn(indoors)) n.updateIn(dt, indoors);
     else for (const n of npcs) n.update(dt, map);
@@ -743,6 +765,30 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
       }
     }
     if (input.pressed('q')) farm.cycleCrop();
+    if (input.pressed('r') && !fishing.busy && !ui.chatOpen) {
+      const bait = cycleBait();
+      ui.say(`${bait.label} · ${baitCount(bait.id)} lempar`);
+      audio.blip(560, 0.05, 0.1);
+    }
+    if (
+      input.pressed('f')
+      && (!fishing.busy || fishing.state === 'reel')
+      && !ui.chatOpen
+    ) {
+      const drag = cycleDrag();
+      ui.say(`${drag.label} · ${Math.round(drag.hold * 100)}% tahan`);
+      audio.blip(fishing.state === 'reel' ? 470 : 510, 0.05, 0.1);
+    }
+    if (input.pressed('t') && !fishing.busy && !ui.chatOpen) {
+      const action = cycleRodAction();
+      ui.say(`${action.label} · ${Math.round(action.loadMul * 100)}% beban`);
+      audio.blip(540, 0.05, 0.1);
+    }
+    if (input.pressed('y') && !fishing.busy && !ui.chatOpen) {
+      const size = cycleHookSize();
+      ui.say(`${size.label} · setup kail aktif`);
+      audio.blip(580, 0.05, 0.1);
+    }
 
     if (input.pressed('v')) {
       const nextBoat = !player.boat;
@@ -1024,6 +1070,7 @@ function boot(handDrawn: ReadonlyMap<string, PixelCanvas>): void {
       playerCount: net.players.size + 1,
       caught: player.caught,
       farm,
+      spots: map.spots,
       L,
       board: net.board,
       myName: name,

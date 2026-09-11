@@ -18,7 +18,13 @@ export interface Profile {
   caught: number;
   day: number;
   /** Species id → biggest centimetres and best grade tier seen. */
-  log: Record<string, { count: number; best: number; bestGrade: number }>;
+  log: Record<string, {
+    count: number;
+    best: number;
+    bestGrade: number;
+    bestQuality?: number;
+    cleanCount?: number;
+  }>;
   /** Lore fragment ids already read. */
   lore: string[];
   /** NPC id → that villager's relationship with this player. */
@@ -147,6 +153,8 @@ function cleanLog(value: unknown): Profile['log'] {
       count: num(e.count),
       best: num(e.best),
       bestGrade: num(e.bestGrade),
+      bestQuality: num(e.bestQuality),
+      cleanCount: num(e.cleanCount),
     };
   }
   return result;

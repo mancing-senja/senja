@@ -75,7 +75,11 @@ Secara default server memakai port 8787. Bisa diubah lewat `PORT` atau
 | `WASD` / panah | jalan |
 | `spasi` | lempar kail (tahan buat ngatur jauhnya), tarik pas nyantol, tahan buat gulung |
 | `E` | cangkul, tanam, siram, panen, jual, ngobrol sama warga |
-| `Q` | ganti bibit |
+| `Q` | ganti bibit / pindah kategori di toko pancing |
+| `R` | ganti jenis umpan aktif |
+| `F` | ganti drag reel: Longgar / Seimbang / Kencang |
+| `T` | ganti rod action: Light / Medium / Heavy |
+| `Y` | ganti ukuran kail: Kecil / Sedang / Besar |
 | `Enter` | chat sama pemain lain |
 | `J` | catatan tangkapan |
 | `B` | papan komunitas |
@@ -110,6 +114,95 @@ layar yang pakai display scaling.
   jenis, rekor terbesar siapa, siapa lagi online.
 - **Catatan tangkapan** (`J`) dipaging buat roster 86 spesies dan menyimpan
   hasil tangkapan yang sudah ditemukan.
+- **Tackle realistis tapi tetap santai.** Joran, senar, dan kail punya rating
+  kekuatan serta kondisi. Overload yang dibiarkan bisa bikin joran patah,
+  senar putus, atau kail melurus; satu koreksi salah cuma memunculkan warning.
+- **Lokasi ikut membebani alat.** Teluk/Rawa punya cover tinggi, Tanjung Batu
+  abrasif ke senar, Muara/Sungai punya arus, dan Lubuk Dalam memberi beban
+  ekstra karena kedalaman. Kios pancing punya tab servis untuk balikin kondisi.
+- **Ikan punya stamina.** Tekanan yang stabil bikin ikan lelah perlahan sehingga
+  fight panjang justru makin tenang, bukan makin brutal.
+- **Drag reel realistis.** Longgar lebih aman tapi ikan bisa mengambil senar;
+  Kencang lebih cepat menahan ikan tapi memindahkan lebih banyak shock ke alat.
+- **Cover bisa benar-benar nyangkut.** Kalau tertinggal dari ikan di eceng/akar,
+  snag akan naik; tekanan sedang dan tracking yang rapi bisa membebaskannya.
+- **Karakter mulut ikan.** Ikan kecil tertentu bermulut lunak dan bisa sobek kalau
+  dipaksa; ikan kuat bermulut keras lebih butuh hook-set yang bersih.
+- **Rod action punya kompromi.** Light lebih responsif/fleksibel dan ramah mulut
+  lunak; Heavy menahan beban lebih besar dan menancapkan kail lebih tegas ke
+  mulut keras, tapi lebih kasar dan sedikit lambat dikoreksi.
+- **Elastisitas senar nyata.** Nilon menyimpan shock lalu melepasnya pelan,
+  kepang lebih direct, dan Senar Danau ada di tengah; stretch melindungi hook
+  tapi sedikit mengurangi transfer reel.
+- **Ukuran kail ikut memilih target.** Kail kecil lebih cocok ikan kecil,
+  kail besar lebih cocok ikan besar dan kuat; salah ukuran menurunkan peluang
+  bite/hook security tetapi tidak pernah mengunci spesies total.
+- **Escape phase per perilaku.** Ikan lari bisa first/second run, penyelam bisa
+  dive kedua, ikan pengendap bisa memberi sentakan terakhir dekat landing.
+- **Line-out & spool capacity.** Drag yang slip dan ikan yang lari benar-benar
+  mengambil senar; tiap tipe senar punya kapasitas relatif, dan membiarkan ikan
+  sampai ujung reel bisa mengakhiri fight.
+- **Respons escape berbeda.** Jump/headshake/rolling lebih aman jika tekanan
+  diturunkan, dive jangan sampai slack, sedangkan run harus dibiarkan lewat drag
+  sambil perlahan mengambil kembali line.
+- **Shore landing.** Progress penuh belum langsung jadi tangkapan: ikan harus
+  dibawa dekat tepi, line dipulihkan, lalu tekanan stabil sebentar untuk serok.
+  Mengangkat terlalu keras dekat tepian bisa merusak hook hold.
+- **Cuaca benar-benar masuk ke mancing.** Hujan yang terlihat di world
+  mempercepat aktivitas ikan secara ringan, mengubah komposisi bite, menaikkan
+  arus terutama di sungai/muara, dan membuat air lebih keruh. Spot tenang tidak
+  mendadak berubah jadi sungai hanya karena hujan.
+- **Cast lane punya reward dan risiko.** Lemparan bisa jatuh di air terbuka,
+  tepi cover, jalur arus, atau drop-off dalam. Tepi cover/jalur arus cenderung
+  lebih cepat menghasilkan aktivitas tetapi menambah pressure setempat;
+  drop-off sedikit membantu peluang grade tanpa menjadikan cast jauh selalu
+  pilihan terbaik.
+- **Pump-and-reel satu tombol.** Menahan Space dengan tension stabil mengangkat
+  joran dan menyimpan pump charge. Melepas setelah lift yang terkendali membuka
+  recovery window: line lebih cepat masuk dan pressure lebih efisien tanpa
+  tombol tambahan. Menahan terus tetap valid, hanya kurang efisien.
+- **Rod angle sekarang fisik.** Light action bergerak cepat dan lembut, Heavy
+  lebih lambat tetapi mentransfer pressure lebih besar. Pump yang tinggi juga
+  sedikit menaikkan load alat, jadi tenaga ekstra punya konsekuensi nyata.
+- **Ikan membalas tekanan berlebihan.** Menahan tension tinggi terlalu lama
+  memicu counter-surge pendek yang telegraphed. Ini bukan RNG; respons muncul
+  karena pemain terus memaksa dan bisa dihindari dengan cadence lift/recover.
+- **Ukuran kail memakai panjang ikan aktual.** Species roll masih memakai
+  preferensi ukuran secara ringan, tetapi setelah bite nilai cm yang benar-benar
+  ter-roll menentukan hook fit. Kail terlalu kecil/besar mengurangi hook hold
+  dan mismatch menambah leverage pada kail tanpa pernah hard-gate tangkapan.
+- **Microhabitat ikut melawan.** Ikan dari tepi cover mencoba kembali ke
+  struktur, ikan di current seam memanfaatkan arus untuk mengambil line, dan
+  ikan dari drop-off mencoba turun lagi. Arah ini konsisten dari titik cast,
+  sehingga pemain bisa belajar risiko lokasi, bukan menebak RNG.
+- **Ikan sekarang menarik dunia, bukan cuma HUD.** Run, jump, headshake, roll,
+  dive, counter-surge, line-out dan habitat intent memberi displacement kecil
+  pada bobber. Renderer joran/senar yang sudah ada otomatis mengikuti posisi
+  tersebut, jadi lari ikan terbaca langsung di air.
+- **Senar punya visual pressure.** Tension tinggi meluruskan line, slack
+  menambah sag, drag slip memberi getaran, dan rod angle mengikuti lift/recover
+  pump-and-reel. Dive membuat bobber tampak lebih tenggelam; run/roll/headshake
+  meninggalkan wake kecil tanpa menambah tombol atau overlay baru.
+- **Fight punya fase energi.** Ikan bergerak dari fresh → working → tired →
+  spent. Fase awal lebih eksplosif, sedangkan ikan yang capek benar-benar mulai
+  terasa berat dan lebih mudah mengambil line. Ikan besar/kuat yang memang
+  memenuhi ukuran aktual bisa menyimpan satu reserve burst terakhir; ikan
+  kecil tidak mendapat lonjakan buatan.
+- **Feeding window yang terbaca.** Dawn/senja bisa memunculkan hatch serangga,
+  hujan deras di spot berarus menjadi runoff, gerimis menaikkan surface feeding,
+  dan siang tenang di drop-off memberi deep-calm window. Kondisi ini memengaruhi
+  wait time, komposisi ikan dan tempo nibble; umpan yang cocok mendapat bonus
+  kecil tanpa pernah memanggil spesies yang salah habitat.
+- **Landing punya kualitas.** Final shore control dinilai dari landing pressure,
+  hook security, slack dan overload alat menjadi kasar / rapi / mulus. Hasil
+  yang lebih bersih memberi bonus koin, bukan hard gate, dan catch card memberi
+  feedback visual berbeda.
+- **Jurnal menyimpan mastery.** Per spesies tersimpan landing terbaik dan jumlah
+  landing mulus, plus catatan apakah jenis itu cukup besar/kuat untuk punya
+  tenaga akhir. Save lama otomatis dibaca dengan nilai mastery nol.
+- **Drag bisa disetel saat fight.** Tombol F tetap tombol drag yang sama, tetapi
+  sekarang bisa dipakai saat reel untuk longgar/seimbang/kencang mengikuti run,
+  reserve burst, atau fase ikan yang sudah tired.
 - **Kebun bareng.** Petak-petaknya milik room, bukan milik orang. Tanaman
   temen bisa kamu siram, dan tumbuh terus walau kamu lagi ga main.
 - **Siklus hari 20 menit.** Server yang pegang jamnya, jadi semua orang di
@@ -196,3 +289,20 @@ Ga bisa ngoding tapi ngerti pixel art? Tetap kepake — buka issue label
 ## Lisensi
 
 [MIT](LICENSE).
+
+
+## Drag coaching & rod leverage
+
+- **High-stick sekarang fisik:** joran yang hampir tegak saat tension tinggi menambah beban blank, terutama Action Heavy. Turunkan joran untuk melepas leverage buruk.
+- **Tarikan lateral ikut bekerja di kail:** run/headshake/cover pull memberi leverage kecil pada hook tanpa menambah kontrol arah baru.
+- **F tetap satu tombol drag:** game hanya memberi saran preset berikutnya (Longgar → Seimbang → Kencang) sesuai shock, spool, stamina, dan load. Drag tidak pernah berubah otomatis.
+- **Coaching tidak mengganti failure model:** senar/joran/kail tetap gagal karena overload berkelanjutan yang sudah diberi warning, bukan RNG instan.
+
+
+## Weather-readable bites & learned field notes
+
+- Hujan/air keruh sekarang sedikit menutupi riak nibble kecil, sementara committed bite justru dibuat lebih kuat.
+- Audio nibble naik sedikit saat visual surface cue tertutup cuaca; reaction window tidak dipendekkan.
+- Catatan Tangkapan membuka observasi cuaca setelah 3 tangkapan spesies yang sama.
+- Catatan cuaca memakai weather multiplier yang sama persis dengan RNG fishing, bukan flavour text terpisah.
+- Baris mulut + kail diringkas supaya informasi baru masuk tanpa memperbesar panel 320x180.

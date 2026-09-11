@@ -12,8 +12,11 @@ import type { Draw } from '../render/draw';
 import type { Lighting } from '../world/lighting';
 import type { Input } from '../engine/input';
 import { CROP_INFO } from './farm';
-import { SPECIES } from './fishing';
+import { mouthTypeForSpecies, SPECIES, weatherWeightForSpecies } from './fishing';
+import { styleFor } from './fight';
 import { GRADES } from './grade';
+import { BAITS, baitWeight } from './shop';
+import type { Spot } from '../world/spots';
 import { Blend } from '../engine/batch';
 import { lookColour } from '../art/character';
 import type { LoreFragment } from './lore';
@@ -56,6 +59,7 @@ export interface HudCtx {
   playerCount: number;
   caught: number;
   farm: Farm;
+  spots: readonly Spot[];
   L: Lighting;
   board: BoardEntry[];
   myName: string;
@@ -408,7 +412,7 @@ export class Ui {
     // blurb run under the whole panel width and it landed straight across
     // the bite-time bars — the two halves have to own their own space.
     const w = 224;
-    const h = 148;
+    const h = 180;
     const x = Math.round(view.w / 2 - w / 2);
     const y = Math.round(view.h / 2 - h / 2);
     const tier = e ? (e.bestGrade ?? 0) : 0;
@@ -460,9 +464,60 @@ export class Ui {
 
     // --- left: what it is. Two lines, inside the left column's width.
     const lines = wrapText(sp.blurb, 92);
-    for (let i = 0; i < Math.min(3, lines.length); i++) {
+    for (let i = 0; i < Math.min(2, lines.length); i++) {
       d.text(lines[i], LEFT, y + 88 + i * LINE_H, C.Mist, 0.85);
     }
+
+    // Learned hunting notes. These are computed from the exact systems used
+    // by the roll, so the journal is a field notebook rather than flavour text.
+    const style = styleFor(sp);
+    let bestSpot: Spot | null = null;
+    let bestMul = 1;
+    for (const spot of ctx.spots) {
+      const mul = spot.mult[sp.id] ?? 1;
+      if (mul > bestMul) {
+        bestMul = mul;
+        bestSpot = spot;
+      }
+    }
+
+    let bestBait = BAITS[0];
+    let bestBaitMul = -Infinity;
+    for (const bait of BAITS) {
+      const mul = baitWeight(bait.id, sp.value, sp.fight, sp.maxCm, style.id);
+      if (mul > bestBaitMul) {
+        bestBaitMul = mul;
+        bestBait = bait;
+      }
+    }
+
+    d.text(`gaya: ${style.label}`, LEFT, y + 109, C.Pale, 0.88);
+    const habitat = bestSpot ? bestSpot.label : 'air terbuka';
+    d.text(`cari: ${clipTo(habitat, 67)}`, LEFT, y + 120, C.GrassLt, 0.88);
+    d.text(`umpan: ${clipTo(bestBait.label, 61)}`, LEFT, y + 131, C.Amber, 0.88);
+
+    // Weather notes unlock through repetition, not spoilers. The multiplier
+    // comes from fishing.ts itself, so this notebook always describes the same
+    // rain response the species roll actually uses.
+    let weatherNote = 'belum terbaca';
+    if (e.count >= 3 && ctx.spots.length > 0) {
+      let drizzleMul = -Infinity;
+      let heavyMul = -Infinity;
+      for (const spot of ctx.spots) {
+        drizzleMul = Math.max(drizzleMul, weatherWeightForSpecies(sp, spot, 0.45));
+        heavyMul = Math.max(heavyMul, weatherWeightForSpecies(sp, spot, 0.82));
+      }
+      weatherNote = heavyMul >= 1.17 ? 'hujan: aktif'
+        : drizzleMul >= 1.10 ? 'gerimis: aktif'
+          : heavyMul < 0.99 ? 'deras: turun' : 'hujan: netral';
+    }
+    d.text(clipTo(`cuaca: ${weatherNote}`, 92), LEFT, y + 142, C.WaterBr, 0.84);
+
+    const mouth = mouthTypeForSpecies(sp);
+    const hookAdvice = mouth === 'lunak' || sp.maxCm <= 30
+      ? 'kecil'
+      : mouth === 'keras' || sp.maxCm >= 55 ? 'besar' : 'sedang';
+    d.text(clipTo(`${mouth} · kail ${hookAdvice}`, 92), LEFT, y + 153, C.Pale, 0.84);
 
     // --- right: the numbers that say where to go looking for a bigger one.
     let ry = y + 24;
@@ -476,6 +531,13 @@ export class Ui {
     row('sudah dapat', `${e.count}x`, C.Pale);
     row('harga dasar', `${sp.value}`, C.Lantern);
     row('perlawanan', fightWord(sp.fight), C.Pale);
+
+    const reserve = sp.maxCm >= 65 && sp.fight >= 1.30 ? 'ada' : 'tidak';
+    row('tenaga akhir', reserve, reserve === 'ada' ? C.Amber : C.Mist);
+    const bestQuality = e.bestQuality ?? 0;
+    const qualityLabel = bestQuality >= 2 ? 'mulus' : bestQuality >= 1 ? 'rapi' : 'kasar';
+    row('landing terbaik', qualityLabel, bestQuality >= 2 ? C.Grass : C.Pale);
+    row('landing mulus', `${e.cleanCount ?? 0}x`, C.GrassLt);
 
     // --- right: when it bites. Four bars beat four numbers — the shape of
     // the day is the actual answer to "when should I be out here".
@@ -663,7 +725,11 @@ export class Ui {
       ['wasd / panah', 'jalan'],
       ['spasi', 'lempar kail, tarik, gulung'],
       ['e', 'cangkul, tanam, siram, panen, jual'],
-      ['q', 'ganti bibit'],
+      ['q', 'ganti bibit / menu toko'],
+      ['r', 'ganti umpan aktif'],
+      ['f', 'atur drag · bisa saat fight'],
+      ['t', 'rod action light/medium/heavy'],
+      ['y', 'ukuran kail kecil/sedang/besar'],
       ['enter', 'ngobrol'],
       ['k', 'peta dunia'],
       ['j', 'catatan tangkapan'],

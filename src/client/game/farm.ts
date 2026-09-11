@@ -18,7 +18,9 @@ import type { WorldMap } from '../world/map';
 import type { Catch } from './fishing';
 import type { LocalPlayer } from './player';
 import {
-  BAIT_CASTS, BAIT_COST, addBait, nextRod, tackleState, upgradeRod,
+  addBait, baitCount, gearCondition, nextHook, nextLine, nextRod,
+  repairAll, repairCost, selectedBait,
+  upgradeHook, upgradeLine, upgradeRod,
 } from './shop';
 
 export const CROPS = Object.keys(CROP_LOOKS);
@@ -41,16 +43,19 @@ export interface Prompt {
 export type FarmAction =
   | { kind: 'plot'; i: number; op: 'till' | 'plant' | 'water' | 'harvest'; crop?: string }
   | { kind: 'sell' }
-  | { kind: 'buy'; crop?: string; shop?: 'rod' | 'bait' };
+  | { kind: 'buy'; crop?: string; shop?: 'rod' | 'line' | 'hook' | 'bait' | 'service' };
 
 const REACH = 22;
 
 export interface LogEntry {
   count: number;
   best: number;
-  /** Highest grade tier ever landed of this species. Optional on read:
-   *  a log saved before grades existed has no such field. */
+  /** Highest grade tier ever landed of this species. */
   bestGrade: number;
+  /** Landing quality tier: kasar 0, rapi 1, mulus 2. */
+  bestQuality: number;
+  /** Number of genuinely controlled "mulus" shore landings. */
+  cleanCount: number;
 }
 
 export class Farm {
@@ -61,7 +66,7 @@ export class Farm {
   basket: Catch[] = [];
   harvested: Record<string, number> = {};
   selected = 0;
-  private shopSelected: 'rod' | 'bait' = 'rod';
+  private shopSelected: 'rod' | 'line' | 'hook' | 'bait' | 'service' = 'rod';
   private promptMode: 'crop' | 'shop' = 'crop';
 
   /** Set each frame by `findPrompt`. */
@@ -74,11 +79,15 @@ export class Farm {
 
   cycleCrop(): void {
     if (this.promptMode === 'shop') {
-      this.shopSelected = this.shopSelected === 'rod' ? 'bait' : 'rod';
+      const tabs: Array<'rod' | 'line' | 'hook' | 'bait' | 'service'> =
+        ['rod', 'line', 'hook', 'bait', 'service'];
+      const i = tabs.indexOf(this.shopSelected);
+      this.shopSelected = tabs[(i + 1) % tabs.length];
       return;
     }
     this.selected = (this.selected + 1) % CROPS.length;
   }
+
 
   /** What has been caught at least once, and the biggest of each. The log
    *  is the reason to keep casting once coins stop mattering. */
@@ -86,12 +95,17 @@ export class Farm {
 
   addCatch(c: Catch): void {
     this.basket.push(c);
-    const e = this.log[c.species.id] ?? { count: 0, best: 0, bestGrade: 0 };
+    const e = this.log[c.species.id] ?? {
+      count: 0, best: 0, bestGrade: 0, bestQuality: 0, cleanCount: 0,
+    };
     e.count++;
     e.best = Math.max(e.best, c.cm);
     // The best grade ever landed, so the journal can show the species at
     // its finest rather than always at its plainest.
     e.bestGrade = Math.max(e.bestGrade ?? 0, c.grade.tier);
+    const qualityTier = c.quality === 'mulus' ? 2 : c.quality === 'rapi' ? 1 : 0;
+    e.bestQuality = Math.max(e.bestQuality ?? 0, qualityTier);
+    if (c.quality === 'mulus') e.cleanCount = (e.cleanCount ?? 0) + 1;
     this.log[c.species.id] = e;
   }
 
@@ -133,33 +147,70 @@ export class Farm {
     const stall = map.props.find((pr) => pr.kind === 'stall');
     if (stall && near(p, stall.x, stall.y, 30)) {
       this.promptMode = 'shop';
-      const gear = tackleState();
-
       if (this.shopSelected === 'rod') {
         const next = nextRod();
         if (next) {
           this.prompt = {
-            text: `[E] ${next.label} ${next.cost} koin  [Q] umpan`,
+            text: `[E] ${next.label} ${next.cost} koin  [Q] berikut`,
             x: stall.x, y: stall.y - 30,
           };
           this.pendingAction = { kind: 'buy', shop: 'rod' };
         } else {
+          this.prompt = { text: 'joran maksimal  [Q] berikut', x: stall.x, y: stall.y - 30 };
+        }
+      } else if (this.shopSelected === 'line') {
+        const next = nextLine();
+        if (next) {
           this.prompt = {
-            text: 'joran sudah paling enak  [Q] umpan',
+            text: `[E] ${next.label} ${next.cost} koin  [Q] berikut`,
             x: stall.x, y: stall.y - 30,
           };
+          this.pendingAction = { kind: 'buy', shop: 'line' };
+        } else {
+          this.prompt = { text: 'senar maksimal  [Q] berikut', x: stall.x, y: stall.y - 30 };
         }
-      } else if (gear.baitCasts >= 60) {
-        this.prompt = {
-          text: `umpan penuh (${gear.baitCasts})  [Q] joran`,
-          x: stall.x, y: stall.y - 30,
-        };
+      } else if (this.shopSelected === 'hook') {
+        const next = nextHook();
+        if (next) {
+          this.prompt = {
+            text: `[E] ${next.label} ${next.cost} koin  [Q] berikut`,
+            x: stall.x, y: stall.y - 30,
+          };
+          this.pendingAction = { kind: 'buy', shop: 'hook' };
+        } else {
+          this.prompt = { text: 'kail maksimal  [Q] berikut', x: stall.x, y: stall.y - 30 };
+        }
+      } else if (this.shopSelected === 'bait') {
+        const bait = selectedBait();
+        const have = baitCount(bait.id);
+        if (have >= 60) {
+          this.prompt = {
+            text: `${bait.label} penuh (${have})  [R] jenis  [Q] berikut`,
+            x: stall.x, y: stall.y - 30,
+          };
+        } else {
+          this.prompt = {
+            text: `[E] ${bait.label} ${bait.casts}x ${bait.cost} · sisa ${have}  [R] jenis [Q] berikut`,
+            x: stall.x, y: stall.y - 30,
+          };
+          this.pendingAction = { kind: 'buy', shop: 'bait' };
+        }
       } else {
-        this.prompt = {
-          text: `[E] umpan ${BAIT_CASTS}x ${BAIT_COST} koin · sisa ${gear.baitCasts}  [Q] joran`,
-          x: stall.x, y: stall.y - 30,
-        };
-        this.pendingAction = { kind: 'buy', shop: 'bait' };
+        const c = gearCondition();
+        const cost = repairCost();
+        const status = `J${Math.round(c.rod)} S${Math.round(c.line)} K${Math.round(c.hook)}`;
+        if (cost <= 0) {
+          this.prompt = {
+            text: `alat prima · ${status}  [Q] berikut`,
+            x: stall.x, y: stall.y - 30,
+          };
+        } else {
+          this.prompt = {
+            text: `[E] servis ${cost} koin · ${status}  [Q] berikut`,
+            x: stall.x, y: stall.y - 30,
+          };
+          this.pendingAction = { kind: 'buy', shop: 'service' };
+        }
       }
       return this.pendingAction;
     }
@@ -234,10 +285,32 @@ export class Farm {
           upgradeRod();
           return true;
         }
+        if (a.shop === 'line') {
+          const next = nextLine();
+          if (!next || this.coins < next.cost) return false;
+          this.coins -= next.cost;
+          upgradeLine();
+          return true;
+        }
+        if (a.shop === 'hook') {
+          const next = nextHook();
+          if (!next || this.coins < next.cost) return false;
+          this.coins -= next.cost;
+          upgradeHook();
+          return true;
+        }
         if (a.shop === 'bait') {
-          if (tackleState().baitCasts >= 60 || this.coins < BAIT_COST) return false;
-          this.coins -= BAIT_COST;
+          const bait = selectedBait();
+          if (baitCount(bait.id) >= 60 || this.coins < bait.cost) return false;
+          this.coins -= bait.cost;
           addBait();
+          return true;
+        }
+        if (a.shop === 'service') {
+          const cost = repairCost();
+          if (cost <= 0 || this.coins < cost) return false;
+          this.coins -= cost;
+          repairAll();
           return true;
         }
 

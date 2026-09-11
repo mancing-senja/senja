@@ -57,6 +57,20 @@ try {
   browser = await chromium.launch();
   const page = await browser.newPage();
 
+  // Migration fixture: players from fishing v1 can already have generic
+  // bait charges in localStorage. The new typed-bait inventory must preserve
+  // those casts instead of silently deleting a purchase.
+  await page.addInitScript(() => {
+    localStorage.setItem('senja.tackle', JSON.stringify({
+      rod: 1, line: 0, hook: 0, baitCasts: 7,
+    }));
+    // Gameplay smoke should boot as a returning player. With no saved face
+    // the first-run character creator intentionally pauses world updates,
+    // which would make keyboard fight checks test the creator instead.
+    localStorage.setItem('senja.face', '0');
+    localStorage.setItem('senja.name', 'CI Pemancing');
+  });
+
   const problems = [];
   page.on('console', (msg) => {
     if (msg.type() === 'error') problems.push(`console.error: ${msg.text()}`);
@@ -85,14 +99,127 @@ try {
       props: map ? map.props.length : 0,
       spots: map ? map.spots.length : 0,
       net: dbg ? dbg.net : 'unknown',
+      bait: dbg ? dbg.bait : null,
+      gear: dbg ? dbg.gear : null,
+      drag: dbg ? dbg.drag : null,
+      action: dbg ? dbg.action : null,
+      hookSize: dbg ? dbg.hookSize : null,
+      weather: dbg ? dbg.weather : null,
+      lineFeel: dbg ? dbg.lineFeel : null,
+      hazardSpot: map ? map.spots.find((s) => s.id === 'tanjung') : null,
     };
   });
 
   if (info.w < 64 || info.h < 64) problems.push(`canvas too small: ${info.w}x${info.h}`);
   if (info.props < 100) problems.push(`world looks empty: ${info.props} props`);
   if (info.spots < 1) problems.push('no fishing spots generated');
+  if (!info.bait || info.bait.id !== 'cacing' || info.bait.casts !== 7) {
+    problems.push(`legacy bait migration failed: ${JSON.stringify(info.bait)}`);
+  }
+  if (!info.gear || info.gear.rod !== 100 || info.gear.line !== 100 || info.gear.hook !== 100) {
+    problems.push(`legacy tackle condition migration failed: ${JSON.stringify(info.gear)}`);
+  }
+  if (!info.drag || info.drag.id !== 'seimbang') {
+    problems.push(`legacy drag migration failed: ${JSON.stringify(info.drag)}`);
+  }
+  if (!info.action || info.action.id !== 'medium') {
+    problems.push(`legacy rod action migration failed: ${JSON.stringify(info.action)}`);
+  }
+  if (!info.hookSize || info.hookSize.id !== 'sedang') {
+    problems.push(`legacy hook size migration failed: ${JSON.stringify(info.hookSize)}`);
+  }
+  if (
+    !info.hazardSpot
+    || typeof info.hazardSpot.abrasion !== 'number'
+    || typeof info.hazardSpot.cover !== 'number'
+    || typeof info.hazardSpot.current !== 'number'
+  ) {
+    problems.push(`fishing spot hazard model missing: ${JSON.stringify(info.hazardSpot)}`);
+  }
+  // A direct catch uses the real landing/card callback. It should record the
+  // new landing mastery fields in the journal without needing a long manual fight.
+  const masteryInfo = await page.evaluate(() => {
+    const start = window.__catch ? window.__catch('wader', 'biasa') : 'missing';
+    const dbg = window.__dbg ? window.__dbg() : null;
+    return { start, journal: dbg ? dbg.journal : null, fishing: dbg ? dbg.fishing : null };
+  });
+  const waderLog = masteryInfo.journal ? masteryInfo.journal.wader : null;
+  if (
+    !waderLog
+    || waderLog.bestQuality !== 2
+    || !(waderLog.cleanCount >= 1)
+  ) {
+    problems.push(`landing mastery journal invalid: ${JSON.stringify(masteryInfo)}`);
+  }
+
+  // Exercise the richer reel state, not just boot. A chosen fight should
+  // start with real line off the spool and expose the new landing/run state.
+  const fightInfo = await page.evaluate(() => {
+    const start = window.__fight ? window.__fight('wader', 'biasa') : 'missing';
+    const dbg = window.__dbg ? window.__dbg() : null;
+    return { start, reel: dbg ? dbg.reel : null };
+  });
+  if (
+    !fightInfo.reel
+    || !Number.isFinite(fightInfo.reel.lineOut)
+    || !(fightInfo.reel.lineOut > 0)
+    || fightInfo.reel.landing !== 0
+    || !(fightInfo.reel.hookHold > 0)
+    || typeof fightInfo.reel.pump !== 'number'
+    || typeof fightInfo.reel.recovery !== 'number'
+    || typeof fightInfo.reel.rodAngle !== 'number'
+    || typeof fightInfo.reel.counter !== 'number'
+    || typeof fightInfo.reel.phase !== 'string'
+    || typeof fightInfo.reel.reserve !== 'number'
+    || typeof fightInfo.reel.landingControl !== 'number'
+    || typeof fightInfo.reel.feeding !== 'string'
+    || typeof fightInfo.reel.hookFit !== 'number'
+    || !(fightInfo.reel.hookFit > 0)
+    || typeof fightInfo.reel.habitat !== 'number'
+    || !Number.isFinite(fightInfo.reel.fishX)
+    || !Number.isFinite(fightInfo.reel.fishY)
+    || typeof fightInfo.reel.rain !== 'number'
+    || typeof fightInfo.reel.waterCurrent !== 'number'
+    || typeof fightInfo.reel.turbidity !== 'number'
+    || typeof fightInfo.reel.castLane !== 'string'
+    || typeof fightInfo.reel.escape !== 'string'
+    || typeof fightInfo.reel.dragAdvice !== 'string'
+    || typeof fightInfo.reel.highStick !== 'number'
+    || typeof fightInfo.reel.sideLoad !== 'number'
+    || typeof fightInfo.reel.nibbleClarity !== 'number'
+    || typeof fightInfo.reel.weatherCue !== 'string'
+  ) {
+    problems.push(`advanced fight state invalid: ${JSON.stringify(fightInfo)}`);
+  }
+
+  // F is the existing drag key. During a fight it should now cycle the reel
+  // preset live rather than being ignored until the fish is gone.
+  const dragBefore = await page.evaluate(() => window.__dbg ? window.__dbg().drag?.id : null);
+  const dragAfter = await page.evaluate(() => {
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'f' }));
+    if (window.__step) window.__step(1);
+    window.dispatchEvent(new KeyboardEvent('keyup', { key: 'f' }));
+    return window.__dbg ? window.__dbg().drag?.id : null;
+  });
+  if (!dragBefore || !dragAfter || dragBefore === dragAfter) {
+    problems.push(`live drag adjustment failed: ${dragBefore} -> ${dragAfter}`);
+  }
+
   // Multiplayer reaches the room server through the /room proxy. If this
   // regresses, solo play still works and nothing else in CI would notice.
+  if (!info.weather || typeof info.weather.rain !== 'number') {
+    problems.push(`weather debug state missing: ${JSON.stringify(info.weather)}`);
+  }
+  if (
+    !info.lineFeel
+    || typeof info.lineFeel.tension !== 'number'
+    || typeof info.lineFeel.rodAngle !== 'number'
+    || typeof info.lineFeel.dragSlip !== 'number'
+    || typeof info.lineFeel.highStick !== 'number'
+    || typeof info.lineFeel.sideLoad !== 'number'
+  ) {
+    problems.push(`line feel debug state missing: ${JSON.stringify(info.lineFeel)}`);
+  }
   if (info.net !== 'online') problems.push(`room socket not connected (net=${info.net})`);
 
   if (problems.length) {

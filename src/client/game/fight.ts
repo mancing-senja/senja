@@ -53,12 +53,19 @@ export interface FightState {
   gainMul: number;
   /** >0 hides the zone this frame. Only the top grades ever set it. */
   veil: number;
+  /** Grade-level burst cadence. Rare fish surge hard, then expose a short
+   * recovery window instead of applying an opaque continuous difficulty tax. */
+  gradePulse: number;
+  gradeRecover: number;
+  gradeCooldown: number;
+  surgeDir: -1 | 1;
 }
 
 export function newFight(): FightState {
   return {
     t: 0, target: 0.5, vel: 0, phase: 0, beat: 0,
     home: 0.5, homeVel: 0, gainMul: 1, veil: 0,
+    gradePulse: 0, gradeRecover: 0, gradeCooldown: 0, surgeDir: 1,
   };
 }
 
@@ -138,6 +145,9 @@ export const STYLES: Record<StyleId, FightStyle> = {
       // A fast slide, not a teleport — about a sixth of a second. Long enough
       // for the eye to follow it across, short enough to feel like a snap.
       s.target += (s.home - s.target) * Math.min(1, dt * 11);
+      // Travelling costs reel efficiency; matching the landing rewards the
+      // player's reaction with a brief catch-up window.
+      s.gainMul = Math.abs(s.home - s.target) > 0.12 ? 0.82 : 1.08;
       // Barely breathes between jumps, so the jump is the whole event.
       s.vel += (Math.random() - 0.5) * dt * 1.4;
       drift(s, dt, 0.86);
@@ -161,11 +171,13 @@ export const STYLES: Record<StyleId, FightStyle> = {
         if (s.beat === 1) s.vel = (Math.random() < 0.5 ? -1 : 1) * 0.9 * fight;
       }
       if (s.beat === 1) {
+        s.gainMul = 0.72;
         // Driving for whichever end it set off toward, then pinning.
         const end = s.vel < 0 ? 0.06 : 0.94;
         s.target += (end - s.target) * Math.min(1, dt * 2.6);
         s.target += (Math.random() - 0.5) * dt * 0.3;
       } else {
+        s.gainMul = 1.10;
         // Between dives it recovers toward a resting spot that is itself
         // moving. It used to recover to dead centre, and a fish that always
         // comes back to the middle can be waited out from the middle.
@@ -191,7 +203,8 @@ export const STYLES: Record<StyleId, FightStyle> = {
       // Two frequencies, so the shake never settles into a rhythm you can
       // sit on the average of.
       tour(s, dt, 0.13 + 0.05 * fight);
-      const shake = Math.sin(s.phase) * 0.06 + Math.sin(s.phase * 2.3) * 0.025;
+      const amp = 1 + Math.min(0.35, Math.max(0, fight - 1) * 0.22);
+      const shake = (Math.sin(s.phase) * 0.06 + Math.sin(s.phase * 2.3) * 0.025) * amp;
       s.target = clamp01(s.home + shake);
     },
   },
@@ -236,15 +249,19 @@ export const STYLES: Record<StyleId, FightStyle> = {
   lari: {
     id: 'lari', label: 'lari',
     hint: 'ikut terus, jangan berhenti',
-    zone: 0.22, gain: 0.125, drain: 0.26,
+    zone: 0.22, gain: 0.13, drain: 0.25,
     step(s, dt, fight) {
       s.phase -= dt;
       if (s.phase <= 0) {
-        s.beat = Math.random() < 0.5 ? 0 : 1;
-        s.phase = 1.6 + Math.random() * 1.4;
+        // Alternate ends so an open-water run can never choose its current
+        // side twice and pretend to be a meaningful burst.
+        s.beat = s.beat === 0 ? 1 : 0;
+        s.phase = 1.9 + Math.random() * 1.4;
       }
       const goal = s.beat === 0 ? 0.04 : 0.96;
-      s.target += (goal - s.target) * Math.min(1, dt * (0.7 + 0.5 * fight));
+      const away = Math.abs(goal - s.target);
+      s.gainMul = away > 0.20 ? 0.88 : 1.10;
+      s.target += (goal - s.target) * Math.min(1, dt * (0.62 + 0.40 * fight));
       s.target += (Math.random() - 0.5) * dt * 0.6;
       s.target = clamp01(s.target);
     },
@@ -314,30 +331,56 @@ export function styleFor(sp: Species): FightStyle {
 export function applyGrade(
   style: FightStyle, s: FightState, dt: number, tier: number,
 ): { zone: number; gain: number; drain: number } {
-  // Surges: a shove out of turn, on top of whatever the pattern was doing.
-  if (tier >= 2 && Math.sin(s.t * 1.7 + tier) > 0.93) {
-    s.vel += (s.target < 0.5 ? 1 : -1) * dt * 5 * (tier - 1);
-    s.target = clamp01(s.target + (s.target < 0.5 ? 1 : -1) * dt * 0.5);
+  // Rare-grade pressure is a discrete beat, not a sine condition that shoves
+  // every frame. A surge has a start/end and then a readable recovery window.
+  const wasPulse = s.gradePulse > 0;
+  s.gradePulse = Math.max(0, s.gradePulse - dt);
+  s.gradeRecover = Math.max(0, s.gradeRecover - dt);
+  s.gradeCooldown = Math.max(0, s.gradeCooldown - dt);
+  if (wasPulse && s.gradePulse <= 0) {
+    s.gradeRecover = 0.52 + tier * 0.045;
   }
 
-  // Out of sight. Only Legenda and Mitos, only for about a second, and never
-  // straight after a hook-up — vanishing before the player has found the fish
-  // once is not a fight, it is a coin toss.
-  if (tier >= 4 && s.t > 2.5) {
+  if (
+    tier >= 2
+    && s.t > 1.5
+    && s.gradeCooldown <= 0
+    && Math.sin(s.t * 1.7 + tier) > 0.91
+  ) {
+    s.gradePulse = 0.26 + tier * 0.035;
+    s.gradeCooldown = 2.6 + tier * 0.28;
+    s.surgeDir = s.target < 0.5 ? 1 : -1;
+    s.vel += s.surgeDir * (0.55 + tier * 0.12);
+  }
+
+  if (s.gradePulse > 0) {
+    s.vel += s.surgeDir * dt * (1.1 + tier * 0.22);
+    s.target = clamp01(
+      s.target + s.surgeDir * dt * (0.10 + tier * 0.025),
+    );
+  }
+
+  // Legenda/Mitos still get the memory beat, but never stacked on a surge or
+  // its recovery. Difficulty layers sequence instead of producing spikes.
+  if (
+    tier >= 4
+    && s.t > 2.5
+    && s.gradePulse <= 0
+    && s.gradeRecover <= 0
+  ) {
     const c = Math.sin(s.t * 0.9 + 1.3);
     s.veil = c > 0.62 ? 1 : 0;
   } else {
     s.veil = 0;
   }
 
+  const recoveryBonus = s.gradeRecover > 0 ? 1.10 + tier * 0.015 : 1;
+  const pulseDrain = s.gradePulse > 0 ? 1.08 : 1;
+  const pulseZone = s.gradePulse > 0 ? 0.96 : 1;
+
   return {
-    // Each tier takes a share of the zone rather than a fixed slice. A flat
-    // subtraction collapsed the narrow styles into nothing while barely
-    // touching the wide ones — menggetar's own shake ended up wider than the
-    // zone it had to sit in, which is not a hard fight, it is an impossible
-    // one. Proportional keeps every style recognisable at every grade.
-    zone: Math.max(0.12, style.zone * (1 - tier * 0.075)),
-    gain: style.gain * s.gainMul * (1 - tier * 0.05),
-    drain: style.drain * (1 + tier * 0.10),
+    zone: Math.max(0.12, style.zone * (1 - tier * 0.075) * pulseZone),
+    gain: style.gain * s.gainMul * (1 - tier * 0.05) * recoveryBonus,
+    drain: style.drain * (1 + tier * 0.10) * pulseDrain,
   };
 }

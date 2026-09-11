@@ -28,6 +28,9 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Fishing balance simulation
+        run: npm run fight
+
       - name: Build
         run: npm run build
 
