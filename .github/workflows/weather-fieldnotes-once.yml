@@ -1,0 +1,35 @@
+name: Apply weather readability and field notes pass
+
+on:
+  push:
+    branches:
+      - "feat/fishing-gameplay-v2"
+    paths:
+      - ".github/workflows/weather-fieldnotes-once.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/fishing-gameplay-v2
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Apply gameplay patch
+        run: node tools/apply-weather-fieldnotes-pass.mjs
+
+      - name: Commit gameplay pass
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/client/game/fishing.ts src/client/game/ui.ts scripts/smoke.mjs README.md
+          git commit -m "feat: make weather bites readable and journal learned"
+          git push origin HEAD:feat/fishing-gameplay-v2
